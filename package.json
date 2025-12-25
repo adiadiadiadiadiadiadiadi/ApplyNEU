@@ -10,13 +10,15 @@
     "start": "electron .",
     "electron": "electron ."
   },
-  "keywords": ["electron", "react"],
+  "keywords": [
+    "electron",
+    "react"
+  ],
   "author": "",
   "license": "MIT",
   "devDependencies": {
     "concurrently": "^8.2.2",
-    "electron": "^28.0.0",
+    "electron": "^28.3.3",
     "wait-on": "^7.2.0"
   }
 }
-
