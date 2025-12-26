@@ -1,9 +1,17 @@
 import './home.css'
+import { supabase } from '../../lib/supabase'
 
 export default function Home() {
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+  }
+
   return (
     <>
       <h1 className="welcome-message">home</h1>
+      <button onClick={handleLogout} className="logout-button">
+        Logout
+      </button>
       <div className="home-container">
         <div className="top-row">
           <div className="tile tile--equal">
