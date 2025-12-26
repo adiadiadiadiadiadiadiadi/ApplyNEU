@@ -54,15 +54,15 @@ export default function Home() {
             <div className="stats-grid">
               <div className="stat-card">
                 <span className="stat-value">3</span>
-                <span className="stat-label">Today</span>
+                <span className="stat-label">today</span>
               </div>
               <div className="stat-card">
                 <span className="stat-value">12</span>
-                <span className="stat-label">This Week</span>
+                <span className="stat-label">this week</span>
               </div>
               <div className="stat-card">
                 <span className="stat-value">47</span>
-                <span className="stat-label">Last Month</span>
+                <span className="stat-label">last month</span>
               </div>
             </div>
           </div>

@@ -2,7 +2,11 @@ import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import './login.css'
 
-export default function Login() {
+interface LoginProps {
+  onNavigateToSignup: () => void
+}
+
+export default function Login({ onNavigateToSignup }: LoginProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -46,8 +50,6 @@ export default function Login() {
       <div className="login-content">
         <h1 className="login-title">welcome back</h1>
 
-        {error && <div className="login-error">{error}</div>}
-
         <form onSubmit={handleEmailLogin} className="login-form">
           <input
             type="email"
@@ -66,6 +68,8 @@ export default function Login() {
             className="login-input"
             required
           />
+
+          {error && <div className="login-error">{error}</div>}
 
           <button
             type="submit"
@@ -121,7 +125,17 @@ export default function Login() {
         </div>
 
         <div className="login-footer">
-          don't have an account? <a href="/register" className="login-link">register now</a>
+          don't have an account?{' '}
+          <a 
+            href="#" 
+            onClick={(e) => { 
+              e.preventDefault(); 
+              onNavigateToSignup(); 
+            }} 
+            className="login-link"
+          >
+            register now
+          </a>
         </div>
       </div>
     </div>
