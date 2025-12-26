@@ -16,6 +16,26 @@
   /* Use default h1 styles - no font overrides */
 }
 
+.logout-button {
+  position: fixed;
+  top: 3rem;
+  right: 4rem;
+  z-index: 1000;
+  padding: 0.5rem 1rem;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 0.5rem;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.logout-button:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
 .home-container {
   position: fixed;
   top: 7.5rem;
