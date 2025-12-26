@@ -13,7 +13,6 @@
   text-align: left;
   z-index: 1000;
   margin: 0;
-  /* Use default h1 styles - no font overrides */
 }
 
 .logout-button {
@@ -424,7 +423,6 @@
   transform: rotate(-45deg) translate(7px, -6px);
 }
 
-/* Sidebar Overlay */
 .sidebar-overlay {
   position: fixed;
   top: 0;
