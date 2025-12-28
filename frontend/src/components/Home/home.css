@@ -20,18 +20,21 @@
   top: 3rem;
   right: 4rem;
   z-index: 1000;
-  padding: 0.5rem 1rem;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 0.5rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 0.5rem;
   color: rgba(255, 255, 255, 0.9);
   font-size: 0.9rem;
   cursor: pointer;
   transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .logout-button:hover {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.1);
   border-color: rgba(255, 255, 255, 0.3);
 }
 
@@ -347,7 +350,6 @@
   }
 }
 
-/* Home Button */
 .home-button {
   position: fixed;
   top: 1rem;
