@@ -191,9 +191,8 @@ export default function Signup({ onNavigateToLogin }: SignupProps) {
             value={graduationYear}
             onChange={(e) => setGraduationYear(e.target.value)}
             className="signup-input signup-input--year"
-            min="2025"
+            min="2000"
             max="2040"
-            defaultValue="2025"
             required
           />
 
