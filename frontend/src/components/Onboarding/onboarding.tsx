@@ -9,6 +9,8 @@ interface OnboardingProps {
 export default function Onboarding({ onComplete }: OnboardingProps) {
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
 
   const handleComplete = async () => {
     setLoading(true)
@@ -40,6 +42,44 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     if (step > 1) {
       setStep(step - 1)
     }
+  }
+
+  const handleFileSelect = (file: File) => {
+    if (file.type === 'application/pdf') {
+      setUploadedFile(file)
+      console.log('PDF uploaded:', file.name)
+      // TODO: Handle file upload to your backend
+    }
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+    
+    const file = e.dataTransfer.files[0]
+    if (file) {
+      handleFileSelect(file)
+    }
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = () => {
+    setIsDragging(false)
+  }
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      handleFileSelect(file)
+    }
+  }
+
+  const removeFile = () => {
+    setUploadedFile(null)
   }
 
   return (
@@ -80,32 +120,50 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
         {step === 2 && (
           <div className="onboarding-step">
-            <h1 className="onboarding-title">how it works</h1>
+            <h1 className="onboarding-title">upload your resume</h1>
             <p className="onboarding-description">
-              ApplyNEU streamlines your co-op application process with intelligent automation.
+              AI agents parse your resume to find jobs that best match your strengths.
             </p>
-            <div className="onboarding-process">
-              <div className="process-step">
-                <div className="process-number">1</div>
-                <div className="process-content">
-                  <h3>add applications</h3>
-                  <p>keep track of all the companies you're applying to</p>
+            <div 
+              className={`upload-zone ${isDragging ? 'dragging' : ''} ${uploadedFile ? 'has-file' : ''}`}
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onClick={() => !uploadedFile && document.getElementById('file-input')?.click()}
+            >
+              {!uploadedFile ? (
+                <>
+                  <div className="upload-icon">📄</div>
+                  <p className="upload-text">
+                    drag and drop your resume here
+                  </p>
+                  <p className="upload-subtext">or click to browse</p>
+                  <p className="upload-format">PDF files only</p>
+                  <input
+                    id="file-input"
+                    type="file"
+                    accept=".pdf"
+                    onChange={handleFileInput}
+                    style={{ display: 'none' }}
+                  />
+                </>
+              ) : (
+                <div className="uploaded-file">
+                  <div className="file-info">
+                    <span className="file-icon">📄</span>
+                    <span className="file-name">{uploadedFile.name}</span>
+                  </div>
+                  <button 
+                    className="remove-file"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      removeFile()
+                    }}
+                  >
+                    ✕
+                  </button>
                 </div>
-              </div>
-              <div className="process-step">
-                <div className="process-number">2</div>
-                <div className="process-content">
-                  <h3>automate tasks</h3>
-                  <p>let our AI assist you with repetitive tasks</p>
-                </div>
-              </div>
-              <div className="process-step">
-                <div className="process-number">3</div>
-                <div className="process-content">
-                  <h3>land your co-op</h3>
-                  <p>stay organized and never miss a deadline</p>
-                </div>
-              </div>
+              )}
             </div>
           </div>
         )}
@@ -145,14 +203,6 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
             {loading ? 'completing...' : step === 3 ? 'get started' : 'next'}
           </button>
         </div>
-
-        <button 
-          onClick={handleComplete}
-          className="onboarding-skip"
-          disabled={loading}
-        >
-          skip for now
-        </button>
       </div>
     </div>
   )
