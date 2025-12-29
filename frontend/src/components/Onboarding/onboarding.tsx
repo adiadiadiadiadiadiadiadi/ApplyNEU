@@ -15,6 +15,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   const handleComplete = async () => {
     setLoading(true)
     
+    // Mark onboarding as complete
     const { data: { user } } = await supabase.auth.getUser()
     
     if (user) {
@@ -30,8 +31,56 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     onComplete()
   }
 
-  const nextStep = () => {
-    if (step < 3) {
+  const nextStep = async () => {
+    if (step === 2 && uploadedFile) {
+      setLoading(true)
+      
+      // Upload file to S3 on step 2
+      try {
+        const response = await fetch('http://localhost:8080/resumes/new', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            file_name: uploadedFile.name,
+            file_type: uploadedFile.type,
+            file_size: uploadedFile.size
+          })
+        })
+
+        if (response.ok) {
+          const { uploadUrl, key } = await response.json()
+
+          const uploadResponse = await fetch(uploadUrl, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': uploadedFile.type,
+            },
+            body: uploadedFile
+          })
+
+          if (uploadResponse.ok) {
+            console.log('File uploaded successfully to S3:', key)
+          } else {
+            console.error('Failed to upload file to S3')
+            setLoading(false)
+            return
+          }
+        } else {
+          console.error('Failed to get upload URL')
+          setLoading(false)
+          return
+        }
+      } catch (error) {
+        console.error('Error uploading file:', error)
+        setLoading(false)
+        return
+      }
+      
+      setLoading(false)
+      setStep(3)
+    } else if (step < 3) {
       setStep(step + 1)
     } else {
       handleComplete()
@@ -47,8 +96,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   const handleFileSelect = (file: File) => {
     if (file.type === 'application/pdf') {
       setUploadedFile(file)
-      console.log('PDF uploaded:', file.name)
-      // TODO: Handle file upload to your backend
+      console.log('PDF selected:', file.name)
     }
   }
 
@@ -198,7 +246,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           <button 
             onClick={nextStep}
             className="onboarding-button onboarding-button--primary"
-            disabled={loading}
+            disabled={loading || (step === 2 && !uploadedFile)}
           >
             {loading ? 'completing...' : step === 3 ? 'get started' : 'next'}
           </button>
