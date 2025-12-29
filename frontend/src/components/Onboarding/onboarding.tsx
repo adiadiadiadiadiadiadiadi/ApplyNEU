@@ -14,10 +14,10 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
   const handleComplete = async () => {
     setLoading(true)
-    
+
     // Mark onboarding as complete
     const { data: { user } } = await supabase.auth.getUser()
-    
+
     if (user) {
       await supabase.auth.updateUser({
         data: {
@@ -26,7 +26,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         }
       })
     }
-    
+
     setLoading(false)
     onComplete()
   }
@@ -34,10 +34,15 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   const nextStep = async () => {
     if (step === 2 && uploadedFile) {
       setLoading(true)
-      
-      // Upload file to S3 on step 2
+
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        setLoading(false)
+        return
+      }
+
       try {
-        const response = await fetch('http://localhost:8080/resumes/new', {
+        const response = await fetch('http://localhost:8080/resumes/upload-url', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -50,7 +55,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         })
 
         if (response.ok) {
-          const { uploadUrl, key } = await response.json()
+          const { uploadUrl, key, resumeId } = await response.json()
 
           const uploadResponse = await fetch(uploadUrl, {
             method: 'PUT',
@@ -61,23 +66,38 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           })
 
           if (uploadResponse.ok) {
-            console.log('File uploaded successfully to S3:', key)
+            const saveResponse = await fetch('http://localhost:8080/resumes/save-resume', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                resume_id: resumeId,
+                key: key,
+                user_id: user.id,
+                file_name: uploadedFile.name,
+                file_size_bytes: uploadedFile.size
+              })
+            })
+
+            if (saveResponse.ok) {
+              const savedResume = await saveResponse.json()
+            } else {
+              console.error('Failed to save resume data to database')
+            }
           } else {
-            console.error('Failed to upload file to S3')
             setLoading(false)
             return
           }
         } else {
-          console.error('Failed to get upload URL')
           setLoading(false)
           return
         }
       } catch (error) {
-        console.error('Error uploading file:', error)
         setLoading(false)
         return
       }
-      
+
       setLoading(false)
       setStep(3)
     } else if (step < 3) {
@@ -103,7 +123,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
     setIsDragging(false)
-    
+
     const file = e.dataTransfer.files[0]
     if (file) {
       handleFileSelect(file)
@@ -135,8 +155,8 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       <div className="onboarding-content">
         <div className="onboarding-progress">
           <div className="progress-bar">
-            <div 
-              className="progress-fill" 
+            <div
+              className="progress-fill"
               style={{ width: `${(step / 3) * 100}%` }}
             />
           </div>
@@ -172,7 +192,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
             <p className="onboarding-description">
               AI agents parse your resume to find jobs that best match your strengths.
             </p>
-            <div 
+            <div
               className={`upload-zone ${isDragging ? 'dragging' : ''} ${uploadedFile ? 'has-file' : ''}`}
               onDrop={handleDrop}
               onDragOver={handleDragOver}
@@ -201,7 +221,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                     <span className="file-icon">📄</span>
                     <span className="file-name">{uploadedFile.name}</span>
                   </div>
-                  <button 
+                  <button
                     className="remove-file"
                     onClick={(e) => {
                       e.stopPropagation()
@@ -220,7 +240,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           <div className="onboarding-step">
             <h1 className="onboarding-title">you're all set!</h1>
             <p className="onboarding-description">
-              ready to start your co-op application journey? 
+              ready to start your co-op application journey?
               let's dive into your personalized dashboard.
             </p>
             <div className="onboarding-final">
@@ -236,14 +256,14 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
         <div className="onboarding-actions">
           {step > 1 && (
-            <button 
+            <button
               onClick={prevStep}
               className="onboarding-button onboarding-button--secondary"
             >
               back
             </button>
           )}
-          <button 
+          <button
             onClick={nextStep}
             className="onboarding-button onboarding-button--primary"
             disabled={loading || (step === 2 && !uploadedFile)}
