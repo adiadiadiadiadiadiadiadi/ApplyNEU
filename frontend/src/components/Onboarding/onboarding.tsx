@@ -15,7 +15,6 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   const handleComplete = async () => {
     setLoading(true)
 
-    // Mark onboarding as complete
     const { data: { user } } = await supabase.auth.getUser()
 
     if (user) {
@@ -79,12 +78,6 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                 file_size_bytes: uploadedFile.size
               })
             })
-
-            if (saveResponse.ok) {
-              const savedResume = await saveResponse.json()
-            } else {
-              console.error('Failed to save resume data to database')
-            }
           } else {
             setLoading(false)
             return
