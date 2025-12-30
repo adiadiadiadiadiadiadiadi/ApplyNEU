@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomBytes } from 'crypto';
 import { pool } from '../db/index.ts';
@@ -44,6 +44,26 @@ export const getUploadUrl = async (file_name: string, file_type: string, file_si
         return { error: 'Failed to generate upload URL.' };
     }
 };
+
+export const getViewUrl = async (key: string) => {
+    try {
+        const command = new GetObjectCommand({
+            Bucket: process.env.S3_BUCKET_NAME!,
+            Key: key,
+        })
+
+        const viewUrl = await getSignedUrl(s3Client, command, {
+            expiresIn: 3600,
+        });
+
+        return {
+            viewUrl,
+            expiresIn: 3600,
+        };
+    } catch (error) {
+        return { error: 'Failed to generate view URL.' };
+    }
+}
 
 export const saveResumeDate = async (resume_id: string, key: string, user_id: string, file_name: string, file_size_bytes: number) => {
     const result = await pool.query(

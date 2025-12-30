@@ -8,6 +8,12 @@ export interface ResumeMetadataRequest extends Request {
     };
 }
 
+export interface ResumeViewRequest extends Request {
+    body: {
+        key: string
+    };
+}
+
 export interface ResumeSaveRequest extends Request {
     body: {
         resume_id: string,
