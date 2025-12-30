@@ -1,6 +1,6 @@
 import express, { type Response } from 'express';
-import type { ResumeMetadataRequest, ResumeSaveRequest } from '../types/resumes.ts';
-import { getUploadUrl, saveResumeDate } from '../services/resume.service.ts';
+import type { ResumeMetadataRequest, ResumeSaveRequest, ResumeViewRequest } from '../types/resumes.ts';
+import { getUploadUrl, getViewUrl, saveResumeDate } from '../services/resume.service.ts';
 
 /**
  * This controller handles user-related routes.
@@ -22,7 +22,6 @@ const resumeController = () => {
 
         try {
             const url = await getUploadUrl(file_name, file_type, file_size);
-            console.log(url)
 
             if ('error' in url) {
                 res.status(400).json({
@@ -37,6 +36,33 @@ const resumeController = () => {
             });
         }
     };
+
+    const getViewUrlRoute = async (req: ResumeViewRequest, res: Response) => {
+        const { key } = req.body;
+
+        if (!key) {
+            res.status(404).json({
+                "message": "Required arguments not found to view resume."
+            });
+            return;
+        }
+
+        try {
+            const url = await getViewUrl(key);
+
+            if ('error' in url) {
+                res.status(400).json({
+                    "message": "Unable to view resume."
+                });
+                return;
+            }
+            res.status(200).json(url);
+        } catch (err: unknown) {
+            res.status(400).json({
+                "message": "Unable to view resume."
+            });
+        }
+    }
 
     const saveResumeDataRoute = async (req: ResumeSaveRequest, res: Response) => {
         const { resume_id, key, user_id, file_name, file_size_bytes } = req.body
@@ -66,6 +92,7 @@ const resumeController = () => {
     }
 
     router.post('/upload-url', getUploadUrlRoute);
+    router.post('/view-url', getViewUrlRoute);
     router.post('/save-resume', saveResumeDataRoute)
     return router;
 };
