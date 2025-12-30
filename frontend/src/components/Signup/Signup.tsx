@@ -17,7 +17,6 @@ export default function Signup({ onNavigateToLogin }: SignupProps) {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [step, setStep] = useState<'signup' | 'verify'>('signup')
-    const [userId, setUserId] = useState<string | null>(null)
 
     const handleSignup = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -51,18 +50,46 @@ export default function Signup({ onNavigateToLogin }: SignupProps) {
 
         const { data, error } = await supabase.auth.signUp({
             email,
-            password
+            password,
+            options: {
+                data: {
+                    first_name: firstName,
+                    last_name: lastName,
+                    graduation_year: graduationYear,
+                }
+            }
         })
 
         if (error) {
             setError(error.message)
         } else {
-            if (data.user?.id) {
-                setUserId(data.user?.id)
-                setStep('verify')
-            } else {
-                setError("Unable to add user. Try again later.")
+            const userId = data.user?.id
+            
+            if (userId) {
+                try {
+                    const response = await fetch('http://localhost:8080/users/new', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            user_id: userId,
+                            first_name: firstName,
+                            last_name: lastName,
+                            email: email,
+                            grad_year: parseInt(graduationYear)
+                        })
+                    })
+                    
+                    if (!response.ok) {
+                        console.error('Failed to create user in database')
+                    }
+                } catch (err) {
+                    console.error('Error creating user in database:', err)
+                }
             }
+            
+            setStep('verify')
         }
         setLoading(false)
     }
@@ -82,27 +109,13 @@ export default function Signup({ onNavigateToLogin }: SignupProps) {
             setError(error.message)
             setLoading(false)
         } else {
-            try {
-                const response = await fetch('http://localhost:8080/users/new', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        user_id: userId,
-                        first_name: firstName,
-                        last_name: lastName,
-                        email: email,
-                        grad_year: parseInt(graduationYear)
-                    })
-                })
-                
-                if (!response.ok) {
-                    setError('Failed to create user in database')
-                }
-            } catch (err) {
-                setError('Error creating user in database: ' + err)
-            }
+            const res = await fetch("http://localhost:3000/api/users", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({firstName, lastName, email, graduationYear}),
+            });
         }
     }
 

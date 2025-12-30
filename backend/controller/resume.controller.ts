@@ -1,6 +1,6 @@
 import express, { type Response } from 'express';
 import type { ResumeMetadataRequest, ResumeSaveRequest, ResumeViewRequest } from '../types/resumes.ts';
-import { getUploadUrl, getViewUrl, saveResumeDate } from '../services/resume.service.ts';
+import { getUploadUrl, getViewUrl, saveResume } from '../services/resume.service.ts';
 
 /**
  * This controller handles user-related routes.
@@ -75,8 +75,8 @@ const resumeController = () => {
         }
 
         try {
-            const resume = await saveResumeDate(resume_id, key, user_id, file_name, file_size_bytes);
-
+            const resume = await saveResume(resume_id, key, user_id, file_name, file_size_bytes);
+            console.log("resume", resume)
             if ('error' in resume) {
                 res.status(400).json({
                     "message": "Unable to save resume."

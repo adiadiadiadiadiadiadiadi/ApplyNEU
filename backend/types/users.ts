@@ -1,6 +1,6 @@
 import { type Request } from 'express';
 
-type UUID = string;
+export type UUID = string;
 
 export interface PostUserObject {
     user_id: UUID;
