@@ -1,6 +1,6 @@
-import express, { type Response } from 'express';
+import express, { type Request, type Response } from 'express';
 import type { ResumeMetadataRequest, ResumeSaveRequest, ResumeViewRequest } from '../types/resumes.ts';
-import { getUploadUrl, getViewUrl, saveResume } from '../services/resume.service.ts';
+import { getUploadUrl, getViewUrl, saveResume, getPossibleInterests } from '../services/resume.service.ts';
 
 /**
  * This controller handles user-related routes.
@@ -76,7 +76,6 @@ const resumeController = () => {
 
         try {
             const resume = await saveResume(resume_id, key, user_id, file_name, file_size_bytes);
-            console.log("resume", resume)
             if ('error' in resume) {
                 res.status(400).json({
                     "message": "Unable to save resume."
@@ -91,9 +90,37 @@ const resumeController = () => {
         }
     }
 
+    const getInterestsRoute = async (req: Request, res: Response) => {
+        const { user_id } = req.params;
+
+        if (!user_id) {
+            res.status(404).json({
+                "message": "Required arguments not found to get interests."
+            });
+            return;
+        }
+
+        try {
+            const result = await getPossibleInterests(user_id);
+
+            if ('error' in result) {
+                res.status(400).json({
+                    "message": "Unable to get interests."
+                });
+                return;
+            }
+            res.status(200).json(result);
+        } catch (err: unknown) {
+            res.status(400).json({
+                "message": "Unable to get interests."
+            });
+        }
+    }
+
     router.post('/upload-url', getUploadUrlRoute);
     router.post('/view-url', getViewUrlRoute);
     router.post('/save-resume', saveResumeDataRoute)
+    router.get('/:user_id/possible-interests', getInterestsRoute)
     return router;
 };
 

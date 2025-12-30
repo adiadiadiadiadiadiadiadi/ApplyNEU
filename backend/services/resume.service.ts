@@ -3,6 +3,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import pdfParse from 'pdf-parse';
 import { randomBytes } from 'crypto';
 import { pool } from '../db/index.ts';
+import Anthropic from '@anthropic-ai/sdk';
 
 const s3Client = new S3Client({
     region: process.env.AWS_REGION || 'us-east-2',
@@ -99,8 +100,7 @@ const extractTextFromPDF = async (key: string): Promise<string> => {
 export const saveResume = async (resume_id: string, key: string, user_id: string, file_name: string, file_size_bytes: number) => {
     try {
         const resume_text = await extractTextFromPDF(key);
-        console.log(resume_text)
-    
+
         const result = await pool.query(
             `
             INSERT INTO resumes (resume_id, key, user_id, file_name, file_size_bytes, resume_text)
@@ -111,6 +111,55 @@ export const saveResume = async (resume_id: string, key: string, user_id: string
         );
         return result.rows[0];
     } catch (error) {
-        return { error: 'Failed to save.' };
+        return { error: 'Failed to save resume.' };
     }
 };
+
+export const getPossibleInterests = async (user_id: string) => {
+    try {
+        const result = await pool.query(
+            `SELECT resume_text FROM resumes WHERE user_id::text = $1 ORDER BY created_at DESC LIMIT 1;`,
+            [user_id]
+        )
+        const resumeText = result.rows[0].resume_text
+        const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+        const message = await anthropic.messages.create({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 1024,
+            messages: [{
+                role: 'user',
+                content: 
+                `
+                You are analyzing a resume to extract job-related topics the person might be interested in.
+
+                Resume text:
+                ${resumeText}
+                
+                Extract and return ONLY a JSON array of 60 relevant topics including:
+                - ~40: Technical skills (e.g., "Python", "React", "AWS")
+                - ~6: Industries (e.g., "FinTech", "Healthcare", "E-commerce")
+                - ~6: Job types (e.g., "Software Engineering", "Data Science", "Product Management")
+                - ~8: Domains (e.g., "Machine Learning", "Cloud Infrastructure", "Mobile Development")
+                
+                Return about 60 topics. Be specific but not overly granular.
+                About 15 topics should not be on the user's resume, but be related.
+                
+                Example format: ["Python", "Machine Learning", "FinTech", "Backend Development", "AWS"]
+                
+                Return ONLY the JSON array, nothing else. There should be no extra whitespace or punctuation.
+                `
+            }]
+        })
+
+        if (!message.content[0] || message.content[0].type !== 'text') {
+            return { error: "Error with API." };
+        }
+
+        const topics = JSON.parse(message.content[0].text);
+        return topics;
+
+    } catch (error) {
+        return { error: "Error extracting topics." }
+    }
+}
