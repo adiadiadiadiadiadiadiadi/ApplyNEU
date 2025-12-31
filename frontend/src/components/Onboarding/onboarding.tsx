@@ -11,6 +11,19 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   const [loading, setLoading] = useState(false)
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [interests, setInterests] = useState<string[]>([])
+
+  const fetchInterests = async (userId: string) => {
+    try {
+      const response = await fetch(`http://localhost:8080/resumes/${userId}/possible-interests`)
+      if (response.ok) {
+        const data = await response.json()
+        setInterests(data)
+      }
+    } catch (error) {
+      console.error('Error fetching interests:', error)
+    }
+  }
 
   const handleComplete = async () => {
     setLoading(true)
@@ -78,6 +91,11 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                 file_size_bytes: uploadedFile.size
               })
             })
+            
+            if (saveResponse.ok) {
+              // Fetch interests before advancing to step 3
+              await fetchInterests(user.id)
+            }
           } else {
             setLoading(false)
             return
@@ -231,18 +249,16 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
         {step === 3 && (
           <div className="onboarding-step">
-            <h1 className="onboarding-title">you're all set!</h1>
+            <h1 className="onboarding-title">select your interests</h1>
             <p className="onboarding-description">
-              ready to start your co-op application journey?
-              let's dive into your personalized dashboard.
+              we'll use these to filter jobs for you.
             </p>
-            <div className="onboarding-final">
-              <div className="final-tip">
-                <span className="tip-icon">💡</span>
-                <span className="tip-text">
-                  <strong>pro tip:</strong> start by adding your first application to get familiar with the platform
+            <div className="interests-grid">
+              {interests.map((interest, index) => (
+                <span key={index} className="interest-tag">
+                  {interest}
                 </span>
-              </div>
+              ))}
             </div>
           </div>
         )}
@@ -261,7 +277,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
             className="onboarding-button onboarding-button--primary"
             disabled={loading || (step === 2 && !uploadedFile)}
           >
-            {loading ? 'completing...' : step === 3 ? 'get started' : 'next'}
+            {loading ? 'loading...' : step === 3 ? 'finish' : 'next'}
           </button>
         </div>
       </div>
