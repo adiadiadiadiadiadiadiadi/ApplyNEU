@@ -24,8 +24,6 @@ export const getUserInterests = async (user_id: string) => {
             `,
             [user_id]
         )
-
-        console.log(result)
         
         if (result.rows.length === 0) {
             return { error: 'User not found.' };
@@ -34,5 +32,25 @@ export const getUserInterests = async (user_id: string) => {
         return result.rows[0];
     } catch (error) {
         return { error: 'Error getting interests.' }
+    }
+};
+
+export const updateUserInterests = async (user_id: string, interests: string[]) => {
+    try {
+        const result = await pool.query(
+            `
+            UPDATE users SET interests = $1 WHERE user_id = $2
+            RETURNING *;
+            `,
+            [interests, user_id]
+        )
+        
+        if (result.rows.length === 0) {
+            return { error: 'User not found.' };
+        }
+        
+        return result.rows[0];
+    } catch (error) {
+        return { error: 'Error updating interests.' }
     }
 };
