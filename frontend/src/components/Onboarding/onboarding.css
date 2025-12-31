@@ -270,6 +270,12 @@
   padding-bottom: 1rem;
   flex: 1;
   min-height: 0;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+.interests-grid::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
 }
 
 .interest-tag {
@@ -280,11 +286,24 @@
   font-size: 1rem;
   color: rgba(255, 255, 255, 0.9);
   transition: all 0.2s;
+  cursor: pointer;
+  user-select: none;
 }
 
 .interest-tag:hover {
   background: rgba(255, 255, 255, 0.15);
   border-color: rgba(255, 255, 255, 0.3);
+}
+
+.interest-tag--selected {
+  background: rgba(135, 206, 250, 0.3);
+  border-color: rgba(135, 206, 250, 0.6);
+  color: #87CEEB;
+}
+
+.interest-tag--selected:hover {
+  background: rgba(135, 206, 250, 0.4);
+  border-color: rgba(135, 206, 250, 0.7);
 }
 
 .onboarding-final {
@@ -323,7 +342,7 @@
   flex-shrink: 0;
   max-width: 600px;
   width: 100%;
-  margin: 0 auto;
+  margin: 10px auto 0 auto;
 }
 
 .onboarding-button {

@@ -12,6 +12,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [interests, setInterests] = useState<string[]>([])
+  const [selectedInterests, setSelectedInterests] = useState<string[]>([])
 
   const fetchInterests = async (userId: string) => {
     try {
@@ -22,6 +23,34 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       }
     } catch (error) {
       console.error('Error fetching interests:', error)
+    }
+  }
+
+  const toggleInterest = (interest: string) => {
+    setSelectedInterests(prev => 
+      prev.includes(interest) 
+        ? prev.filter(i => i !== interest)
+        : [...prev, interest]
+    )
+  }
+
+  const saveInterests = async (userId: string) => {
+    try {
+      const response = await fetch(`http://localhost:8080/users/${userId}/interests`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          interests: selectedInterests
+        })
+      })
+      
+      if (response.ok) {
+        console.log('Interests saved successfully')
+      }
+    } catch (error) {
+      console.error('Error saving interests:', error)
     }
   }
 
@@ -114,6 +143,11 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     } else if (step < 3) {
       setStep(step + 1)
     } else {
+      // On step 3, save interests before completing
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        await saveInterests(user.id)
+      }
       handleComplete()
     }
   }
@@ -255,7 +289,11 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
             </p>
             <div className="interests-grid">
               {interests.map((interest, index) => (
-                <span key={index} className="interest-tag">
+                <span 
+                  key={index} 
+                  className={`interest-tag ${selectedInterests.includes(interest) ? 'interest-tag--selected' : ''}`}
+                  onClick={() => toggleInterest(interest)}
+                >
                   {interest}
                 </span>
               ))}

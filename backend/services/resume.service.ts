@@ -152,6 +152,8 @@ export const getPossibleInterests = async (user_id: string) => {
             }]
         })
 
+        console.log("made claude call")
+
         if (!message.content[0] || message.content[0].type !== 'text') {
             return { error: "Error with API." };
         }
