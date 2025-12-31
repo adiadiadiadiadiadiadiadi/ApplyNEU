@@ -16,6 +16,25 @@ export default function Home() {
           <line x1="21" y1="12" x2="9" y2="12"></line>
         </svg>
       </button>
+
+      <div className="left-nav-icons">
+        <button className="nav-icon" title="Home">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+          </svg>
+        </button>
+        <button className="nav-icon" title="Profile">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 11c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm-6 9c0-3.31 2.69-6 6-6s6 2.69 6 6H6z"></path>
+          </svg>
+        </button>
+        <button className="nav-icon" title="Play">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 3l14 9-14 9V3z"></path>
+          </svg>
+        </button>
+      </div>
+
       <div className="home-container">
         <div className="top-row">
           <div className="tile tile--equal">
