@@ -12,18 +12,22 @@ export default function Automation({ onBack }: AutomationProps) {
   const [progress, setProgress] = useState(0)
   const [isPanelOpen, setIsPanelOpen] = useState(false)
   const logsEndRef = useRef<HTMLDivElement>(null)
+  const initializedRef = useRef(false)
 
   useEffect(() => {
-    // Add initial log
-    addLog('Automation page loaded')
-    addLog('Preparing to launch browser...')
-    
-    // Simulate starting automation
-    setTimeout(() => {
-      setStatus('running')
-      setCurrentStep('Launching browser...')
-      addLog('Browser launched successfully')
-    }, 1000)
+    // Add initial log only once
+    if (!initializedRef.current) {
+      initializedRef.current = true
+      addLog('Automation page loaded')
+      addLog('Preparing to launch browser...')
+      
+      // Simulate starting automation
+      setTimeout(() => {
+        setStatus('running')
+        setCurrentStep('Launching browser...')
+        addLog('Browser launched successfully')
+      }, 1000)
+    }
 
     // Setup webview event listeners
     const webview = document.querySelector('webview')
