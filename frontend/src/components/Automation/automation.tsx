@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import './automation.css'
-import { navigateLogin, playAlertSound } from './automationHelpers'
+import { navigateLogin, playAlertSound, waitForLoginButton } from './automationHelpers'
 
 export default function Automation() {
   const [status, setStatus] = useState<'idle' | 'running' | 'paused' | 'error'>('idle')
@@ -111,11 +111,31 @@ export default function Automation() {
     }
   }
 
-  const handlePlayClick = () => {
+  const handlePlayClick = async () => {
     setStatus('running')
     isPausedRef.current = false
-    addLog('Starting automation...')
-    runAutomation()
+    
+    // Reset to start page
+    const webview = document.querySelector('webview') as any
+    if (webview) {
+      webview.src = 'https://northeastern-csm.symplicity.com/students/?signin_tab=0'
+      addLog('Resetting to start page...')
+      
+      // Wait for page to load by checking for the button
+      const loadResult = await waitForLoginButton(webview)
+      addLog(loadResult.message)
+      
+      if (loadResult.success) {
+        addLog('Starting automation...')
+        runAutomation()
+      } else {
+        addLog('Error: Could not start automation')
+        setStatus('error')
+      }
+    } else {
+      addLog('Error: Webview not found')
+      setStatus('error')
+    }
   }
 
   const handlePause = () => {
@@ -138,7 +158,11 @@ export default function Automation() {
   return (
     <div className="automation-container">
       <div className="automation-header-row">
-        <h1 className="automation-title">automation</h1>
+        {logs.length > 0 ? (
+          <h1 className="automation-title">{logs[logs.length - 1].replace(/\[\d+:\d+:\d+ [AP]M\] /, '')}</h1>
+        ) : (
+          <h1 className="automation-title">automation</h1>
+        )}
         <div className="header-controls">
           {status === 'running' ? (
             <button className="automation-pause-btn" title="Pause" onClick={handlePause}>

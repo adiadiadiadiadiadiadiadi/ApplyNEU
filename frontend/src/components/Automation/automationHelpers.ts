@@ -33,6 +33,35 @@ export const playAlertSound = () => {
 }
 
 /**
+ * Waits for the login button to appear on the page
+ */
+export const waitForLoginButton = async (webview: any, timeoutMs: number = 10000): Promise<AutomationResult> => {
+  const startTime = Date.now()
+  
+  while (Date.now() - startTime < timeoutMs) {
+    try {
+      const result = await webview.executeJavaScript(`
+        (function() {
+          const button = document.querySelector('input.input-button.btn.btn_primary.full_width.btn_multi_line');
+          return { found: !!button };
+        })();
+      `)
+      
+      if (result.found) {
+        return { success: true, message: 'Page loaded - Login button found' }
+      }
+    } catch (error) {
+      // Webview might not be ready yet, continue waiting
+    }
+    
+    // Wait 200ms before checking again
+    await new Promise(resolve => setTimeout(resolve, 200))
+  }
+  
+  return { success: false, message: 'Timeout: Login button not found' }
+}
+
+/**
  * Clicks the "Current Students And Alumni" login button
  */
 export const navigateLogin = async (webview: any): Promise<AutomationResult> => {

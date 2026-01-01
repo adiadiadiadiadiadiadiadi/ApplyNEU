@@ -25,9 +25,13 @@
 }
 
 .automation-title {
-  color: rgba(255, 255, 255, 0.87);
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.8);
   text-align: left;
   margin: 0;
+  font-weight: normal;
+  text-transform: none;
 }
 
 .header-controls {
