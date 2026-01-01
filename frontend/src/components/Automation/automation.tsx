@@ -1,45 +1,26 @@
 import { useState, useEffect, useRef } from 'react'
 import './automation.css'
+import { navigateLogin, playAlertSound } from './automationHelpers'
 
-interface AutomationProps {
-  onBack: () => void
-}
-
-export default function Automation({ onBack }: AutomationProps) {
-  const [status, setStatus] = useState<'idle' | 'running' | 'paused' | 'completed' | 'error'>('idle')
-  const [currentStep, setCurrentStep] = useState<string>('Initializing...')
+export default function Automation() {
+  const [status, setStatus] = useState<'idle' | 'running' | 'paused' | 'error'>('idle')
   const [logs, setLogs] = useState<string[]>([])
-  const [progress, setProgress] = useState(0)
   const [isPanelOpen, setIsPanelOpen] = useState(false)
   const logsEndRef = useRef<HTMLDivElement>(null)
   const initializedRef = useRef(false)
+  const isPausedRef = useRef(false)
 
   useEffect(() => {
-    // Add initial log only once
     if (!initializedRef.current) {
       initializedRef.current = true
       addLog('Automation page loaded')
-      addLog('Preparing to launch browser...')
-      
-      // Simulate starting automation
-      setTimeout(() => {
-        setStatus('running')
-        setCurrentStep('Launching browser...')
-        addLog('Browser launched successfully')
-      }, 1000)
+      addLog('Ready to start automation')
     }
 
-    // Setup webview event listeners
     const webview = document.querySelector('webview')
     if (webview) {
-      const handleLoadStart = () => {
-        addLog('Webview: Starting to load...')
-      }
-      
-      const handleLoadStop = () => {
-        addLog('Webview: Page loaded successfully')
-      }
-      
+      const handleLoadStart = () => addLog('Webview: Starting to load...')
+      const handleLoadStop = () => addLog('Webview: Page loaded successfully')
       const handleLoadError = (event: any) => {
         addLog(`Webview Error: ${event.errorDescription || 'Failed to load'}`)
         console.error('Webview load error:', event)
@@ -58,10 +39,7 @@ export default function Automation({ onBack }: AutomationProps) {
   }, [])
 
   useEffect(() => {
-    // Auto-scroll to bottom when new logs are added
-    if (logsEndRef.current) {
-      logsEndRef.current.scrollIntoView({ behavior: 'smooth' })
-    }
+    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [logs])
 
   const addLog = (message: string) => {
@@ -69,22 +47,43 @@ export default function Automation({ onBack }: AutomationProps) {
     setLogs(prev => [...prev, `[${timestamp}] ${message}`])
   }
 
-  const handleStart = () => {
+  const handlePlayClick = async () => {
     setStatus('running')
-    setCurrentStep('Starting automation...')
-    addLog('Starting automation process')
-    // TODO: Trigger actual Playwright automation via IPC
+    isPausedRef.current = false
+    addLog('Starting automation...')
+    
+    const webview = document.querySelector('webview') as any
+    if (!webview) {
+      addLog('Error: Webview not found')
+      setStatus('error')
+      return
+    }
+    
+    addLog('Clicking login button...')
+    const result = await navigateLogin(webview)
+    addLog(result.message)
+    
+    if (!result.success) {
+      setStatus('error')
+    } else {
+      // Wait for page to load, then alert user
+      setTimeout(() => {
+        playAlertSound()
+        addLog('ALERT: Login page reached - User input needed')
+      }, 1500)
+    }
   }
 
   const handlePause = () => {
+    isPausedRef.current = true
     setStatus('paused')
-    addLog('Automation paused by user')
+    addLog('Automation paused')
   }
 
-  const handleStop = () => {
-    setStatus('idle')
-    setCurrentStep('Stopped')
-    addLog('Automation stopped by user')
+  const handleResume = () => {
+    isPausedRef.current = false
+    setStatus('running')
+    addLog('Automation resumed')
   }
 
   const togglePanel = () => {
@@ -93,24 +92,42 @@ export default function Automation({ onBack }: AutomationProps) {
 
   return (
     <div className="automation-container">
-      {/* Header */}
       <div className="automation-header-row">
         <h1 className="automation-title">automation</h1>
-        <button className="automation-menu-btn" title="Menu" onClick={togglePanel}>
-          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="4" y1="8" x2="20" y2="8"/>
-            <line x1="4" y1="12" x2="20" y2="12"/>
-            <line x1="4" y1="16" x2="14" y2="16"/>
-          </svg>
-        </button>
+        <div className="header-controls">
+          {status === 'running' ? (
+            <button className="automation-pause-btn" title="Pause" onClick={handlePause}>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="6" y="4" width="4" height="16"></rect>
+                <rect x="14" y="4" width="4" height="16"></rect>
+              </svg>
+            </button>
+          ) : status === 'paused' ? (
+            <button className="automation-play-btn" title="Resume" onClick={handleResume}>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+              </svg>
+            </button>
+          ) : (
+            <button className="automation-play-btn" title="Play" onClick={handlePlayClick}>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+              </svg>
+            </button>
+          )}
+          <button className="automation-menu-btn" title="Menu" onClick={togglePanel}>
+            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="4" y1="8" x2="20" y2="8"/>
+              <line x1="4" y1="12" x2="20" y2="12"/>
+              <line x1="4" y1="16" x2="14" y2="16"/>
+            </svg>
+          </button>
+        </div>
       </div>
 
-      {/* Main Content */}
       <div className="automation-content">
-        {/* Browser Display */}
         <div className="browser-display">
           <div className="browser-content">
-            {/* Embedded NUworks website using Electron webview */}
             <webview 
               src="https://northeastern-csm.symplicity.com/students/?signin_tab=0"
               className="browser-iframe"
@@ -121,7 +138,6 @@ export default function Automation({ onBack }: AutomationProps) {
         </div>
       </div>
 
-      {/* Right Panel */}
       <div className={`right-panel ${isPanelOpen ? 'open' : ''}`}>
         <div className="panel-header">
           <button className="panel-close-btn" onClick={togglePanel}>
@@ -145,4 +161,3 @@ export default function Automation({ onBack }: AutomationProps) {
     </div>
   )
 }
-
