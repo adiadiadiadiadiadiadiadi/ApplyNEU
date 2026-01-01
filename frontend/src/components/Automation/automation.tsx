@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import './automation.css'
 
 interface AutomationProps {
@@ -10,6 +10,8 @@ export default function Automation({ onBack }: AutomationProps) {
   const [currentStep, setCurrentStep] = useState<string>('Initializing...')
   const [logs, setLogs] = useState<string[]>([])
   const [progress, setProgress] = useState(0)
+  const [isPanelOpen, setIsPanelOpen] = useState(false)
+  const logsEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     // Add initial log
@@ -51,6 +53,13 @@ export default function Automation({ onBack }: AutomationProps) {
     }
   }, [])
 
+  useEffect(() => {
+    // Auto-scroll to bottom when new logs are added
+    if (logsEndRef.current) {
+      logsEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [logs])
+
   const addLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString()
     setLogs(prev => [...prev, `[${timestamp}] ${message}`])
@@ -74,10 +83,23 @@ export default function Automation({ onBack }: AutomationProps) {
     addLog('Automation stopped by user')
   }
 
+  const togglePanel = () => {
+    setIsPanelOpen(!isPanelOpen)
+  }
+
   return (
     <div className="automation-container">
       {/* Header */}
-      <h1 className="automation-title">automation</h1>
+      <div className="automation-header-row">
+        <h1 className="automation-title">automation</h1>
+        <button className="automation-menu-btn" title="Menu" onClick={togglePanel}>
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="4" y1="8" x2="20" y2="8"/>
+            <line x1="4" y1="12" x2="20" y2="12"/>
+            <line x1="4" y1="16" x2="14" y2="16"/>
+          </svg>
+        </button>
+      </div>
 
       {/* Main Content */}
       <div className="automation-content">
@@ -91,6 +113,28 @@ export default function Automation({ onBack }: AutomationProps) {
               partition="persist:nuworks"
               allowpopups="true"
             ></webview>
+          </div>
+        </div>
+      </div>
+
+      {/* Right Panel */}
+      <div className={`right-panel ${isPanelOpen ? 'open' : ''}`}>
+        <div className="panel-header">
+          <button className="panel-close-btn" onClick={togglePanel}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+        <div className="panel-content">
+          <div className="console-logs">
+            {logs.map((log, index) => (
+              <div key={index} className="console-log-entry">
+                {log}
+              </div>
+            ))}
+            <div ref={logsEndRef} />
           </div>
         </div>
       </div>
