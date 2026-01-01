@@ -32,7 +32,6 @@ function App() {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
       
-      // Check if user needs to see onboarding
       if (session?.user) {
         const onboardingCompleted = session.user.user_metadata?.onboarding_completed
         setShowOnboarding(!onboardingCompleted)
@@ -82,7 +81,7 @@ function App() {
               </svg>
             </button>
           </div>
-          <Automation onBack={handleBackToDashboard} />
+          <Automation />
         </>
       )
     }
