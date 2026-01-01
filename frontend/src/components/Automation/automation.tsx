@@ -9,6 +9,7 @@ export default function Automation() {
   const logsEndRef = useRef<HTMLDivElement>(null)
   const initializedRef = useRef(false)
   const isPausedRef = useRef(false)
+  const automationStepRef = useRef<number>(0)
 
   useEffect(() => {
     if (!initializedRef.current) {
@@ -47,43 +48,87 @@ export default function Automation() {
     setLogs(prev => [...prev, `[${timestamp}] ${message}`])
   }
 
-  const handlePlayClick = async () => {
-    setStatus('running')
-    isPausedRef.current = false
-    addLog('Starting automation...')
-    
+  // Helper to wait while respecting pause state
+  const waitWithPauseCheck = async (ms: number): Promise<void> => {
+    const startTime = Date.now()
+    return new Promise((resolve) => {
+      const check = () => {
+        if (isPausedRef.current) {
+          // Paused - keep checking every 100ms
+          setTimeout(check, 100)
+        } else {
+          const elapsed = Date.now() - startTime
+          if (elapsed >= ms) {
+            resolve()
+          } else {
+            // Continue waiting
+            setTimeout(check, 100)
+          }
+        }
+      }
+      check()
+    })
+  }
+
+  const runAutomation = async () => {
     const webview = document.querySelector('webview') as any
     if (!webview) {
       addLog('Error: Webview not found')
       setStatus('error')
       return
     }
-    
-    addLog('Clicking login button...')
-    const result = await navigateLogin(webview)
-    addLog(result.message)
-    
-    if (!result.success) {
-      setStatus('error')
-    } else {
-      // Wait for page to load, then alert user
-      setTimeout(() => {
+
+    try {
+      // Step 1: Click login button
+      if (automationStepRef.current === 0) {
+        addLog('Step 1: Clicking login button...')
+        const result = await navigateLogin(webview)
+        addLog(result.message)
+        
+        if (!result.success) {
+          setStatus('error')
+          return
+        }
+        
+        automationStepRef.current = 1
+      }
+
+      await waitWithPauseCheck(1500)
+
+      if (automationStepRef.current === 1) {
         playAlertSound()
         addLog('ALERT: Login page reached - User input needed')
-      }, 1500)
+        automationStepRef.current = 2
+      }
+      addLog('Automation sequence completed')
+      setStatus('idle')
+      automationStepRef.current = 0
+      
+    } catch (error: any) {
+      addLog(`Error: ${error.message}`)
+      setStatus('error')
+      automationStepRef.current = 0
     }
+  }
+
+  const handlePlayClick = () => {
+    setStatus('running')
+    isPausedRef.current = false
+    addLog('Starting automation...')
+    runAutomation()
   }
 
   const handlePause = () => {
     isPausedRef.current = true
     setStatus('paused')
-    addLog('Automation paused')
+    addLog('Automation paused - Will resume from current step')
   }
 
   const handleResume = () => {
     isPausedRef.current = false
     setStatus('running')
-    addLog('Automation resumed')
+    addLog(`Automation resumed from step ${automationStepRef.current + 1}`)
+    runAutomation()
   }
 
   const togglePanel = () => {
