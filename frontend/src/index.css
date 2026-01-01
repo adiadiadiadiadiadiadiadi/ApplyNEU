@@ -83,6 +83,15 @@ button:focus-visible {
   transform: scale(1.2);
 }
 
+.nav-icon--active {
+  color: rgba(255, 255, 255, 1);
+  filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.8)) drop-shadow(0 0 12px rgba(255, 255, 255, 0.5));
+}
+
+.nav-icon--active:hover {
+  transform: scale(1.2);
+}
+
 .nav-icon:focus,
 .nav-icon:focus-visible {
   outline: none;
