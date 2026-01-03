@@ -96,21 +96,19 @@ export const getSearchTerms = async (user_id: string) => {
                 role: 'user',
                 content: 
                 `
-                You are analyzing a resume to extract job-related topics the person might be interested in.
+                You are analyzing a resume and user interests to extract search terms for jobs the person might be interested in.
 
                 Resume text:
                 ${resumeText}
+
+                Interests:
+                ${interests}
                 
-                Extract and return ONLY a JSON array of 60 relevant topics including:
-                - ~40: Technical skills (e.g., "Python", "React", "AWS")
-                - ~6: Industries (e.g., "FinTech", "Healthcare", "E-commerce")
-                - ~6: Job types (e.g., "Software Engineering", "Data Science", "Product Management")
-                - ~8: Domains (e.g., "Machine Learning", "Cloud Infrastructure", "Mobile Development")
+                Extract and return ONLY a JSON array of 60 relevant search terms:
+                The topics should be general, commonly used job title or role keywords, suitable for searching on college job boards like NUworks.
                 
-                Return about 60 topics. Be specific but not overly granular.
-                About 15 topics should not be on the user's resume, but be related.
-                
-                Example format: ["Python", "Machine Learning", "FinTech", "Backend Development", "AWS"]
+                Example format: 
+                [Software Engineer, Backend Engineer, Full Stack, Application Engineer, Platform Engineer, Data Engineer, DevOps, Cloud Engineer, Software Developer, Technical Engineer]
                 
                 Return ONLY the JSON array, nothing else. There should be no extra whitespace or punctuation.
                 `
