@@ -58,7 +58,8 @@ export const updateUserInterests = async (user_id: string, interests: string[]) 
 
 export const updateSearchTerms = async (user_id: string) => {
 
-    const search_terms = getSearchTerms(user_id);
+    const search_terms = await getSearchTerms(user_id);
+    console.log(search_terms)
 
     try {
         const result = await pool.query(
@@ -104,9 +105,11 @@ export const getSearchTerms = async (user_id: string) => {
                 Interests:
                 ${interests}
                 
-                Extract and return ONLY a JSON array of 60 relevant search terms:
+                Extract and return ONLY a JSON array of 10 relevant search terms:
                 The topics should be general, commonly used job title or role keywords, suitable for searching on college job boards like NUworks.
-                
+                Order them by priority.
+                Make each search term general enough to return enough job results in a search.
+
                 Example format: 
                 [Software Engineer, Backend Engineer, Full Stack, Application Engineer, Platform Engineer, Data Engineer, DevOps, Cloud Engineer, Software Developer, Technical Engineer]
                 
@@ -119,10 +122,11 @@ export const getSearchTerms = async (user_id: string) => {
             return { error: "Error with API." };
         }
 
-        const topics = JSON.parse(message.content[0].text);
-        return topics;
+        const search_terms = JSON.parse(message.content[0].text);
+        return search_terms;
 
     } catch (error) {
+        console.log(error)
         return { error: "Error extracting topics." }
     }
 }
