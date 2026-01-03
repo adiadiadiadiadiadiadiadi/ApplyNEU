@@ -94,9 +94,8 @@ const userController = () => {
 
   const updateSearchTermsRoute = async (req: Request, res: Response) => {
     const { user_id } = req.params;
-    const { resume_text, interests } = req.body;
 
-    if (!user_id || !resume_text || !interests) {
+    if (!user_id) {
       res.status(404).json({
         "message": "Required arguments not found to update search terms."
       });
@@ -123,7 +122,7 @@ const userController = () => {
   router.post('/new', addUserRoute);
   router.get('/:user_id/interests', getUserInterestsRoute);
   router.put('/:user_id/interests', updateUserInterestsRoute);
-  router.put('/:user_id/search_terms', updateSearchTermsRoute);
+  router.put('/:user_id/search-terms', updateSearchTermsRoute);
   return router;
 };
 
