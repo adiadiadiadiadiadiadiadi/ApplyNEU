@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import './automation.css'
-import { waitForSelector, waitForLegend, playAlertSound } from './automationHelpers'
+import { waitForSelector, waitForLegend, waitForSearchBar, playAlertSound } from './automationHelpers'
 
 export default function Automation() {
   const [status, setStatus] = useState<'idle' | 'running' | 'paused' | 'error'>('idle')
@@ -12,23 +12,15 @@ export default function Automation() {
   useEffect(() => {
     if (!initializedRef.current) {
       initializedRef.current = true
-      addLog('Automation page loaded')
-      addLog('Ready to start automation')
+      addLog("Bot connected...")
     }
     const webview = document.querySelector('webview')
     if (webview) {
-      const handleLoadStart = () => addLog('Webview: Starting to load...')
-      const handleLoadStop = () => addLog('Webview: Page loaded successfully')
       const handleLoadError = (event: any) => {
-        addLog(`Webview Error: ${event.errorDescription || 'Failed to load'}`)
-        console.error('Webview load error:', event)
+        addLog(`Error: ${event.errorDescription || 'failed to load'}`)
       }
-      webview.addEventListener('did-start-loading', handleLoadStart)
-      webview.addEventListener('did-stop-loading', handleLoadStop)
       webview.addEventListener('did-fail-load', handleLoadError)
       return () => {
-        webview.removeEventListener('did-start-loading', handleLoadStart)
-        webview.removeEventListener('did-stop-loading', handleLoadStop)
         webview.removeEventListener('did-fail-load', handleLoadError)
       }
     }
@@ -37,7 +29,7 @@ export default function Automation() {
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [logs])
-  
+
   const addLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString()
     setLogs(prev => [...prev, `[${timestamp}] ${message}`])
@@ -45,10 +37,8 @@ export default function Automation() {
 
   const handlePlayClick = async () => {
     setStatus('running')
-
-    addLog('Beginning at start page...')
+    addLog('Beginning automation...')
     const webview = document.querySelector('webview') as any
-
     if (!webview) {
       addLog('Error: Webview not found')
       setStatus('error')
@@ -56,37 +46,34 @@ export default function Automation() {
     }
     webview.src = 'https://northeastern-csm.symplicity.com/students/?signin_tab=0'
 
-    const foundLoginBtn = await waitForSelector(
-      webview, 
-      'input.input-button.btn.btn_primary.full_width.btn_multi_line'
-    )
-    if (!foundLoginBtn) {
-      addLog('NUworks login button not detected')
-      setStatus('error')
-      return
+    const dashboardLoaded = await webview.executeJavaScript("!!document.querySelector('input#quicksearch-field')")
+    if (dashboardLoaded) {
+      handleAutomationFromDashboard()
+      return;
     }
-    addLog('Found NUworks login button')
-    await webview.executeJavaScript(
-      `document.querySelector('input.input-button.btn.btn_primary.full_width.btn_multi_line').click()`
-    )
-    addLog('Clicked NUworks login button')
 
-    const foundLegend = await waitForLegend(webview, 'Login to Shibboleth')
-    if (!foundLegend) {
-      addLog('Did not detect NEU SSO login legend')
-      setStatus('error')
-      return
-    }
-    addLog('Awaiting user action...')
+    await waitForSelector(webview, 'input.input-button.btn.btn_primary.full_width.btn_multi_line')
+    await webview.executeJavaScript(`document.querySelector('input.input-button.btn.btn_primary.full_width.btn_multi_line').click()`)
+    addLog('Navigating to login...')
+
+    await waitForLegend(webview, 'Login to Shibboleth')
+    addLog('Waiting for user input...')
     playAlertSound()
+    addLog('Waiting for user input...')
+    await waitForSearchBar(webview)
 
+    addLog('Continuing...')
+    handleAutomationFromDashboard()
+  }
+
+  const handleAutomationFromDashboard = async () => {
     setStatus('idle')
   }
 
   const handlePause = () => setStatus('paused')
   const handleResume = () => {
     setStatus('running')
-    // You could continue from next step here if you add more automation steps
+    // Continue from next step here if you add further automation
   }
   const togglePanel = () => setIsPanelOpen(!isPanelOpen)
 
