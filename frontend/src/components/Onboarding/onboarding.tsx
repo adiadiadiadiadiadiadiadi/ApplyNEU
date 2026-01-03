@@ -48,9 +48,29 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       
       if (response.ok) {
         console.log('Interests saved successfully')
+        
+        // Update search terms after saving interests
+        await updateSearchTerms(userId)
       }
     } catch (error) {
       console.error('Error saving interests:', error)
+    }
+  }
+
+  const updateSearchTerms = async (userId: string) => {
+    try {
+      const response = await fetch(`http://localhost:8080/users/${userId}/search-terms`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      })
+      
+      if (response.ok) {
+        console.log('Search terms updated successfully')
+      }
+    } catch (error) {
+      console.error('Error updating search terms:', error)
     }
   }
 
