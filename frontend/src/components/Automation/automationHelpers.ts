@@ -86,3 +86,53 @@ export const navigateLogin = async (webview: any): Promise<AutomationResult> => 
     return { success: false, message: `Error: ${error.message}` }
   }
 }
+
+/**
+ * Types text into the NUworks quick search box
+ */
+export const typeIntoJobSearch = async (
+  webview: any,
+  text: string
+): Promise<AutomationResult> => {
+  try {
+    const result = await webview.executeJavaScript(`
+      (function () {
+        const input = document.querySelector('#quicksearch-field');
+        if (!input) {
+          return { success: false, message: 'Search input not found' };
+        }
+
+        // Focus and clear
+        input.focus();
+        input.value = '';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+
+        // Type character by character (Angular-friendly)
+        for (const char of ${JSON.stringify(text)}) {
+          input.value += char;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        input.dispatchEvent(
+          new KeyboardEvent('keydown', {
+            bubbles: true,
+            cancelable: true,
+            key: 'Enter',
+            code: 'Enter'
+          })
+        );
+      }
+      
+      return { success: true };
+
+      })();
+    `);
+
+    if (result.success) {
+      return { success: true, message: 'Typed into search box' };
+    } else {
+      return { success: false, message: result.message };
+    }
+  } catch (error: any) {
+    return { success: false, message: `Error: ${error.message}` };
+  }
+};
