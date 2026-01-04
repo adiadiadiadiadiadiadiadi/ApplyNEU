@@ -36,6 +36,25 @@ export const getUserInterests = async (user_id: string) => {
     }
 };
 
+export const getSearchTerms = async (user_id: string) => {
+    try {
+        const result = await pool.query(
+            `
+            SELECT search_terms FROM users WHERE user_id = $1;
+            `,
+            [user_id]
+        )
+        
+        if (result.rows.length === 0) {
+            return { error: 'User not found.' };
+        }
+        
+        return result.rows[0];
+    } catch (error) {
+        return { error: 'Error getting search terms.' }
+    }
+};
+
 export const updateUserInterests = async (user_id: string, interests: string[]) => {
     try {
         const result = await pool.query(
@@ -58,7 +77,7 @@ export const updateUserInterests = async (user_id: string, interests: string[]) 
 
 export const updateSearchTerms = async (user_id: string) => {
 
-    const search_terms = await getSearchTerms(user_id);
+    const search_terms = await generateSearchTerms(user_id);
     console.log(search_terms)
 
     try {
@@ -80,7 +99,7 @@ export const updateSearchTerms = async (user_id: string) => {
     }
 };
 
-export const getSearchTerms = async (user_id: string) => {
+const generateSearchTerms = async (user_id: string) => {
     try {
         const result = await pool.query(
             `SELECT * FROM resumes WHERE user_id::text = $1 ORDER BY created_at DESC LIMIT 1;`,

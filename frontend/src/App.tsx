@@ -4,8 +4,8 @@ import Login from './components/Login/login'
 import Signup from './components/Signup/signup'
 import Home from './components/Home/home'
 import Onboarding from './components/Onboarding/onboarding'
-import Automation from './components/Automation/automation'
 import './index.css'
+import Automation from './components/Automation/automation'
 
 function App() {
   const [user, setUser] = useState<any>(null)
