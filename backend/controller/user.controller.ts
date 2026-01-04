@@ -1,6 +1,6 @@
 import express, { type Request, type Response } from 'express';
 import type { PostUserRequest } from '../types/users.ts';
-import { addUser, getUserInterests, updateSearchTerms, updateUserInterests } from '../services/user.service.ts';
+import { addUser, getSearchTerms, getUserInterests, updateSearchTerms, updateUserInterests } from '../services/user.service.ts';
 
 /**
  * This controller handles user-related routes.
@@ -64,6 +64,34 @@ const userController = () => {
     }
   };
 
+  const getSearchTermsRoute = async (req: Request, res: Response) => {
+    const { user_id } = req.params;
+    console.log(user_id)
+
+    if (!user_id) {
+      res.status(404).json({
+        "message": "Required arguments not found to get search terms."
+      });
+      return;
+    }
+
+    try {
+      const result = await getSearchTerms(user_id);
+
+      if ('error' in result) {
+        res.status(400).json({
+          "message": "Unable to get search terms."
+        });
+        return;
+      }
+      res.status(200).json(result);
+    } catch (err: unknown) {
+      res.status(400).json({
+        "message": "Unable to get search terms."
+      });
+    }
+  };
+
   const updateUserInterestsRoute = async (req: Request, res: Response) => {
     const { user_id } = req.params;
     const { interests } = req.body;
@@ -123,6 +151,7 @@ const userController = () => {
   router.get('/:user_id/interests', getUserInterestsRoute);
   router.put('/:user_id/interests', updateUserInterestsRoute);
   router.put('/:user_id/search-terms', updateSearchTermsRoute);
+  router.get('/:user_id/search-terms', getSearchTermsRoute);
   return router;
 };
 

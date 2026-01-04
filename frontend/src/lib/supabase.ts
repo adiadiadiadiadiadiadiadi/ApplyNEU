@@ -9,3 +9,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
+export const getUserId = async () => {
+  const { data: { user } } = await supabase.auth.getUser()
+  return user?.id
+}

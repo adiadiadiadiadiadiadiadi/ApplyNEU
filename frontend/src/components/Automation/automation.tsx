@@ -1,15 +1,41 @@
 import { useState, useEffect, useRef } from 'react'
 import './automation.css'
 import { waitForSelector, waitForLegend, waitForSearchBar, playAlertSound } from './automationHelpers'
+import { getUserId } from '../../lib/supabase'
 
 export default function Automation() {
   const [status, setStatus] = useState<'idle' | 'running' | 'paused' | 'error'>('idle')
   const [logs, setLogs] = useState<string[]>([])
   const [isPanelOpen, setIsPanelOpen] = useState(false)
+  const [, setSearchTerms] = useState<string[]>([])
   const logsEndRef = useRef<HTMLDivElement>(null)
   const initializedRef = useRef(false)
 
   useEffect(() => {
+    const fetchSearchTerms = async () => {
+      try {
+        const userId = await getUserId()
+        if (!userId) {
+          addLog('Error occured: no user found.')
+          return
+        }
+
+        const response = await fetch(`http://localhost:8080/users/${userId}/search-terms`)
+        if (!response.ok) {
+          addLog('Error occured.')
+          return
+        }
+
+        const data = await response.json()
+        const terms = Array.isArray(data?.search_terms) ? data.search_terms : []
+        setSearchTerms(terms)
+      } catch (error) {
+        addLog('Error occured.')
+      }
+    }
+
+    fetchSearchTerms()
+
     if (!initializedRef.current) {
       initializedRef.current = true
       addLog("Bot connected...")

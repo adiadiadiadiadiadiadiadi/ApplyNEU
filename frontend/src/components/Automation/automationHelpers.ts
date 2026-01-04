@@ -8,9 +8,6 @@ interface AutomationResult {
   data?: any
 }
 
-/**
- * Polls for selector in the webview until it's present.
- */
 export const waitForSelector = async (webview: any, selector: string): Promise<void> => {
   while (true) {
     const found = await webview.executeJavaScript(`!!document.querySelector(${JSON.stringify(selector)})`)
@@ -19,9 +16,6 @@ export const waitForSelector = async (webview: any, selector: string): Promise<v
   }
 }
 
-/**
- * Waits for a legend with prefix text content.
- */
 export const waitForLegend = async (webview: any, prefix: string): Promise<void> => {
   while (true) {
     const found = await webview.executeJavaScript(`
@@ -36,9 +30,6 @@ export const waitForLegend = async (webview: any, prefix: string): Promise<void>
   }
 }
 
-/**
- * Waits for the dashboard search bar (never times out).
- */
 export const waitForSearchBar = async (webview: any): Promise<void> => {
   await waitForSelector(webview, 'input#quicksearch-field');
 }
@@ -55,4 +46,14 @@ export const playAlertSound = () => {
   gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5)
   oscillator.start(audioContext.currentTime)
   oscillator.stop(audioContext.currentTime + 0.5)
+}
+
+export const waitForWebViewLoad = (webview: any): Promise<void> => {
+  return new Promise(resolve => {
+    const handler = () => {
+      webview.removeEventListener('did-stop-loading', handler)
+      resolve()
+    }
+    webview.addEventListener('did-stop-loading', handler)
+  })
 }
