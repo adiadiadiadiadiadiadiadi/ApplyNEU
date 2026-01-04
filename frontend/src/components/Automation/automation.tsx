@@ -93,7 +93,37 @@ export default function Automation() {
   }
 
   const handleAutomationFromDashboard = async (webview: any) => {
-    await waitForSearchBar(webview)
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+    // Wait for and click the top-nav "Jobs" link
+    await (async () => {
+      for (let i = 0; i < 30; i++) {
+        const clicked = await webview.executeJavaScript(`
+          (() => {
+            const link = Array.from(document.querySelectorAll('a'))
+              .find(a => (a.textContent || '').trim() === 'Jobs');
+            if (!link) return 'missing';
+            link.click();
+            return 'clicked';
+          })();
+        `)
+        if (clicked === 'clicked') {
+          addLog('Opened Jobs from navbar.')
+          return
+        }
+        await sleep(250)
+      }
+      addLog('Jobs nav link not found; continuing anyway.')
+    })()
+
+    // Wait for the search input on the jobs page
+    await (async () => {
+      for (let i = 0; i < 40; i++) {
+        const found = await webview.executeJavaScript(`!!document.querySelector('input#jobs-keyword-input')`)
+        if (found) return
+        await sleep(250)
+      }
+    })()
 
     if (!searchTerms.length) {
       addLog('No search terms available to search.')
@@ -102,71 +132,90 @@ export default function Automation() {
     }
 
     addLog(`Running ${searchTerms.length} search terms...`)
-    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
     for (const term of searchTerms) {
-      addLog(`Searching for "${term}"...`)
-      const success = await webview.executeJavaScript(`
-        (() => {
-          const input = document.querySelector('input#quicksearch-field');
-          if (!input) return false;
+      addLog(`Typing "${term}" into search box...`)
+      const typeResult = await webview.executeJavaScript(`
+        (async () => {
+          const input = document.querySelector('input#jobs-keyword-input');
+          if (!input) return 'missing-input';
+
+          const clearBtn = input.parentElement?.querySelector('button, .clear, .close') || null;
+          if (clearBtn && typeof clearBtn.click === 'function') {
+            clearBtn.click();
+          } else {
+            input.value = '';
+          }
+
           input.focus();
-          input.value = ${JSON.stringify(term)};
-          input.dispatchEvent(new InputEvent('input', { bubbles: true }));
-          input.dispatchEvent(new Event('change', { bubbles: true }));
-
-          const form = input.closest('form');
-          if (form && typeof form.requestSubmit === 'function') {
-            form.requestSubmit();
-            return true;
+          const chars = ${JSON.stringify(term)}.split('');
+          for (const ch of chars) {
+            input.value = input.value + ch;
+            input.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, data: ch }));
+            input.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+            await new Promise(r => setTimeout(r, 40));
           }
-
-          const submitBtn = (form && form.querySelector('button[type="submit"], input[type="submit"]')) || document.querySelector('button[type="submit"], input[type="submit"]');
-          if (submitBtn) {
-            submitBtn.click();
-            return true;
-          }
-
-          input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-          input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
-          return true;
+          return 'typed';
         })();
       `)
 
-      if (!success) {
-        addLog(`Failed to trigger search for "${term}".`)
+      if (typeResult === 'missing-input') {
+        addLog(`Failed to type "${term}" (input not found).`)
         continue
       }
 
-      await sleep(1500)
+      addLog(`Typing complete for "${term}". Pressing Enter...`)
 
-      let opened = false
-      for (let attempt = 0; attempt < 10; attempt++) {
-        const result = await webview.executeJavaScript(`
+      const enterResult = await webview.executeJavaScript(`
+        (() => {
+          const input = document.querySelector('input#jobs-keyword-input');
+          if (!input) return 'missing-input';
+          const eventInit = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, composed: true };
+          input.dispatchEvent(new KeyboardEvent('keydown', eventInit));
+          input.dispatchEvent(new KeyboardEvent('keypress', eventInit));
+          input.dispatchEvent(new KeyboardEvent('keyup', eventInit));
+          return 'enter-dispatched';
+        })();
+      `)
+
+      if (enterResult === 'missing-input') {
+        addLog(`Failed to press Enter for "${term}" (input not found).`)
+        continue
+      }
+
+      addLog(`Enter pressed for "${term}". Waiting for Search button and clicking...`)
+
+      let clicked = false
+      for (let attempt = 0; attempt < 40; attempt++) {
+        const clickResult = await webview.executeJavaScript(`
           (() => {
-            const nodes = Array.from(document.querySelectorAll('a.link-primary, a, button, div[role="button"]'));
-            const target = nodes.find(el => (el.textContent || '').trim().toLowerCase() === 'see all job results');
-            if (!target) return 'missing';
-            target.scrollIntoView({ behavior: 'instant', block: 'center' });
-            target.click();
+            const btn =
+              document.querySelector('button.btn.btn_alt-default') ||
+              document.querySelector('button[type="submit"]') ||
+              document.querySelector('button[aria-label="Search"]') ||
+              document.querySelector('button:not([disabled])#search-btn') ||
+              document.querySelector('button:not([disabled]).btn-search') ||
+              Array.from(document.querySelectorAll('button')).find(b => (b.textContent || '').trim().toLowerCase() === 'search');
+            if (!btn) return 'missing';
+            btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+            btn.click();
             return 'clicked';
           })();
         `)
 
-        if (result === 'clicked') {
-          opened = true
+        if (clickResult === 'clicked') {
+          addLog(`Clicked Search button for "${term}".`)
+          clicked = true
           break
         }
-        await sleep(500)
+        await sleep(250)
       }
 
-      if (opened) {
-        addLog(`Opened results for "${term}".`)
-      } else {
-        addLog(`Could not find "See all job results" for "${term}".`)
+      if (!clicked) {
+        addLog(`Search button not found for "${term}".`)
       }
 
-      await sleep(2000)
+      await sleep(3000)
     }
 
     addLog('Completed running search terms.')
