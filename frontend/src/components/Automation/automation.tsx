@@ -138,6 +138,34 @@ export default function Automation() {
         continue
       }
 
+      await sleep(1500)
+
+      let opened = false
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const result = await webview.executeJavaScript(`
+          (() => {
+            const nodes = Array.from(document.querySelectorAll('a.link-primary, a, button, div[role="button"]'));
+            const target = nodes.find(el => (el.textContent || '').trim().toLowerCase() === 'see all job results');
+            if (!target) return 'missing';
+            target.scrollIntoView({ behavior: 'instant', block: 'center' });
+            target.click();
+            return 'clicked';
+          })();
+        `)
+
+        if (result === 'clicked') {
+          opened = true
+          break
+        }
+        await sleep(500)
+      }
+
+      if (opened) {
+        addLog(`Opened results for "${term}".`)
+      } else {
+        addLog(`Could not find "See all job results" for "${term}".`)
+      }
+
       await sleep(2000)
     }
 
