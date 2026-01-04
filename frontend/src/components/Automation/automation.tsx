@@ -7,7 +7,7 @@ export default function Automation() {
   const [status, setStatus] = useState<'idle' | 'running' | 'paused' | 'error'>('idle')
   const [logs, setLogs] = useState<string[]>([])
   const [isPanelOpen, setIsPanelOpen] = useState(false)
-  const [, setSearchTerms] = useState<string[]>([])
+  const [searchTerms, setSearchTerms] = useState<string[]>([])
   const logsEndRef = useRef<HTMLDivElement>(null)
   const initializedRef = useRef(false)
 
@@ -74,8 +74,8 @@ export default function Automation() {
 
     const dashboardLoaded = await webview.executeJavaScript("!!document.querySelector('input#quicksearch-field')")
     if (dashboardLoaded) {
-      handleAutomationFromDashboard()
-      return;
+      await handleAutomationFromDashboard(webview)
+      return
     }
 
     await waitForSelector(webview, 'input.input-button.btn.btn_primary.full_width.btn_multi_line')
@@ -89,10 +89,60 @@ export default function Automation() {
     await waitForSearchBar(webview)
 
     addLog('Continuing...')
-    handleAutomationFromDashboard()
+    await handleAutomationFromDashboard(webview)
   }
 
-  const handleAutomationFromDashboard = async () => {
+  const handleAutomationFromDashboard = async (webview: any) => {
+    await waitForSearchBar(webview)
+
+    if (!searchTerms.length) {
+      addLog('No search terms available to search.')
+      setStatus('idle')
+      return
+    }
+
+    addLog(`Running ${searchTerms.length} search terms...`)
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+    for (const term of searchTerms) {
+      addLog(`Searching for "${term}"...`)
+      const success = await webview.executeJavaScript(`
+        (() => {
+          const input = document.querySelector('input#quicksearch-field');
+          if (!input) return false;
+          input.focus();
+          input.value = ${JSON.stringify(term)};
+          input.dispatchEvent(new InputEvent('input', { bubbles: true }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+
+          const form = input.closest('form');
+          if (form && typeof form.requestSubmit === 'function') {
+            form.requestSubmit();
+            return true;
+          }
+
+          const submitBtn = (form && form.querySelector('button[type="submit"], input[type="submit"]')) || document.querySelector('button[type="submit"], input[type="submit"]');
+          if (submitBtn) {
+            submitBtn.click();
+            return true;
+          }
+
+          input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+          input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
+          return true;
+        })();
+      `)
+
+      if (!success) {
+        addLog(`Failed to trigger search for "${term}".`)
+        continue
+      }
+
+      await sleep(2000)
+    }
+
+    addLog('Completed running search terms.')
+
     setStatus('idle')
   }
 
