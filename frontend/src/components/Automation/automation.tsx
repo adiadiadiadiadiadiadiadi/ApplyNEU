@@ -216,6 +216,53 @@ export default function Automation() {
       }
 
       await sleep(3000)
+
+      // After search results load, click each job card on the page and log its title
+      await (async () => {
+        for (let i = 0; i < 40; i++) {
+          const found = await webview.executeJavaScript(`
+            (() => Array.from(document.querySelectorAll('div[id^="list-item-"]')).length)();
+          `)
+          if (found && found > 0) return
+          await sleep(250)
+        }
+      })()
+
+      const jobCount = await webview.executeJavaScript(`
+        (() => Array.from(document.querySelectorAll('div[id^="list-item-"]')).length)();
+      `)
+
+      if (!jobCount || jobCount <= 0) {
+        addLog(`No job cards found for "${term}".`)
+      } else {
+        addLog(`Found ${jobCount} job cards for "${term}". Clicking through...`)
+        for (let idx = 0; idx < jobCount; idx++) {
+          const clickJobResult = await webview.executeJavaScript(`
+            (() => {
+              const cards = Array.from(document.querySelectorAll('div[id^="list-item-"]'));
+              const card = cards[${idx}];
+              if (!card) return { status: 'missing' };
+              const titleEl = card.querySelector('[data-testid="job-title"], .job-title, h3, h4, a, div');
+              const title = titleEl && titleEl.textContent ? titleEl.textContent.trim() : (card.textContent || '').trim().split('\\n')[0];
+              card.scrollIntoView({ behavior: 'instant', block: 'center' });
+              if (typeof card.click === 'function') {
+                card.click();
+              } else {
+                card.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+              }
+              return { status: 'clicked', title };
+            })();
+          `)
+
+          if (clickJobResult?.status === 'clicked') {
+            addLog(`Clicked job #${idx + 1}: ${clickJobResult.title || 'Untitled job'}.`)
+          } else {
+            addLog(`Job card #${idx + 1} missing or not clickable.`)
+          }
+
+          await sleep(1200)
+        }
+      }
     }
 
     addLog('Completed running search terms.')
