@@ -242,20 +242,56 @@ export default function Automation() {
               const cards = Array.from(document.querySelectorAll('div[id^="list-item-"]'));
               const card = cards[${idx}];
               if (!card) return { status: 'missing' };
-              const titleEl = card.querySelector('[data-testid="job-title"], .job-title, h3, h4, a, div');
-              const title = titleEl && titleEl.textContent ? titleEl.textContent.trim() : (card.textContent || '').trim().split('\\n')[0];
+              const rawText = card.innerText || card.textContent || '';
+              if (rawText.toLowerCase().includes('not qualified')) {
+                return { status: 'skipped', reason: 'not qualified' };
+              }
+              const pickTitle = () => {
+                const preferred =
+                  card.querySelector('[data-testid="job-title"]') ||
+                  card.querySelector('.job-title') ||
+                  card.querySelector('h3, h4') ||
+                  card.querySelector('[role="link"]');
+                const raw = preferred && preferred.textContent ? preferred.textContent : card.innerText || card.textContent || '';
+                // Use first non-empty line, then trim common joiners.
+                const firstLine = raw
+                  .split('\\n')
+                  .map(t => t.trim())
+                  .find(t => t.length > 0) || '';
+                if (!firstLine) return 'Untitled job';
+                // If the line contains multiple fields jammed together, split on two or more spaces.
+                const splitSpaces = firstLine.split(/\\s{2,}/).find(t => t.length > 0);
+                return (splitSpaces || firstLine).trim();
+              };
+              const title = pickTitle();
+              const shortTitle = title.length > 140 ? title.slice(0, 140) + '…' : title;
+
+              const lines = (card.innerText || card.textContent || '')
+                .split('\\n')
+                .map(t => t.trim())
+                .filter(t => t.length > 0);
+              const rawCompany = lines.find(l => l !== title) || '';
+              const companyName = rawCompany.includes(' - ')
+                ? rawCompany.split(' - ')[0].trim()
+                : rawCompany;
+              const displayTitle = companyName ? \`\${shortTitle} @ \${companyName}\` : shortTitle;
+
               card.scrollIntoView({ behavior: 'instant', block: 'center' });
               if (typeof card.click === 'function') {
                 card.click();
               } else {
                 card.dispatchEvent(new MouseEvent('click', { bubbles: true }));
               }
-              return { status: 'clicked', title };
+              return { status: 'clicked', title: shortTitle, company: companyName, displayTitle };
             })();
           `)
 
           if (clickJobResult?.status === 'clicked') {
-            addLog(`Clicked job #${idx + 1}: ${clickJobResult.title || 'Untitled job'}.`)
+            const titleStr = clickJobResult.displayTitle || clickJobResult.title || 'Untitled job';
+            addLog(`Clicked job #${idx + 1}: ${titleStr}.`)
+            console.log('Job title:', titleStr)
+          } else if (clickJobResult?.status === 'skipped') {
+            addLog(`Skipped job #${idx + 1} (NOT QUALIFIED).`)
           } else {
             addLog(`Job card #${idx + 1} missing or not clickable.`)
           }
