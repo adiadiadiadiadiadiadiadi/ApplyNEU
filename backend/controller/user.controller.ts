@@ -1,6 +1,6 @@
 import express, { type Request, type Response } from 'express';
 import type { PostUserRequest } from '../types/users.ts';
-import { addUser, getSearchTerms, getUserInterests, updateSearchTerms, updateUserInterests } from '../services/user.service.ts';
+import { addUser, getSearchTerms, getUserInterests, updateJobType, updateSearchTerms, updateUserInterests } from '../services/user.service.ts';
 
 /**
  * This controller handles user-related routes.
@@ -146,6 +146,34 @@ const userController = () => {
       });
     }
   };
+
+  const updateJobTypeRoute = async (req: Request, res: Response) => {
+    const { user_id } = req.params;
+    const { job_types } = req.body;
+
+    if (!user_id || !job_types) {
+      res.status(404).json({
+        "message": "Required arguments not found to update job interests."
+      });
+      return;
+    }
+
+    try {
+      const result = await updateJobType(user_id, job_types);
+
+      if ('error' in result) {
+        res.status(400).json({
+          "message": "Unable to update job types."
+        });
+        return;
+      }
+      res.status(200).json(result);
+    } catch (err: unknown) {
+      res.status(400).json({
+        "message": "Unable to update job types."
+      });
+    }
+  }
 
   router.post('/new', addUserRoute);
   router.get('/:user_id/interests', getUserInterestsRoute);
