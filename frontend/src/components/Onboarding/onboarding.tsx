@@ -67,6 +67,26 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     }
   }
 
+  const updateJobTypes = async (userId: string) => {
+    try {
+      const response = await fetch(`http://localhost:8080/users/${userId}/job-types`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          job_types: selectedJobTypes
+        })
+      })
+
+      if (response.ok) {
+        console.log('Job types updated successfully')
+      }
+    } catch (error) {
+      console.error('Error updating job types:', error)
+    }
+  }
+
   const updateSearchTerms = async (userId: string) => {
     try {
       const response = await fetch(`http://localhost:8080/users/${userId}/search-terms`, {
@@ -105,7 +125,23 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   const nextStep = async () => {
     if (step === 1) {
       setStep(2)
-    } else if (step === 2 && uploadedFile) {
+      return
+    }
+
+    if (step === 2) {
+      setLoading(true)
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        setLoading(false)
+        return
+      }
+      await updateJobTypes(user.id)
+      setLoading(false)
+      setStep(3)
+      return
+    }
+
+    if (step === 3 && uploadedFile) {
       setLoading(true)
 
       const { data: { user } } = await supabase.auth.getUser()
@@ -154,7 +190,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
             })
             
             if (saveResponse.ok) {
-              // Fetch interests before advancing to step 3
+              // Fetch interests before advancing to step 4
               await fetchInterests(user.id)
             }
           } else {
@@ -171,19 +207,21 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       }
 
       setLoading(false)
-      setStep(3)
-    } else if (step === 2) {
-      setStep(3)
-    } else if (step === 3) {
       setStep(4)
-    } else {
-      // On step 4, save interests before completing
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        await saveInterests(user.id)
-      }
-      handleComplete()
+      return
     }
+
+    if (step === 3) {
+      // Require upload; button disabled when no file.
+      return
+    }
+
+    // step 4 -> complete
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      await saveInterests(user.id)
+    }
+    handleComplete()
   }
 
   const prevStep = () => {
@@ -267,6 +305,26 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
         {step === 2 && (
           <div className="onboarding-step">
+            <h1 className="onboarding-title">what type of job are you looking for?</h1>
+            <p className="onboarding-description">
+              choose one or more options that match the roles you want.
+            </p>
+            <div className="interests-grid">
+              {jobTypes.map((type, index) => (
+                <span
+                  key={index}
+                  className={`interest-tag ${selectedJobTypes.includes(type) ? 'interest-tag--selected' : ''}`}
+                  onClick={() => toggleJobType(type)}
+                >
+                  {type}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="onboarding-step">
             <h1 className="onboarding-title">upload your resume</h1>
             <p className="onboarding-description">
               AI agents parse your resume to find jobs that best match your strengths.
@@ -315,26 +373,6 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           </div>
         )}
 
-        {step === 3 && (
-          <div className="onboarding-step">
-            <h1 className="onboarding-title">what type of job are you looking for?</h1>
-            <p className="onboarding-description">
-              choose one or more options that match the roles you want.
-            </p>
-            <div className="interests-grid">
-              {jobTypes.map((type, index) => (
-                <span
-                  key={index}
-                  className={`interest-tag ${selectedJobTypes.includes(type) ? 'interest-tag--selected' : ''}`}
-                  onClick={() => toggleJobType(type)}
-                >
-                  {type}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
         {step === 4 && (
           <div className="onboarding-step">
             <h1 className="onboarding-title">select your interests</h1>
@@ -367,9 +405,14 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           <button
             onClick={nextStep}
             className="onboarding-button onboarding-button--primary"
-            disabled={loading || (step === 2 && !uploadedFile)}
+            disabled={
+              loading ||
+              (step === 2 && selectedJobTypes.length === 0) ||
+              (step === 3 && !uploadedFile) ||
+              (step === 4 && selectedInterests.length === 0)
+            }
           >
-            {loading ? 'loading...' : step === 3 ? 'finish' : 'next'}
+            {loading ? 'loading...' : step === 4 ? 'finish' : 'next'}
           </button>
         </div>
       </div>
