@@ -149,3 +149,23 @@ const generateSearchTerms = async (user_id: string) => {
         return { error: "Error extracting topics." }
     }
 }
+
+export const updateJobType = async (user_id: string, job_types: string[]) => {
+    try {
+        const result = await pool.query(
+            `
+            UPDATE users SET job_types = $1 WHERE user_id = $2
+            RETURNING *;
+            `,
+            [job_types, user_id]
+        )
+        
+        if (result.rows.length === 0) {
+            return { error: 'User not found.' };
+        }
+        
+        return result.rows[0];
+    } catch (error) {
+        return { error: 'Error updating job types.' }
+    }
+}
