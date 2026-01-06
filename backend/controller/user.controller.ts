@@ -178,6 +178,7 @@ const userController = () => {
   router.post('/new', addUserRoute);
   router.get('/:user_id/interests', getUserInterestsRoute);
   router.put('/:user_id/interests', updateUserInterestsRoute);
+  router.put('/:user_id/job-types', updateJobTypeRoute);
   router.put('/:user_id/search-terms', updateSearchTermsRoute);
   router.get('/:user_id/search-terms', getSearchTermsRoute);
   return router;
