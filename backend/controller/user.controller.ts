@@ -1,6 +1,6 @@
 import express, { type Request, type Response } from 'express';
 import type { PostUserRequest } from '../types/users.ts';
-import { addUser, getJobTypes, getSearchTerms, getUserInterests, updateJobType, updateSearchTerms, updateUserInterests } from '../services/user.service.ts';
+import { addUser, cacheShortResume, getJobTypes, getSearchTerms, getUserInterests, updateJobType, updateSearchTerms, updateUserInterests } from '../services/user.service.ts';
 
 /**
  * This controller handles user-related routes.
@@ -201,6 +201,33 @@ const userController = () => {
     }
   }
 
+  const cacheShortResumeRoute = async (req: Request, res: Response) => {
+    const { user_id } = req.params;
+
+    if (!user_id) {
+      res.status(404).json({
+        "message": "Required arguments not found to cache resume."
+      });
+      return;
+    }
+
+    try {
+      const result = await cacheShortResume(user_id);
+
+      if ('error' in result) {
+        res.status(400).json({
+          "message": "Unable to cache resume."
+        });
+        return;
+      }
+      res.status(200).json(result);
+    } catch (err: unknown) {
+      res.status(400).json({
+        "message": "Unable to cache resume."
+      });
+    }
+  }
+
   router.post('/new', addUserRoute);
   router.get('/:user_id/interests', getUserInterestsRoute);
   router.put('/:user_id/interests', updateUserInterestsRoute);
@@ -208,6 +235,7 @@ const userController = () => {
   router.get('/:user_id/job-types', getJobTypesRoute);
   router.put('/:user_id/search-terms', updateSearchTermsRoute);
   router.get('/:user_id/search-terms', getSearchTermsRoute);
+  router.post('/:user_id/cache-short-resume', cacheShortResumeRoute)
   return router;
 };
 

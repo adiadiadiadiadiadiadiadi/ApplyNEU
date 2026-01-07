@@ -25,11 +25,11 @@ export const getJobType = async (user_id: string) => {
             `,
             [user_id]
         )
-        
+
         if (result.rows.length === 0) {
             return { error: 'User not found.' };
         }
-        
+
         return result.rows[0];
     } catch (error) {
         return { error: 'Error getting job types.' }
@@ -44,11 +44,11 @@ export const getUserInterests = async (user_id: string) => {
             `,
             [user_id]
         )
-        
+
         if (result.rows.length === 0) {
             return { error: 'User not found.' };
         }
-        
+
         return result.rows[0];
     } catch (error) {
         return { error: 'Error getting interests.' }
@@ -63,11 +63,11 @@ export const getSearchTerms = async (user_id: string) => {
             `,
             [user_id]
         )
-        
+
         if (result.rows.length === 0) {
             return { error: 'User not found.' };
         }
-        
+
         return result.rows[0];
     } catch (error) {
         return { error: 'Error getting search terms.' }
@@ -82,11 +82,11 @@ export const getJobTypes = async (user_id: string) => {
             `,
             [user_id]
         )
-        
+
         if (result.rows.length === 0) {
             return { error: 'User not found.' };
         }
-        
+
         return result.rows[0];
     } catch (error) {
         return { error: 'Error getting search terms.' }
@@ -102,11 +102,11 @@ export const updateUserInterests = async (user_id: string, interests: string[]) 
             `,
             [interests, user_id]
         )
-        
+
         if (result.rows.length === 0) {
             return { error: 'User not found.' };
         }
-        
+
         return result.rows[0];
     } catch (error) {
         return { error: 'Error updating interests.' }
@@ -126,11 +126,11 @@ export const updateSearchTerms = async (user_id: string) => {
             `,
             [search_terms, user_id]
         )
-        
+
         if (result.rows.length === 0) {
             return { error: 'User not found.' };
         }
-        
+
         return result.rows[0];
     } catch (error) {
         return { error: 'Error updating interests.' }
@@ -152,8 +152,8 @@ const generateSearchTerms = async (user_id: string) => {
             max_tokens: 1024,
             messages: [{
                 role: 'user',
-                content: 
-                `
+                content:
+                    `
                 You are analyzing a resume and user interests to extract search terms for jobs the person might be interested in.
 
                 Resume text:
@@ -183,7 +183,6 @@ const generateSearchTerms = async (user_id: string) => {
         return search_terms;
 
     } catch (error) {
-        console.log(error)
         return { error: "Error extracting topics." }
     }
 }
@@ -197,13 +196,85 @@ export const updateJobType = async (user_id: string, job_types: string[]) => {
             `,
             [job_types, user_id]
         )
-        
+
         if (result.rows.length === 0) {
             return { error: 'User not found.' };
         }
-        
+
         return result.rows[0];
     } catch (error) {
         return { error: 'Error updating job types.' }
+    }
+}
+
+export const cacheShortResume = async (user_id: string) => {
+    try {
+        const result = await pool.query(
+            `SELECT * FROM resumes WHERE user_id::text = $1 ORDER BY created_at DESC LIMIT 1;`,
+            [user_id]
+        )
+        const resumeText = result.rows[0].resume_text
+        const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+        const message = await anthropic.messages.create({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 1024,
+            messages: [{
+                role: 'user',
+                content:
+                    `
+                You are summarizing a resume for automated job matching.
+                
+                Rules:
+                - Extract only factual information explicitly stated in the resume
+                - Do NOT infer or guess
+                - Do NOT include placeholders like "unknown"
+                - No fluff, opinions, formatting, or markdown
+                - Keep under 250 tokens
+                
+                Return ONLY the following JSON fields:
+                - skills: array of strings containing ONLY skills explicitly mentioned
+                - role_titles: array of strings
+                - seniority_level: string (empty if not stated)
+                - domains: array of strings
+                
+                If a field has no data, return an empty array or empty string.
+                
+                RESUME:
+                ${resumeText}
+   
+                This is NOT markdown.
+                Return ONLY the JSON of information, nothing else. There should be no extra whitespace, punctuation, or markdown characters.
+                `
+            }]
+        })
+
+        if (!message.content[0] || message.content[0].type !== 'text') {
+            return { error: "Error with API." };
+        }
+
+        const shortened_resume = JSON.parse(message.content[0].text
+            .replace(/```json/g, "")
+            .replace(/```/g, "")
+            .replace(/`/g, "")
+            .trim())
+
+        const updated = await pool.query(
+            `
+            UPDATE users SET short_resume = $1 WHERE user_id = $2
+            RETURNING *;
+            `,
+            [shortened_resume, user_id]
+        )
+
+        if (updated.rows.length === 0) {
+            return { error: 'User not found.' };
+        }
+
+        return updated.rows[0]
+
+    } catch (error) {
+        console.log(error)
+        return { error: "Error caching shortened resume." }
     }
 }
