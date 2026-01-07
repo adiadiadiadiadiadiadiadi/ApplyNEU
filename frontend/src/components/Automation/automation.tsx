@@ -116,6 +116,84 @@ export default function Automation() {
       addLog('Jobs nav link not found; continuing anyway.')
     })()
 
+    // Open job type dropdown before searches
+    await (async () => {
+      for (let i = 0; i < 40; i++) {
+        const result = await webview.executeJavaScript(`
+          (() => {
+            const btn = document.querySelector('button#listFilter-category-job_type');
+            if (!btn) return 'missing';
+            btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+            btn.click();
+            return 'clicked';
+          })();
+        `)
+        if (result === 'clicked') {
+          addLog('Opened job type dropdown.')
+          return
+        }
+        await sleep(250)
+      }
+      addLog('Job type dropdown not found.')
+    })()
+
+    // Apply saved job type filters from backend
+    await (async () => {
+      const userId = await getUserId()
+      if (!userId) {
+        addLog('Unable to fetch job types (no user).')
+        return
+      }
+      try {
+        const resp = await fetch(`http://localhost:8080/users/${userId}/job-types`)
+        if (!resp.ok) {
+          addLog('Failed to fetch job types.')
+          return
+        }
+        const data = await resp.json()
+        const jobTypes: string[] = Array.isArray(data?.job_types) ? data.job_types : []
+        if (!jobTypes.length) {
+          addLog('No job types set; skipping filters.')
+          return
+        }
+
+        // Wait for dropdown checkboxes to render
+        for (let i = 0; i < 20; i++) {
+          const ready = await webview.executeJavaScript(`!!document.querySelector('input[type="checkbox"][id^="job_type"]')`)
+          if (ready) break
+          await sleep(200)
+        }
+
+        const applied = await webview.executeJavaScript(`
+          (() => {
+            const selections = ${JSON.stringify(jobTypes.map(t => t.toLowerCase()))};
+            const cbs = Array.from(document.querySelectorAll('input[type="checkbox"][id^="job_type"]'));
+            let matched = 0;
+            cbs.forEach(cb => {
+              const labelText = (
+                (cb.closest('label')?.innerText) ||
+                (cb.parentElement?.innerText) ||
+                ''
+              ).trim().toLowerCase();
+              const hit = selections.find(sel => labelText.includes(sel));
+              if (hit) {
+                if (!cb.checked) cb.click();
+                matched++;
+              }
+            });
+            const applyBtn = Array.from(document.querySelectorAll('button')).find(b => (b.textContent || '').trim().toLowerCase() === 'apply');
+            if (applyBtn) {
+              applyBtn.click();
+            }
+            return { matched, applied: !!applyBtn };
+          })();
+        `)
+        addLog(`Applied ${applied?.matched || 0} job type filters${applied?.applied ? '' : ' (no apply button found)'}.`)
+      } catch (err) {
+        addLog('Error applying job type filters.')
+      }
+    })()
+
     // Wait for the search input on the jobs page
     await (async () => {
       for (let i = 0; i < 40; i++) {

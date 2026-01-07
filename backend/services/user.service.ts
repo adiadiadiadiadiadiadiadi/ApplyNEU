@@ -17,6 +17,25 @@ export const addUser = async (user_id: string, first_name: string, last_name: st
     }
 };
 
+export const getJobType = async (user_id: string) => {
+    try {
+        const result = await pool.query(
+            `
+            SELECT job_types FROM users WHERE user_id = $1;
+            `,
+            [user_id]
+        )
+        
+        if (result.rows.length === 0) {
+            return { error: 'User not found.' };
+        }
+        
+        return result.rows[0];
+    } catch (error) {
+        return { error: 'Error getting job types.' }
+    }
+};
+
 export const getUserInterests = async (user_id: string) => {
     try {
         const result = await pool.query(
