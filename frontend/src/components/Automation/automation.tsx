@@ -368,6 +368,61 @@ export default function Automation() {
             const titleStr = clickJobResult.displayTitle || clickJobResult.title || 'Untitled job';
             addLog(`Clicked job #${idx + 1}: ${titleStr}.`)
             console.log('Job title:', titleStr)
+            // Give the detail pane a moment to update, then extract description
+            await sleep(800)
+            const descResult = await webview.executeJavaScript(`
+              (() => {
+                const normalize = (el) => (el?.innerText || el?.textContent || '').trim();
+
+                const stripNoise = (text) => {
+                  return text
+                    .split('\\n')
+                    .map(t => t.trim())
+                    .filter(t =>
+                      t.length > 0 &&
+                      !/home\\/jobs\\/search/i.test(t) &&
+                      !/keywords/i.test(t) &&
+                      !/location/i.test(t) &&
+                      !/distance/i.test(t) &&
+                      !/show me/i.test(t) &&
+                      !/all jobs/i.test(t)
+                    )
+                    .join(' ');
+                };
+
+                const byHeading = () => {
+                  const heading = Array.from(document.querySelectorAll('h1,h2,h3,h4,strong,b'))
+                    .find(h => /job description/i.test(h.innerText || ''));
+                  if (!heading) return '';
+                  const scope = heading.closest('section, article, div') || heading.parentElement;
+                  if (!scope) return '';
+                  const blocks = Array.from(scope.querySelectorAll('p, li'))
+                    .map(normalize)
+                    .filter(t => t.length > 40);
+                  const combined = blocks.join(' ').trim();
+                  return stripNoise(combined);
+                };
+
+                const byLongest = () => {
+                  const candidates = Array.from(document.querySelectorAll('main, section, article, div'))
+                    .map(normalize)
+                    .map(stripNoise)
+                    .filter(t => t.length > 150);
+                  if (!candidates.length) return '';
+                  candidates.sort((a, b) => b.length - a.length);
+                  return candidates[0];
+                };
+
+                return byHeading() || byLongest() || '';
+              })();
+            `)
+            if (descResult && descResult.length) {
+              const snippet = descResult.slice(0, 400) + (descResult.length > 400 ? '…' : '');
+              addLog(`Description: ${snippet}`)
+              console.log('Job description:', snippet)
+            } else {
+              addLog('Description not found.')
+            }
           } else if (clickJobResult?.status === 'skipped') {
             addLog(`Skipped job #${idx + 1} (NOT QUALIFIED).`)
           } else {
