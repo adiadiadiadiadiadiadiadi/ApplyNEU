@@ -55,6 +55,25 @@ export const getSearchTerms = async (user_id: string) => {
     }
 };
 
+export const getJobTypes = async (user_id: string) => {
+    try {
+        const result = await pool.query(
+            `
+            SELECT job_types FROM users WHERE user_id = $1;
+            `,
+            [user_id]
+        )
+        
+        if (result.rows.length === 0) {
+            return { error: 'User not found.' };
+        }
+        
+        return result.rows[0];
+    } catch (error) {
+        return { error: 'Error getting search terms.' }
+    }
+};
+
 export const updateUserInterests = async (user_id: string, interests: string[]) => {
     try {
         const result = await pool.query(
