@@ -1,6 +1,6 @@
 import express, { type Request, type Response } from 'express';
 import type { PostUserRequest } from '../types/users.ts';
-import { addUser, getSearchTerms, getUserInterests, updateJobType, updateSearchTerms, updateUserInterests } from '../services/user.service.ts';
+import { addUser, getJobTypes, getSearchTerms, getUserInterests, updateJobType, updateSearchTerms, updateUserInterests } from '../services/user.service.ts';
 
 /**
  * This controller handles user-related routes.
@@ -66,7 +66,6 @@ const userController = () => {
 
   const getSearchTermsRoute = async (req: Request, res: Response) => {
     const { user_id } = req.params;
-    console.log(user_id)
 
     if (!user_id) {
       res.status(404).json({
@@ -91,6 +90,33 @@ const userController = () => {
       });
     }
   };
+
+  const getJobTypesRoute = async (req: Request, res: Response) => {
+    const { user_id } = req.params;
+
+    if (!user_id) {
+      res.status(404).json({
+        "message": "Required arguments not found to get job types."
+      });
+      return;
+    }
+
+    try {
+      const result = await getJobTypes(user_id);
+
+      if ('error' in result) {
+        res.status(400).json({
+          "message": "Unable to get job types."
+        });
+        return;
+      }
+      res.status(200).json(result);
+    } catch (err: unknown) {
+      res.status(400).json({
+        "message": "Unable to get job types."
+      });
+    }
+  }
 
   const updateUserInterestsRoute = async (req: Request, res: Response) => {
     const { user_id } = req.params;
@@ -179,6 +205,7 @@ const userController = () => {
   router.get('/:user_id/interests', getUserInterestsRoute);
   router.put('/:user_id/interests', updateUserInterestsRoute);
   router.put('/:user_id/job-types', updateJobTypeRoute);
+  router.get('/:user_id/job-types', getJobTypesRoute);
   router.put('/:user_id/search-terms', updateSearchTermsRoute);
   router.get('/:user_id/search-terms', getSearchTermsRoute);
   return router;
