@@ -321,8 +321,12 @@ export default function Automation() {
               const card = cards[${idx}];
               if (!card) return { status: 'missing' };
               const rawText = card.innerText || card.textContent || '';
-              if (rawText.toLowerCase().includes('not qualified')) {
+              const normalized = rawText.toLowerCase();
+              if (normalized.includes('not qualified')) {
                 return { status: 'skipped', reason: 'not qualified' };
+              }
+              if (normalized.includes('applied')) {
+                return { status: 'skipped', reason: 'applied' };
               }
               const pickTitle = () => {
                 const preferred =
@@ -371,11 +375,10 @@ export default function Automation() {
             // Give the detail pane a moment to update, then extract description
             await sleep(800)
             const descResult = await webview.executeJavaScript(`
-              (() => {
+              (async () => {
                 const normalize = (el) => (el?.innerText || el?.textContent || '').trim();
-
-                const stripNoise = (text) => {
-                  return text
+                const stripNoise = (text) =>
+                  text
                     .split('\\n')
                     .map(t => t.trim())
                     .filter(t =>
@@ -388,32 +391,25 @@ export default function Automation() {
                       !/all jobs/i.test(t)
                     )
                     .join(' ');
-                };
 
-                const byHeading = () => {
-                  const heading = Array.from(document.querySelectorAll('h1,h2,h3,h4,strong,b'))
+                // Wait for a job description heading to appear (up to ~4s)
+                let heading = null;
+                for (let i = 0; i < 16; i++) {
+                  heading = Array.from(document.querySelectorAll('h1,h2,h3,h4,strong,b'))
                     .find(h => /job description/i.test(h.innerText || ''));
-                  if (!heading) return '';
-                  const scope = heading.closest('section, article, div') || heading.parentElement;
-                  if (!scope) return '';
-                  const blocks = Array.from(scope.querySelectorAll('p, li'))
-                    .map(normalize)
-                    .filter(t => t.length > 40);
-                  const combined = blocks.join(' ').trim();
-                  return stripNoise(combined);
-                };
+                  if (heading) break;
+                  await new Promise(r => setTimeout(r, 250));
+                }
+                if (!heading) return '';
 
-                const byLongest = () => {
-                  const candidates = Array.from(document.querySelectorAll('main, section, article, div'))
-                    .map(normalize)
-                    .map(stripNoise)
-                    .filter(t => t.length > 150);
-                  if (!candidates.length) return '';
-                  candidates.sort((a, b) => b.length - a.length);
-                  return candidates[0];
-                };
+                const scope = heading.closest('section, article, div') || heading.parentElement;
+                if (!scope) return '';
 
-                return byHeading() || byLongest() || '';
+                const blocks = Array.from(scope.querySelectorAll('p, li, div'))
+                  .map(normalize)
+                  .filter(t => t.length > 40);
+                const combined = stripNoise(blocks.join(' ').trim());
+                return combined;
               })();
             `)
             if (descResult && descResult.length) {
@@ -424,7 +420,10 @@ export default function Automation() {
               addLog('Description not found.')
             }
           } else if (clickJobResult?.status === 'skipped') {
-            addLog(`Skipped job #${idx + 1} (NOT QUALIFIED).`)
+            const reason = clickJobResult.reason
+              ? ` (${String(clickJobResult.reason).toUpperCase()})`
+              : ''
+            addLog(`Skipped job #${idx + 1}${reason}.`)
           } else {
             addLog(`Job card #${idx + 1} missing or not clickable.`)
           }
