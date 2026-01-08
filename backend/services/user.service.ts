@@ -231,6 +231,13 @@ export const cacheShortResume = async (user_id: string) => {
                 - Do NOT include placeholders like "unknown"
                 - No fluff, opinions, formatting, or markdown
                 - Keep under 250 tokens
+
+                If seniority level is not explicitly stated, infer it using role titles:
+                    - Intern → Entry-level
+                    - New Graduate / Junior → Entry-level
+                    - Software Engineer → Mid-level
+                    - Senior / Lead / Staff → Senior-level
+                    - Founder / Co-founder only does NOT imply seniority    
                 
                 Return ONLY the following JSON fields:
                 - skills: array of strings containing ONLY skills explicitly mentioned
