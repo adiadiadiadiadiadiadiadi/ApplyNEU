@@ -391,6 +391,20 @@ export default function Automation() {
                       !/all jobs/i.test(t)
                     )
                     .join(' ');
+                const serializeBlock = (el) => {
+                  let text = el ? (el.innerText || el.textContent || '') : '';
+                  const links = Array.from(el?.querySelectorAll('a') || []);
+                  links.forEach(a => {
+                    const display = (a.innerText || a.textContent || 'link').trim();
+                    const href = a.href || a.getAttribute('href') || '';
+                    if (href && display.length) {
+                      const replacement = \`\${display} (\${href})\`;
+                      // replace first occurrence of display to avoid over-replacement
+                      text = text.replace(display, replacement);
+                    }
+                  });
+                  return text.trim();
+                };
 
                 // Wait for a job description heading to appear (up to ~4s)
                 let heading = null;
@@ -406,7 +420,7 @@ export default function Automation() {
                 if (!scope) return '';
 
                 const blocks = Array.from(scope.querySelectorAll('p, li, div'))
-                  .map(normalize)
+                  .map(serializeBlock)
                   .filter(t => t.length > 40);
                 const combined = stripNoise(blocks.join(' ').trim());
                 return combined;
