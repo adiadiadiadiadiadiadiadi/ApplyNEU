@@ -190,6 +190,8 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
             })
             
             if (saveResponse.ok) {
+              // Cache short resume
+              await fetch(`http://localhost:8080/users/${user.id}/cache-short-resume`, { method: 'POST' })
               // Fetch interests before advancing to step 4
               await fetchInterests(user.id)
             }
