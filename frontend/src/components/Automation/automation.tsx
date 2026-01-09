@@ -433,6 +433,47 @@ export default function Automation() {
             } else {
               addLog('Description not found.')
             }
+
+            // Send description to backend for decision and optionally apply
+            try {
+              const userId = await getUserId()
+              if (!userId) {
+                addLog('Decision skipped (no user).')
+              } else {
+                const resp = await fetch(`http://localhost:8080/jobs/${userId}/send-job`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ job_description: descResult || '' })
+                })
+                if (resp.ok) {
+                  const data = await resp.json()
+                  if (data.decision === 'APPLY') {
+                    addLog(`Decision: APPLY for "${titleStr}". Clicking Apply...`)
+                    const applied = await webview.executeJavaScript(`
+                      (() => {
+                        const btn = Array.from(document.querySelectorAll('button'))
+                          .find(b => (b.textContent || '').trim().toLowerCase() === 'apply');
+                        if (btn) {
+                          btn.click();
+                          return true;
+                        }
+                        return false;
+                      })();
+                    `)
+                    addLog(applied ? 'Apply clicked.' : 'Apply button not found.')
+                  } else if (data.decision === 'DO_NOT_APPLY') {
+                    addLog(`Decision: DO_NOT_APPLY for "${titleStr}". Skipping.`)
+                  } else {
+                    addLog('Decision unknown; skipping.')
+                  }
+                } else {
+                  console.log(resp)
+                  addLog('Decision request failed; skipping.')
+                }
+              }
+            } catch (e) {
+              addLog('Decision error; skipping.')
+            }
           } else if (clickJobResult?.status === 'skipped') {
             const reason = clickJobResult.reason
               ? ` (${String(clickJobResult.reason).toUpperCase()})`

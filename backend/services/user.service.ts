@@ -268,7 +268,7 @@ export const cacheShortResume = async (user_id: string) => {
 
         const updated = await pool.query(
             `
-            UPDATE users SET short_resume = $1 WHERE user_id = $2
+            UPDATE resumes SET short_resume = $1 WHERE user_id = $2
             RETURNING *;
             `,
             [shortened_resume, user_id]
