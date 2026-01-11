@@ -428,13 +428,6 @@ export default function Automation() {
                 return combined;
               })();
             `)
-            if (descResult && descResult.length) {
-              const snippet = descResult.slice(0, 400) + (descResult.length > 400 ? '…' : '');
-              addLog(`Description: ${snippet}`)
-              console.log('Job description:', snippet)
-            } else {
-              addLog('Description not found.')
-            }
 
             // Send description to backend for decision and optionally apply
             try {
@@ -480,13 +473,41 @@ export default function Automation() {
                         `)
                         if (found?.hasLabel) {
                           seenResume = true
-                          addLog(found?.hasSelect ? 'Resume form detected.' : 'Resume label found, form missing.')
+                          if (found?.hasSelect) {
+                            addLog('Resume form detected. Waiting for user to upload/select resume...')
+                            playAlertSound()
+                            setStatus('paused')
+                            return
+                          } else {
+                            const clickedResumeBtn = await webview.executeJavaScript(`
+                              (() => {
+                                const btn =
+                                  document.querySelector('button[id*="formfield"][id*="resume"]') ||
+                                  Array.from(document.querySelectorAll('button')).find(b =>
+                                    (b.textContent || '').toLowerCase().includes('resume')
+                                  );
+                                if (!btn) return false;
+                                btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+                                btn.click();
+                                return true;
+                              })();
+                            `)
+                            addLog(clickedResumeBtn
+                              ? 'Resume label found, form missing. Clicked resume trigger button; waiting for user upload...'
+                              : 'Resume label found, resume trigger button not found. Waiting for user input...')
+                            playAlertSound()
+                            setStatus('paused')
+                            return
+                          }
                           break
                         }
                         await sleep(250)
                       }
                       if (!seenResume) {
-                        addLog('Resume label not found after Apply.')
+                        addLog('Resume label not found after Apply. Waiting for user input...')
+                        playAlertSound()
+                        setStatus('paused')
+                        return
                       }
                     } else {
                       addLog('Apply button not found.')
