@@ -19,10 +19,12 @@ export default function Automation() {
           addLog('Error occured: no user found.')
           return
         }
+        addLog(userId)
 
         const response = await fetch(`http://localhost:8080/users/${userId}/search-terms`)
         if (!response.ok) {
-          addLog('Error occured.')
+          console.log(response)
+          addLog('Error occured. Invalid response.')
           return
         }
 
@@ -30,7 +32,7 @@ export default function Automation() {
         const terms = Array.isArray(data?.search_terms) ? data.search_terms : []
         setSearchTerms(terms)
       } catch (error) {
-        addLog('Error occured.')
+        addLog('Error occured. Could not set search terms.')
       }
     }
 
@@ -451,13 +453,15 @@ export default function Automation() {
                     addLog(`Decision: APPLY for "${titleStr}". Clicking Apply...`)
                     const applied = await webview.executeJavaScript(`
                       (() => {
-                        const btn = Array.from(document.querySelectorAll('button'))
-                          .find(b => (b.textContent || '').trim().toLowerCase() === 'apply');
-                        if (btn) {
-                          btn.click();
-                          return true;
-                        }
-                        return false;
+                        const btn = Array.from(document.querySelectorAll('button')).find(b => {
+                          const text = (b.textContent || '').trim().toLowerCase();
+                          const visible = !!(b.offsetParent);
+                          return text === 'apply' && !b.disabled && visible;
+                        });
+                        if (!btn) return false;
+                        btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+                        btn.click();
+                        return true;
                       })();
                     `)
                     addLog(applied ? 'Apply clicked.' : 'Apply button not found.')
