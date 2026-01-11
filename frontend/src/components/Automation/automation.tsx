@@ -464,7 +464,33 @@ export default function Automation() {
                         return true;
                       })();
                     `)
-                    addLog(applied ? 'Apply clicked.' : 'Apply button not found.')
+                    if (applied) {
+                      addLog('Apply clicked. Waiting for resume label...')
+                      let seenResume = false
+                      for (let i = 0; i < 40; i++) {
+                        const found = await webview.executeJavaScript(`
+                          (() => {
+                            const label = Array.from(document.querySelectorAll('label'))
+                              .find(l => (l.textContent || '').toLowerCase().includes('resume'));
+                            const resumeSelect =
+                              document.querySelector('select[id*="formfield"][id*="resume"]') ||
+                              document.querySelector('select[ng-reflect-name="resume"]');
+                            return { hasLabel: !!label, hasSelect: !!resumeSelect };
+                          })();
+                        `)
+                        if (found?.hasLabel) {
+                          seenResume = true
+                          addLog(found?.hasSelect ? 'Resume form detected.' : 'Resume label found, form missing.')
+                          break
+                        }
+                        await sleep(250)
+                      }
+                      if (!seenResume) {
+                        addLog('Resume label not found after Apply.')
+                      }
+                    } else {
+                      addLog('Apply button not found.')
+                    }
                   } else if (data.decision === 'DO_NOT_APPLY') {
                     addLog(`Decision: DO_NOT_APPLY for "${titleStr}". Skipping.`)
                   } else {
