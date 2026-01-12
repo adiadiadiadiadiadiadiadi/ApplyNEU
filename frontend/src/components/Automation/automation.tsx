@@ -453,32 +453,132 @@ export default function Automation() {
                         });
                         if (!btn) return false;
                         btn.scrollIntoView({ behavior: 'instant', block: 'center' });
-                        btn.click();
-                        return true;
+                          btn.click();
+                          return true;
                       })();
                     `)
                     if (applied) {
+                      const submitAfterApply = await webview.executeJavaScript(`
+                        (() => {
+                          const btn = Array.from(document.querySelectorAll('button')).find(b => {
+                            const text = (b.textContent || '').trim().toLowerCase();
+                            const visible = !!(b.offsetParent);
+                            return (text === 'submit' || text === 'save') && !b.disabled && visible;
+                          });
+                          const isRed = !!(btn && (btn.className || '').toLowerCase().includes('btn_primary'));
+                          return { hasSubmit: !!btn, hasRed: isRed };
+                        })();
+                      `)
+                      addLog(submitAfterApply?.hasSubmit
+                        ? (submitAfterApply?.hasRed
+                          ? 'Submit/Save (red) detected immediately after Apply click.'
+                          : 'Submit/Save detected immediately after Apply click (not red).')
+                        : 'Submit/Save button not detected immediately after Apply click.')
+
                       addLog('Apply clicked. Waiting for resume label...')
                       let seenResume = false
                       for (let i = 0; i < 40; i++) {
                         const found = await webview.executeJavaScript(`
                           (() => {
-                            const label = Array.from(document.querySelectorAll('label'))
-                              .find(l => (l.textContent || '').toLowerCase().includes('resume'));
                             const resumeSelect =
                               document.querySelector('select[id*="formfield"][id*="resume"]') ||
                               document.querySelector('select[ng-reflect-name="resume"]');
-                            return { hasLabel: !!label, hasSelect: !!resumeSelect };
+                            const label = Array.from(document.querySelectorAll('label'))
+                              .find(l => (l.textContent || '').toLowerCase().includes('resume'));
+                            const resumeButton =
+                              document.querySelector('button[id*="formfield"][id*="resume"]') ||
+                              Array.from(document.querySelectorAll('button')).find(b =>
+                                (b.textContent || '').toLowerCase().includes('resume')
+                              );
+                            return {
+                              hasLabel: !!label,
+                              hasSelect: !!resumeSelect,
+                              hasButton: !!resumeButton
+                            };
                           })();
                         `)
-                        if (found?.hasLabel) {
+                        if (found?.hasLabel || found?.hasSelect || found?.hasButton) {
                           seenResume = true
                           if (found?.hasSelect) {
-                            addLog('Resume form detected. Waiting for user to upload/select resume...')
+                            const submitExists = await webview.executeJavaScript(`
+                              (() => {
+                                const btn = Array.from(document.querySelectorAll('button')).find(b => {
+                                  const text = (b.textContent || '').trim().toLowerCase();
+                                  const visible = !!(b.offsetParent);
+                                  return (text === 'submit' || text === 'save') && !b.disabled && visible;
+                                });
+                                const isRed = !!(btn && (btn.className || '').toLowerCase().includes('btn_primary'));
+                                return { hasSubmit: !!btn, hasRed: isRed };
+                              })();
+                            `)
+                            addLog(submitExists?.hasSubmit
+                              ? (submitExists?.hasRed
+                                ? 'Resume form detected; red submit/save visible. Waiting for user to submit...'
+                                : 'Resume form detected; submit/save visible (not red). Waiting for user to submit...')
+                              : 'Resume form detected; submit/save not visible yet. Waiting for user to submit...')
                             playAlertSound()
                             setStatus('paused')
-                            return
-                          } else {
+                            // Wait for red submit/save to appear (no hard timeout)
+                            while (true) {
+                              const redNow = await webview.executeJavaScript(`
+                                (() => {
+                                  const btn = Array.from(document.querySelectorAll('button')).find(b => {
+                                    const text = (b.textContent || '').trim().toLowerCase();
+                                    const visible = !!(b.offsetParent);
+                                    const isRed = (b.className || '').toLowerCase().includes('btn_primary');
+                                    return text === 'submit' && !b.disabled && visible && isRed;
+                                  });
+                                  if (btn) {
+                                    btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+                                    btn.click();
+                                    return true;
+                                  }
+                                  return false;
+                                })();
+                              `)
+                              if (redNow) {
+                                addLog('Red submit/save button appeared. Clicked submit/save.')
+                                break
+                              }
+                              await sleep(400)
+                            }
+                            // Wait for submit button to disappear (user clicked it) before continuing (no hard timeout)
+                            while (true) {
+                              const submitStillThere = await webview.executeJavaScript(`
+                                (() => {
+                                  const btn = Array.from(document.querySelectorAll('button')).find(b => {
+                                    const text = (b.textContent || '').trim().toLowerCase();
+                                    const visible = !!(b.offsetParent);
+                                    return (text === 'submit' || text === 'save') && visible;
+                                  });
+                                  return !!btn;
+                                })();
+                              `)
+                              if (!submitStillThere) {
+                                const closed = await webview.executeJavaScript(`
+                                  (() => {
+                                    const btn =
+                                      document.querySelector('button.modal-close') ||
+                                      document.querySelector('button.headless-close-btn') ||
+                                      Array.from(document.querySelectorAll('button')).find(b => {
+                                        const cls = (b.className || '').toLowerCase();
+                                        return cls.includes('modal-close') || cls.includes('headless-close-btn');
+                                      });
+                                    if (!btn) return false;
+                                    btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+                                    btn.click();
+                                    return true;
+                                  })();
+                                `)
+                                addLog(closed
+                                  ? 'Submit/Save button no longer visible; closed modal and continuing automation.'
+                                  : 'Submit/Save button no longer visible; modal close not found, continuing automation.')
+                                setStatus('running')
+                                return
+                              }
+                              await sleep(400)
+                            }
+                          } else if (found?.hasButton) {
                             const clickedResumeBtn = await webview.executeJavaScript(`
                               (() => {
                                 const btn =
@@ -497,7 +597,84 @@ export default function Automation() {
                               : 'Resume label found, resume trigger button not found. Waiting for user input...')
                             playAlertSound()
                             setStatus('paused')
-                            return
+                            // Wait for submit/save button to appear, then for it to be clicked (disappear)
+                            while (true) {
+                              const submitVisible = await webview.executeJavaScript(`
+                                (() => {
+                                  const btn = Array.from(document.querySelectorAll('button')).find(b => {
+                                    const text = (b.textContent || '').trim().toLowerCase();
+                                    const visible = !!(b.offsetParent);
+                                    return (text === 'submit' || text === 'save') && !b.disabled && visible;
+                                  });
+                                  return !!btn;
+                                })();
+                              `)
+                              if (submitVisible) {
+                                addLog('Submit/Save button detected after user upload. Waiting for red submit...')
+                                break
+                              }
+                              await sleep(400)
+                            }
+                            // Wait specifically for red submit/save to appear
+                            while (true) {
+                              const redNow = await webview.executeJavaScript(`
+                                (() => {
+                                  const btn = Array.from(document.querySelectorAll('button')).find(b => {
+                                    const text = (b.textContent || '').trim().toLowerCase();
+                                    const visible = !!(b.offsetParent);
+                                    const isRed = (b.className || '').toLowerCase().includes('btn_primary');
+                                    return text === 'submit' && !b.disabled && visible && isRed;
+                                  });
+                                  if (btn) {
+                                    btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+                                    btn.click();
+                                    return true;
+                                  }
+                                  return false;
+                                })();
+                              `)
+                              if (redNow) {
+                                addLog('Red submit/save button detected. Clicked submit/save.')
+                                break
+                              }
+                              await sleep(400)
+                            }
+                            // Wait for submit to disappear
+                            while (true) {
+                              const submitStillThere = await webview.executeJavaScript(`
+                                (() => {
+                                  const btn = Array.from(document.querySelectorAll('button')).find(b => {
+                                    const text = (b.textContent || '').trim().toLowerCase();
+                                    const visible = !!(b.offsetParent);
+                                    return (text === 'submit' || text === 'save') && visible;
+                                  });
+                                  return !!btn;
+                                })();
+                              `)
+                              if (!submitStillThere) {
+                                  const closed = await webview.executeJavaScript(`
+                                    (() => {
+                                      const btn =
+                                        document.querySelector('button.modal-close') ||
+                                        document.querySelector('button.headless-close-btn') ||
+                                        Array.from(document.querySelectorAll('button')).find(b => {
+                                          const cls = (b.className || '').toLowerCase();
+                                          return cls.includes('modal-close') || cls.includes('headless-close-btn');
+                                        });
+                                      if (!btn) return false;
+                                      btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+                                      btn.click();
+                                      return true;
+                                    })();
+                                  `)
+                                  addLog(closed
+                                    ? 'Submit/Save button no longer visible; closed modal and continuing automation.'
+                                    : 'Submit/Save button no longer visible; modal close not found, continuing automation.')
+                                setStatus('running')
+                                return
+                              }
+                              await sleep(400)
+                            }
                           }
                           break
                         }
