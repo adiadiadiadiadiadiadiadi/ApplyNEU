@@ -574,7 +574,7 @@ export default function Automation() {
                                   ? 'Submit/Save button no longer visible; closed modal and continuing automation.'
                                   : 'Submit/Save button no longer visible; modal close not found, continuing automation.')
                                 setStatus('running')
-                                return
+                                break
                               }
                               await sleep(400)
                             }
@@ -652,26 +652,26 @@ export default function Automation() {
                                 })();
                               `)
                               if (!submitStillThere) {
-                                  const closed = await webview.executeJavaScript(`
-                                    (() => {
-                                      const btn =
-                                        document.querySelector('button.modal-close') ||
-                                        document.querySelector('button.headless-close-btn') ||
-                                        Array.from(document.querySelectorAll('button')).find(b => {
-                                          const cls = (b.className || '').toLowerCase();
-                                          return cls.includes('modal-close') || cls.includes('headless-close-btn');
-                                        });
-                                      if (!btn) return false;
-                                      btn.scrollIntoView({ behavior: 'instant', block: 'center' });
-                                      btn.click();
-                                      return true;
-                                    })();
-                                  `)
-                                  addLog(closed
-                                    ? 'Submit/Save button no longer visible; closed modal and continuing automation.'
-                                    : 'Submit/Save button no longer visible; modal close not found, continuing automation.')
+                                const closed = await webview.executeJavaScript(`
+                                  (() => {
+                                    const btn =
+                                      document.querySelector('button.modal-close') ||
+                                      document.querySelector('button.headless-close-btn') ||
+                                      Array.from(document.querySelectorAll('button')).find(b => {
+                                        const cls = (b.className || '').toLowerCase();
+                                        return cls.includes('modal-close') || cls.includes('headless-close-btn');
+                                      });
+                                    if (!btn) return false;
+                                    btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+                                    btn.click();
+                                    return true;
+                                  })();
+                                `)
+                                addLog(closed
+                                  ? 'Submit/Save button no longer visible; closed modal and continuing automation.'
+                                  : 'Submit/Save button no longer visible; modal close not found, continuing automation.')
                                 setStatus('running')
-                                return
+                                break
                               }
                               await sleep(400)
                             }
