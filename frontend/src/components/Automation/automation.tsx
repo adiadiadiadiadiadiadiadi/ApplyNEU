@@ -518,6 +518,50 @@ export default function Automation() {
                               : 'Resume form detected; submit/save not visible yet. Waiting for user to submit...')
                             playAlertSound()
                             setStatus('paused')
+                            // If cover letter control exists, pause and wait for user to handle it
+                            const coverLetterExists = await webview.executeJavaScript(`
+                              (() => {
+                                return !!(
+                                  document.querySelector('button[id*="formfield"][id*="cover_let"]') ||
+                                  Array.from(document.querySelectorAll('button')).find(b =>
+                                    (b.textContent || '').toLowerCase().includes('cover letter')
+                                  ) ||
+                                  document.querySelector('input[id*="cover"]') ||
+                                  document.querySelector('textarea[id*="cover"]')
+                                );
+                              })();
+                            `)
+                            if (coverLetterExists) {
+                              addLog('Cover letter field detected. Waiting for user to handle cover letter...')
+                              playAlertSound()
+                              setStatus('paused')
+                              // Wait for cover letter control to disappear or submit/save to disappear
+                              while (true) {
+                                const stillNeedsCL = await webview.executeJavaScript(`
+                                  (() => {
+                                    const clBtn =
+                                      document.querySelector('button[id*="formfield"][id*="cover_let"]') ||
+                                      Array.from(document.querySelectorAll('button')).find(b =>
+                                        (b.textContent || '').toLowerCase().includes('cover letter')
+                                      );
+                                    const clInput =
+                                      document.querySelector('input[id*="cover"]') ||
+                                      document.querySelector('textarea[id*="cover"]');
+                                    const submitVisible = Array.from(document.querySelectorAll('button')).some(b => {
+                                      const text = (b.textContent || '').trim().toLowerCase();
+                                      const visible = !!(b.offsetParent);
+                                      return (text === 'submit' || text === 'save') && visible;
+                                    });
+                                    return !!(clBtn || clInput) && submitVisible;
+                                  })();
+                                `)
+                                if (!stillNeedsCL) break
+                                await sleep(400)
+                              }
+                              setStatus('running')
+                              addLog('Cover letter handled; resuming.')
+                            }
+
                             // Wait for red submit/save to appear (no hard timeout)
                             while (true) {
                               const redNow = await webview.executeJavaScript(`
@@ -615,6 +659,49 @@ export default function Automation() {
                               }
                               await sleep(400)
                             }
+                            // If cover letter control exists, pause and wait for user to handle it
+                            const coverLetterExists = await webview.executeJavaScript(`
+                              (() => {
+                                return !!(
+                                  document.querySelector('button[id*="formfield"][id*="cover_let"]') ||
+                                  Array.from(document.querySelectorAll('button')).find(b =>
+                                    (b.textContent || '').toLowerCase().includes('cover letter')
+                                  ) ||
+                                  document.querySelector('input[id*="cover"]') ||
+                                  document.querySelector('textarea[id*="cover"]')
+                                );
+                              })();
+                            `)
+                            if (coverLetterExists) {
+                              addLog('Cover letter field detected. Waiting for user to handle cover letter...')
+                              playAlertSound()
+                              setStatus('paused')
+                              while (true) {
+                                const stillNeedsCL = await webview.executeJavaScript(`
+                                  (() => {
+                                    const clBtn =
+                                      document.querySelector('button[id*="formfield"][id*="cover_let"]') ||
+                                      Array.from(document.querySelectorAll('button')).find(b =>
+                                        (b.textContent || '').toLowerCase().includes('cover letter')
+                                      );
+                                    const clInput =
+                                      document.querySelector('input[id*="cover"]') ||
+                                      document.querySelector('textarea[id*="cover"]');
+                                    const submitVisible = Array.from(document.querySelectorAll('button')).some(b => {
+                                      const text = (b.textContent || '').trim().toLowerCase();
+                                      const visible = !!(b.offsetParent);
+                                      return (text === 'submit' || text === 'save') && visible;
+                                    });
+                                    return !!(clBtn || clInput) && submitVisible;
+                                  })();
+                                `)
+                                if (!stillNeedsCL) break
+                                await sleep(400)
+                              }
+                              setStatus('running')
+                              addLog('Cover letter handled; resuming.')
+                            }
+
                             // Wait specifically for red submit/save to appear
                             while (true) {
                               const redNow = await webview.executeJavaScript(`
@@ -627,12 +714,12 @@ export default function Automation() {
                                   });
                                   if (btn) {
                                     btn.scrollIntoView({ behavior: 'instant', block: 'center' });
-                                    btn.click();
-                                    return true;
-                                  }
-                                  return false;
-                                })();
-                              `)
+                          btn.click();
+                          return true;
+                        }
+                        return false;
+                      })();
+                    `)
                               if (redNow) {
                                 addLog('Red submit/save button detected. Clicked submit/save.')
                                 break
