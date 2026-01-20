@@ -1,14 +1,14 @@
 import { pool } from '../db/index.ts';
 
-export const addTask = async (user_id: string, text: string) => {
+export const addTask = async (user_id: string, text: string, description: string) => {
     try {
         const result = await pool.query(
             `
-            INSERT INTO tasks (user_id, text)
-            VALUES ($1, $2)
+            INSERT INTO tasks (user_id, text, description)
+            VALUES ($1, $2, $3)
             RETURNING *;
             `,
-            [user_id, text]
+            [user_id, text, description]
         );
         return result.rows[0];
 
