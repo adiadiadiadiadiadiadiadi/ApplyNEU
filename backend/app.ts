@@ -7,6 +7,7 @@ import cors from 'cors';
 import userController from './controller/user.controller.ts';
 import resumeController from './controller/resume.controller.ts';
 import jobController from './controller/job.controller.ts';
+import taskController from './controller/task.controller.ts';
 
 const PORT = 8080;
 
@@ -32,6 +33,7 @@ app.use(express.json());
 app.use('/users', userController());
 app.use('/resumes', resumeController());
 app.use('/jobs', jobController());
+app.use('/tasks', taskController());
 
 startServer();
 

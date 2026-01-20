@@ -20,7 +20,7 @@ export const addTask = async (user_id: string, text: string) => {
 export const toggleTask = async (task_id: string) => {
     const result = await pool.query(
         `
-        UPDATE tasks SET status = NOT status WHERE task_id = $2
+        UPDATE tasks SET status = NOT status WHERE task_id = $1
         RETURNING *;
         `,
         [task_id]

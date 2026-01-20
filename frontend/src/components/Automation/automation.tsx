@@ -63,6 +63,29 @@ export default function Automation() {
     setLogs(prev => [...prev, `[${timestamp}] ${message}`])
   }
 
+  const addEmployerTasks = async (instructions: string[], userId: string) => {
+    const tasks = instructions
+      .map(inst => (inst || '').trim())
+      .filter(inst => inst.length > 0)
+    if (!tasks.length) return
+    try {
+      const results = await Promise.allSettled(
+        tasks.map(async text => {
+          const resp = await fetch(`http://localhost:8080/tasks/${userId}/new`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text })
+          })
+          return resp.ok
+        })
+      )
+      const successCount = results.filter(r => r.status === 'fulfilled' && r.value).length
+      addLog(`Added ${successCount}/${tasks.length} employer instructions as tasks.`)
+    } catch (err) {
+      addLog('Failed to add employer instructions as tasks.')
+    }
+  }
+
   const handlePlayClick = async () => {
     setStatus('running')
     addLog('Beginning automation...')
@@ -110,7 +133,6 @@ export default function Automation() {
           })();
         `)
         if (clicked === 'clicked') {
-          addLog('Opened Jobs from navbar.')
           return
         }
         await sleep(250)
@@ -131,7 +153,6 @@ export default function Automation() {
           })();
         `)
         if (result === 'clicked') {
-          addLog('Opened job type dropdown.')
           return
         }
         await sleep(250)
@@ -190,7 +211,6 @@ export default function Automation() {
             return { matched, applied: !!applyBtn };
           })();
         `)
-        addLog(`Applied ${applied?.matched || 0} job type filters${applied?.applied ? '' : ' (no apply button found)'}.`)
       } catch (err) {
         addLog('Error applying job type filters.')
       }
@@ -263,8 +283,6 @@ export default function Automation() {
         continue
       }
 
-      addLog(`Enter pressed for "${term}". Waiting for Search button and clicking...`)
-
       let clicked = false
       for (let attempt = 0; attempt < 40; attempt++) {
         const clickResult = await webview.executeJavaScript(`
@@ -284,7 +302,6 @@ export default function Automation() {
         `)
 
         if (clickResult === 'clicked') {
-          addLog(`Clicked Search button for "${term}".`)
           clicked = true
           break
         }
@@ -372,9 +389,6 @@ export default function Automation() {
 
           if (clickJobResult?.status === 'clicked') {
             const titleStr = clickJobResult.displayTitle || clickJobResult.title || 'Untitled job';
-            addLog(`Clicked job #${idx + 1}: ${titleStr}.`)
-            console.log('Job title:', titleStr)
-            // Give the detail pane a moment to update, then extract description
             await sleep(800)
             const descResult = await webview.executeJavaScript(`
               (async () => {
@@ -442,8 +456,17 @@ export default function Automation() {
                 })
                 if (resp.ok) {
                   const data = await resp.json()
+                  const instructions = Array.isArray(data?.employer_instructions)
+                    ? data.employer_instructions.map((i: any) => String(i || '')).filter((t: string) => t.trim().length > 0)
+                    : []
+                  const instructionsPreview = instructions.length
+                    ? instructions.join(' | ').slice(0, 280) + (instructions.join(' | ').length > 280 ? '…' : '')
+                    : 'none'
                   if (data.decision === 'APPLY') {
-                    addLog(`Decision: APPLY for "${titleStr}". Clicking Apply...`)
+                    if (instructions.length) {
+                      await addEmployerTasks(instructions, userId)
+                    }
+                    addLog(`Applying to "${titleStr}"...`)
                     const applied = await webview.executeJavaScript(`
                       (() => {
                         const btn = Array.from(document.querySelectorAll('button')).find(b => {
