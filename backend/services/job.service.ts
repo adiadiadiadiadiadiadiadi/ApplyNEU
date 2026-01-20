@@ -22,52 +22,79 @@ export const sendJobDescription = async (user_id: string, job_description: strin
             model: 'claude-haiku-4-5-20251001',
             max_tokens: 1024,
             messages: [{
-                role: 'user',
-                content: 
-                `
-                You are a job application filter.
-
-                Your task:
-                Decide whether the USER should apply to the JOB.
-
-                Rules:
-                - Be practical and lean toward APPLY when the user meets a good amount of requirements.
-                - If the user reasonably fits the role, return APPLY.
-                - Only return DO_NOT_APPLY when clearly unqualified.
-                - Extract ONLY instructions explicitly stated in the job description.
-                - Instructions are things to do immediately after applying to complete the application, like "Apply to <some company>" or "Email <some email>.
-                    - This does not mean relocation, it just means tasks to finish the application. 
-                - The description would contain any relevant links, like the company's website or any other relevant instructions.
-                - How NUWorks is users submit some documents like a resume, cover letter, portfolio, etc and submit, but 
-                  the company usually gives some extra instructions like to apply on their website or to email somebody.
-                - Do not give instructions with resume, cover letter, portfolio, etc. or other things in the NUWorks application.
-                  Those are not your responsibility.
-                - If there are none, leave the array empty for employer instructions. 
-                - You may summarize instructions, but include any relevant links with it.
-                - Do NOT invent requirements or advice.
-                - Each instruction should be a few words, excluding the link/email.
-                - Output JSON only. No extra text.
-                
-                Output format:
-                {
-                  "decision": "APPLY | DO_NOT_APPLY",
-                  "employer_instructions": {
-                    "instruction": ...
-                    "description": ...
-                  }
-                }
-                
-                USER PROFILE:
-                ${resume}
-                
-                JOB DESCRIPTION:
-                ${job_description}
-
-                DO NOT INCLUDE ANY MARKDOWN PUNCTUATION, THIS JSON WILL BE PARSED.
-                Return ONLY the JSON array, nothing else. There should be no extra whitespace or punctuation.
-                `
+              role: 'user',
+              content: `
+          You are a job application filter. Your task: Decide whether the USER should apply to the JOB.
+          
+          Rules:
+          - Be practical and lean toward APPLY when the user meets a good amount of requirements.
+          - If the user reasonably fits the role, return APPLY.
+          - Only return DO_NOT_APPLY when clearly unqualified.
+          
+          EMPLOYER INSTRUCTIONS:
+          Extract ONLY additional steps required OUTSIDE the NUWorks application system.
+          
+          NEVER include instructions about:
+          - Resume (uploading, submitting, attaching)
+          - Cover letter (uploading, writing, submitting, attaching)
+          - Transcript (uploading, submitting)
+          - Portfolio (uploading, submitting, linking)
+          - References (providing, listing)
+          - Any document upload mentioned in the job description
+          
+          ONLY include if the job explicitly requires you to:
+          - Apply on a separate company website/portal (with URL)
+          - Email someone directly (with email address)
+          - Complete an external assessment/form (with URL)
+          - Take action on a platform OTHER than NUWorks
+          
+          If the instruction mentions "upload", "submit a document", "attach", or "provide" - IGNORE IT.
+          If the instruction is about standard application materials - IGNORE IT.
+          
+          FORMAT REQUIREMENTS:
+          - "instruction" field: Brief action in imperative form (e.g., "Apply through company portal")
+          - "description" field: MUST include the full URL or email address
+          - Keep instructions short and action-oriented
+          - Always use format: "Action through/at [platform]" for instruction, full link in description
+          
+          Examples:
+          {
+            "instruction": "Apply through Garmin careers portal",
+            "description": "https://careers.garmin.com/jobs/12345"
+          }
+          {
+            "instruction": "Email hiring manager",
+            "description": "jobs@company.com"
+          }
+          {
+            "instruction": "Complete coding assessment",
+            "description": "https://assessment.company.com/test"
+          }
+          
+          If there are no external/additional steps beyond completing the NUWorks form, return an empty array.
+          
+          Output format (JSON only, no markdown):
+          {
+            "decision": "APPLY | DO_NOT_APPLY",
+            "employer_instructions": [
+              {
+                "instruction": "...",
+                "description": "..."
+              },
+              ...
+            ]
+          }
+          
+          USER PROFILE:
+          ${resume}
+          
+          JOB DESCRIPTION:
+          ${job_description}
+          
+          Return ONLY valid JSON. No extra text, whitespace, or markdown.
+          `
             }]
-        })
+          })
 
         if (!message.content[0] || message.content[0].type !== 'text') {
             return { error: "Error with API." };
@@ -85,3 +112,4 @@ export const sendJobDescription = async (user_id: string, job_description: strin
         return { error: "Error extracting topics." }
     }
 }
+

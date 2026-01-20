@@ -63,20 +63,38 @@ export default function Automation() {
     setLogs(prev => [...prev, `[${timestamp}] ${message}`])
   }
 
-  const addEmployerTasks = async (instructions: string[], userId: string) => {
-    addLog("instructions: " + instructions)
-    addLog("user id: " + userId)
-    const tasks = instructions
-      .map(inst => (inst || '').trim())
-      .filter(inst => inst.length > 0)
+  type EmployerInstruction = { text: string; description: string }
+
+  const normalizeEmployerInstructions = (input: any): EmployerInstruction[] => {
+    if (!input) return []
+    const arr = Array.isArray(input) ? input : [input]
+    return arr
+      .map((item: any) => {
+        if (item && typeof item === 'object') {
+          const text = String(item.instruction ?? item.text ?? item.title ?? '').trim()
+          const description = String(item.description ?? item.detail ?? item.text ?? item.instruction ?? '').trim()
+          const finalText = text || description
+          const finalDesc = description || text
+          if (!finalText) return null
+          return { text: finalText, description: finalDesc }
+        }
+        const asString = String(item ?? '').trim()
+        if (!asString) return null
+        return { text: asString, description: asString }
+      })
+      .filter((v: EmployerInstruction | null): v is EmployerInstruction => !!v)
+  }
+
+  const addEmployerTasks = async (instructions: EmployerInstruction[], userId: string) => {
+    const tasks = instructions.filter(inst => inst.text && inst.description)
     if (!tasks.length) return
     try {
       const results = await Promise.allSettled(
-        tasks.map(async text => {
+        tasks.map(async ({ text, description }) => {
           const resp = await fetch(`http://localhost:8080/tasks/${userId}/new`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text })
+            body: JSON.stringify({ text, description })
           })
           if (!resp.ok) {
             const msg = await resp.text().catch(() => '')
@@ -463,17 +481,14 @@ export default function Automation() {
                 })
                 if (resp.ok) {
                   const data = await resp.json()
-                  const instructions = Array.isArray(data?.employer_instructions)
-                    ? data.employer_instructions.map((i: any) => String(i || '')).filter((t: string) => t.trim().length > 0)
-                    : []
-                  const instructionsPreview = instructions.length
-                    ? instructions.join(' | ').slice(0, 280) + (instructions.join(' | ').length > 280 ? '…' : '')
+                  const instructions = normalizeEmployerInstructions(data?.employer_instructions)
+                  const previewBase = instructions.map(inst => `${inst.text}${inst.description && inst.description !== inst.text ? ` — ${inst.description}` : ''}`)
+                  const previewJoined = previewBase.join(' | ')
+                  const instructionsPreview = previewJoined.length
+                    ? previewJoined.slice(0, 280) + (previewJoined.length > 280 ? '…' : '')
                     : 'none'
                   addLog(`Employer instructions (${instructions.length}): ${instructionsPreview}`)
                   if (data.decision === 'APPLY') {
-                    if (instructions.length) {
-                      await addEmployerTasks(instructions, userId)
-                    }
                     addLog(`Applying to "${titleStr}"...`)
                     const applied = await webview.executeJavaScript(`
                       (() => {
@@ -489,6 +504,9 @@ export default function Automation() {
                       })();
                     `)
                     if (applied) {
+                      if (instructions.length) {
+                        await addEmployerTasks(instructions, userId)
+                      }
                       const submitAfterApply = await webview.executeJavaScript(`
                         (() => {
                           const btn = Array.from(document.querySelectorAll('button')).find(b => {
@@ -604,14 +622,16 @@ export default function Automation() {
                                     return text === 'submit' && !b.disabled && visible && isRed;
                                   });
                                   if (btn) {
-                                    btn.scrollIntoView({ behavior: 'instant', block: 'center' });
-                                    btn.click();
-                                    return true;
+                                    const hasDivider = !!document.querySelector('div.vr.ng-star-inserted');
+                                    return { clicked: (() => { btn.scrollIntoView({ behavior: 'instant', block: 'center' }); btn.click(); return true; })(), hasDivider };
                                   }
-                                  return false;
+                                  return { clicked: false, hasDivider: false };
                                 })();
                               `)
-                              if (redNow) {
+                              if (redNow?.clicked) {
+                                addLog(redNow?.hasDivider
+                                  ? 'Red submit detected; divider present before submit.'
+                                  : 'Red submit detected; no divider detected before submit.')
                                 addLog('Red submit/save button appeared. Clicked submit/save.')
                                 break
                               }
@@ -743,15 +763,19 @@ export default function Automation() {
                                     const isRed = (b.className || '').toLowerCase().includes('btn_primary');
                                     return text === 'submit' && !b.disabled && visible && isRed;
                                   });
-                        if (btn) {
+                                  if (btn) {
+                                    const hasDivider = !!document.querySelector('div.vr.ng-star-inserted');
                                     btn.scrollIntoView({ behavior: 'instant', block: 'center' });
-                          btn.click();
-                          return true;
-                        }
-                        return false;
-                      })();
-                    `)
-                              if (redNow) {
+                                    btn.click();
+                                    return { clicked: true, hasDivider };
+                                  }
+                                  return { clicked: false, hasDivider: false };
+                                })();
+                              `)
+                              if (redNow?.clicked) {
+                                addLog(redNow?.hasDivider
+                                  ? 'Red submit detected; divider present before submit.'
+                                  : 'Red submit detected; no divider detected before submit.')
                                 addLog('Red submit/save button detected. Clicked submit/save.')
                                 break
                               }
