@@ -22,6 +22,7 @@ const jobController = () => {
 
         try {
             const result = await sendJobDescription(user_id, job_description);
+            console.log(result)
             if ('error' in result) {
                 res.status(400).json({
                     "message": "Unable to send job description."
