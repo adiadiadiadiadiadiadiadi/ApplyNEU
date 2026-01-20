@@ -64,6 +64,8 @@ export default function Automation() {
   }
 
   const addEmployerTasks = async (instructions: string[], userId: string) => {
+    addLog("instructions: " + instructions)
+    addLog("user id: " + userId)
     const tasks = instructions
       .map(inst => (inst || '').trim())
       .filter(inst => inst.length > 0)
@@ -76,11 +78,16 @@ export default function Automation() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text })
           })
-          return resp.ok
+          if (!resp.ok) {
+            const msg = await resp.text().catch(() => '')
+            throw new Error(`status ${resp.status} ${msg}`)
+          }
+          return true
         })
       )
-      const successCount = results.filter(r => r.status === 'fulfilled' && r.value).length
-      addLog(`Added ${successCount}/${tasks.length} employer instructions as tasks.`)
+      const successCount = results.filter(r => r.status === 'fulfilled').length
+      const failCount = tasks.length - successCount
+      addLog(`Added ${successCount}/${tasks.length} employer instructions as tasks${failCount ? ' (some failed)' : ''}.`)
     } catch (err) {
       addLog('Failed to add employer instructions as tasks.')
     }
@@ -462,6 +469,7 @@ export default function Automation() {
                   const instructionsPreview = instructions.length
                     ? instructions.join(' | ').slice(0, 280) + (instructions.join(' | ').length > 280 ? '…' : '')
                     : 'none'
+                  addLog(`Employer instructions (${instructions.length}): ${instructionsPreview}`)
                   if (data.decision === 'APPLY') {
                     if (instructions.length) {
                       await addEmployerTasks(instructions, userId)
@@ -735,7 +743,7 @@ export default function Automation() {
                                     const isRed = (b.className || '').toLowerCase().includes('btn_primary');
                                     return text === 'submit' && !b.disabled && visible && isRed;
                                   });
-                                  if (btn) {
+                        if (btn) {
                                     btn.scrollIntoView({ behavior: 'instant', block: 'center' });
                           btn.click();
                           return true;

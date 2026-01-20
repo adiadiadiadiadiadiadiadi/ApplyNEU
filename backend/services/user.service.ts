@@ -116,7 +116,6 @@ export const updateUserInterests = async (user_id: string, interests: string[]) 
 export const updateSearchTerms = async (user_id: string) => {
 
     const search_terms = await generateSearchTerms(user_id);
-    console.log(search_terms)
 
     try {
         const result = await pool.query(
@@ -281,7 +280,6 @@ export const cacheShortResume = async (user_id: string) => {
         return updated.rows[0]
 
     } catch (error) {
-        console.log(error)
         return { error: "Error caching shortened resume." }
     }
 }

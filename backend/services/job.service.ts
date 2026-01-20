@@ -35,16 +35,26 @@ export const sendJobDescription = async (user_id: string, job_description: strin
                 - If the user reasonably fits the role, return APPLY.
                 - Only return DO_NOT_APPLY when clearly unqualified.
                 - Extract ONLY instructions explicitly stated in the job description.
-                - Instructions are things to do after applying, like "Apply on <some link>". 
+                - Instructions are things to do immediately after applying to complete the application, like "Apply to <some company>" or "Email <some email>.
+                    - This does not mean relocation, it just means tasks to finish the application. 
+                - The description would contain any relevant links, like the company's website or any other relevant instructions.
+                - How NUWorks is users submit some documents like a resume, cover letter, portfolio, etc and submit, but 
+                  the company usually gives some extra instructions like to apply on their website or to email somebody.
+                - Do not give instructions with resume, cover letter, portfolio, etc. or other things in the NUWorks application.
+                  Those are not your responsibility.
                 - If there are none, leave the array empty for employer instructions. 
                 - You may summarize instructions, but include any relevant links with it.
                 - Do NOT invent requirements or advice.
+                - Each instruction should be a few words, excluding the link/email.
                 - Output JSON only. No extra text.
                 
                 Output format:
                 {
                   "decision": "APPLY | DO_NOT_APPLY",
-                  "employer_instructions": ["..."]
+                  "employer_instructions": {
+                    "instruction": ...
+                    "description": ...
+                  }
                 }
                 
                 USER PROFILE:
@@ -72,7 +82,6 @@ export const sendJobDescription = async (user_id: string, job_description: strin
         return topics;
 
     } catch (error) {
-        console.log(error)
         return { error: "Error extracting topics." }
     }
 }
