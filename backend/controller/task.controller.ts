@@ -1,5 +1,4 @@
 import express, { type Request, type Response } from 'express';
-import type { PostUserRequest } from '../types/users.ts';
 import type { PostTaskRequest } from '../types/tasks.ts';
 import { addTask, toggleTask } from '../services/task.service.ts';
 
@@ -66,8 +65,8 @@ const taskController = () => {
     }
   };
 
-  router.post('/:user-id/new', addTaskRoute);
-  router.put('/:task-id/complete', toggleTaskRoute);
+  router.post('/:user_id/new', addTaskRoute);
+  router.put('/:task_id/complete', toggleTaskRoute);
   return router;
 };
 
