@@ -6,3 +6,9 @@ export interface PostTaskRequest extends Request {
         description: string
     };
 }
+
+export interface PostInstructionsRequest extends Request {
+    body: {
+        employer_instructions: string
+    };
+}

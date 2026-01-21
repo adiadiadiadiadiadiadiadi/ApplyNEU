@@ -474,6 +474,33 @@ export default function Automation() {
               if (!userId) {
                 addLog('Decision skipped (no user).')
               } else {
+                // If NUWorks shows a "how to apply" section, send that directly as employer instructions.
+                const howToApply = await webview.executeJavaScript(`
+                  (() => {
+                    const el = document.querySelector('p#how-to-apply');
+                    if (!el) return '';
+                    return (el.textContent || '').trim();
+                  })();
+                `)
+                if (howToApply && howToApply.length > 0) {
+                  addLog('Employer instructions present.')
+                  try {
+                    const resp = await fetch(`http://localhost:8080/tasks/${userId}/add-instructions`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ employer_instructions: howToApply })
+                    })
+                    if (resp.ok) {
+                      addLog('Sent NUWorks how-to-apply instructions to formatter.')
+                    } else {
+                      addLog('Failed to send NUWorks how-to-apply instructions.')
+                    }
+                  } catch (err) {
+                    addLog('Error sending NUWorks how-to-apply instructions.')
+                  }
+                  return
+                }
+
                 const resp = await fetch(`http://localhost:8080/jobs/${userId}/send-job`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -481,6 +508,7 @@ export default function Automation() {
                 })
                 if (resp.ok) {
                   const data = await resp.json()
+                  addLog('Instructions extracted.')
                   const instructions = normalizeEmployerInstructions(data?.employer_instructions)
                   const previewBase = instructions.map(inst => `${inst.text}${inst.description && inst.description !== inst.text ? ` — ${inst.description}` : ''}`)
                   const previewJoined = previewBase.join(' | ')
@@ -504,9 +532,30 @@ export default function Automation() {
                       })();
                     `)
                     if (applied) {
-                      if (instructions.length) {
+                      const dividerExists = await webview.executeJavaScript(`!!document.querySelector('div.vr.ng-star-inserted')`)
+                      let formatterSent = false
+                      if (dividerExists && instructions.length) {
+                        try {
+                          const resp = await fetch(`http://localhost:8080/tasks/${userId}/add-instructions`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ employer_instructions: JSON.stringify(instructions) })
+                          })
+                          if (resp.ok) {
+                            formatterSent = true
+                            addLog('Sent employer instructions to formatter (divider present).')
+                          } else {
+                            addLog('Formatter request failed; falling back to direct tasks.')
+                          }
+                        } catch (err) {
+                          addLog('Failed to send employer instructions to formatter; falling back to direct tasks.')
+                        }
+                      }
+                      if (!formatterSent && instructions.length) {
+                        console.log("i am here")
                         await addEmployerTasks(instructions, userId)
                       }
+                      console.log(instructions)
                       const submitAfterApply = await webview.executeJavaScript(`
                         (() => {
                           const btn = Array.from(document.querySelectorAll('button')).find(b => {
@@ -518,13 +567,6 @@ export default function Automation() {
                           return { hasSubmit: !!btn, hasRed: isRed };
                         })();
                       `)
-                      addLog(submitAfterApply?.hasSubmit
-                        ? (submitAfterApply?.hasRed
-                          ? 'Submit/Save (red) detected immediately after Apply click.'
-                          : 'Submit/Save detected immediately after Apply click (not red).')
-                        : 'Submit/Save button not detected immediately after Apply click.')
-
-                      addLog('Apply clicked. Waiting for resume label...')
                       let seenResume = false
                       for (let i = 0; i < 40; i++) {
                         const found = await webview.executeJavaScript(`
@@ -560,11 +602,6 @@ export default function Automation() {
                                 return { hasSubmit: !!btn, hasRed: isRed };
                               })();
                             `)
-                            addLog(submitExists?.hasSubmit
-                              ? (submitExists?.hasRed
-                                ? 'Resume form detected; red submit/save visible. Waiting for user to submit...'
-                                : 'Resume form detected; submit/save visible (not red). Waiting for user to submit...')
-                              : 'Resume form detected; submit/save not visible yet. Waiting for user to submit...')
                             playAlertSound()
                             setStatus('paused')
                             // If cover letter control exists, pause and wait for user to handle it
@@ -629,10 +666,6 @@ export default function Automation() {
                                 })();
                               `)
                               if (redNow?.clicked) {
-                                addLog(redNow?.hasDivider
-                                  ? 'Red submit detected; divider present before submit.'
-                                  : 'Red submit detected; no divider detected before submit.')
-                                addLog('Red submit/save button appeared. Clicked submit/save.')
                                 break
                               }
                               await sleep(400)

@@ -100,7 +100,6 @@ export const addInstructions = async (user_id: string, employer_instructions: st
             })
             .filter((v: any) => !!v);
 
-        // Optionally persist these as tasks
         const inserted: any[] = [];
         for (const item of normalized) {
             const res = await addTask(user_id, item.instruction, item.description);
