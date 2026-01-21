@@ -1,5 +1,5 @@
 import express, { type Request, type Response } from 'express';
-import type { PostTaskRequest } from '../types/tasks.ts';
+import type { PostTaskRequest, PostInstructionsRequest } from '../types/tasks.ts';
 import { addInstructions, addTask, toggleTask } from '../services/task.service.ts';
 
 /**
@@ -38,7 +38,7 @@ const taskController = () => {
     }
   };
 
-  const addInstructionsRoute = async (req: Request, res: Response) => {
+  const addInstructionsRoute = async (req: PostInstructionsRequest, res: Response) => {
     const { user_id } = req.params;
     const { employer_instructions } = req.body;
 
