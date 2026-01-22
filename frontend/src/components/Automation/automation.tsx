@@ -535,6 +535,18 @@ export default function Automation() {
                         addLog('Inline divider detected before submit.')
                         if (howToApplyText) {
                           addLog(`LINE EXISTS: ${howToApplyText}`)
+                          try {
+                            const resp = await fetch(`http://localhost:8080/tasks/${userId}/add-instructions`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ employer_instructions: howToApplyText })
+                            })
+                            if (!resp.ok) {
+                              addLog('Failed to send divider instructions to formatter.')
+                            }
+                          } catch (err) {
+                            addLog('Error sending divider instructions to formatter.')
+                          }
                         }
                       }
                       if (instructions.length) {
@@ -867,7 +879,7 @@ export default function Automation() {
             addLog(`Job card #${idx + 1} missing or not clickable.`)
           }
 
-          await sleep(2000)
+          // no delay between job iterations
         }
       }
     }

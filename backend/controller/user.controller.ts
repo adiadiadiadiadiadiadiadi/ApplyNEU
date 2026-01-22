@@ -159,6 +159,7 @@ const userController = () => {
 
     try {
       const result = await updateSearchTerms(user_id);
+      console.log("search", res)
 
       if ('error' in result) {
         res.status(400).json({
