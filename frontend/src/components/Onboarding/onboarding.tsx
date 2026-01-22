@@ -13,6 +13,8 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   const [isDragging, setIsDragging] = useState(false)
   const [interests, setInterests] = useState<string[]>([])
   const [selectedInterests, setSelectedInterests] = useState<string[]>([])
+  const jobTypes = ['Co-op', 'Full Time / Part Time', 'Internship']
+  const [selectedJobTypes, setSelectedJobTypes] = useState<string[]>([])
 
   const fetchInterests = async (userId: string) => {
     try {
@@ -31,6 +33,14 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       prev.includes(interest) 
         ? prev.filter(i => i !== interest)
         : [...prev, interest]
+    )
+  }
+
+  const toggleJobType = (type: string) => {
+    setSelectedJobTypes(prev =>
+      prev.includes(type)
+        ? prev.filter(t => t !== type)
+        : [...prev, type]
     )
   }
 
@@ -54,6 +64,26 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       }
     } catch (error) {
       console.error('Error saving interests:', error)
+    }
+  }
+
+  const updateJobTypes = async (userId: string) => {
+    try {
+      const response = await fetch(`http://localhost:8080/users/${userId}/job-types`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          job_types: selectedJobTypes
+        })
+      })
+
+      if (response.ok) {
+        console.log('Job types updated successfully')
+      }
+    } catch (error) {
+      console.error('Error updating job types:', error)
     }
   }
 
@@ -93,7 +123,25 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   }
 
   const nextStep = async () => {
-    if (step === 2 && uploadedFile) {
+    if (step === 1) {
+      setStep(2)
+      return
+    }
+
+    if (step === 2) {
+      setLoading(true)
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        setLoading(false)
+        return
+      }
+      await updateJobTypes(user.id)
+      setLoading(false)
+      setStep(3)
+      return
+    }
+
+    if (step === 3 && uploadedFile) {
       setLoading(true)
 
       const { data: { user } } = await supabase.auth.getUser()
@@ -142,7 +190,9 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
             })
             
             if (saveResponse.ok) {
-              // Fetch interests before advancing to step 3
+              // Cache short resume
+              await fetch(`http://localhost:8080/users/${user.id}/cache-short-resume`, { method: 'POST' })
+              // Fetch interests before advancing to step 4
               await fetchInterests(user.id)
             }
           } else {
@@ -159,17 +209,21 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       }
 
       setLoading(false)
-      setStep(3)
-    } else if (step < 3) {
-      setStep(step + 1)
-    } else {
-      // On step 3, save interests before completing
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        await saveInterests(user.id)
-      }
-      handleComplete()
+      setStep(4)
+      return
     }
+
+    if (step === 3) {
+      // Require upload; button disabled when no file.
+      return
+    }
+
+    // step 4 -> complete
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      await saveInterests(user.id)
+    }
+    handleComplete()
   }
 
   const prevStep = () => {
@@ -222,10 +276,10 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           <div className="progress-bar">
             <div
               className="progress-fill"
-              style={{ width: `${(step / 3) * 100}%` }}
+              style={{ width: `${(step / 4) * 100}%` }}
             />
           </div>
-          <span className="progress-text">step {step} of 3</span>
+          <span className="progress-text">step {step} of 4</span>
         </div>
 
         {step === 1 && (
@@ -252,6 +306,26 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         )}
 
         {step === 2 && (
+          <div className="onboarding-step">
+            <h1 className="onboarding-title">what type of job are you looking for?</h1>
+            <p className="onboarding-description">
+              choose one or more options that match the roles you want.
+            </p>
+            <div className="interests-grid">
+              {jobTypes.map((type, index) => (
+                <span
+                  key={index}
+                  className={`interest-tag ${selectedJobTypes.includes(type) ? 'interest-tag--selected' : ''}`}
+                  onClick={() => toggleJobType(type)}
+                >
+                  {type}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {step === 3 && (
           <div className="onboarding-step">
             <h1 className="onboarding-title">upload your resume</h1>
             <p className="onboarding-description">
@@ -301,7 +375,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           </div>
         )}
 
-        {step === 3 && (
+        {step === 4 && (
           <div className="onboarding-step">
             <h1 className="onboarding-title">select your interests</h1>
             <p className="onboarding-description">
@@ -333,13 +407,17 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           <button
             onClick={nextStep}
             className="onboarding-button onboarding-button--primary"
-            disabled={loading || (step === 2 && !uploadedFile)}
+            disabled={
+              loading ||
+              (step === 2 && selectedJobTypes.length === 0) ||
+              (step === 3 && !uploadedFile) ||
+              (step === 4 && selectedInterests.length === 0)
+            }
           >
-            {loading ? 'loading...' : step === 3 ? 'finish' : 'next'}
+            {loading ? 'loading...' : step === 4 ? 'finish' : 'next'}
           </button>
         </div>
       </div>
     </div>
   )
 }
-
