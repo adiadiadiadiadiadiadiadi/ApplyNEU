@@ -1,11 +1,38 @@
 import './home.css'
 import { supabase } from '../../lib/supabase'
+import { useEffect, useState } from 'react'
 
 interface HomeProps {
   onNavigateToAutomation: () => void
 }
 
 export default function Home({ onNavigateToAutomation }: HomeProps) {
+  const [tasks, setTasks] = useState<{ task_id: string; text: string }[]>([])
+  const [loadingTasks, setLoadingTasks] = useState(false)
+
+  useEffect(() => {
+    const fetchTasks = async () => {
+      setLoadingTasks(true)
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        setLoadingTasks(false)
+        return
+      }
+      try {
+        const resp = await fetch(`http://localhost:8080/tasks/${user.id}`)
+        if (resp.ok) {
+          const data = await resp.json()
+          setTasks(Array.isArray(data) ? data : [])
+        }
+      } catch (err) {
+        // swallow errors for now
+      } finally {
+        setLoadingTasks(false)
+      }
+    }
+    fetchTasks()
+  }, [])
+
   const handleLogout = async () => {
     await supabase.auth.signOut()
   }
@@ -25,34 +52,22 @@ export default function Home({ onNavigateToAutomation }: HomeProps) {
         <div className="top-row">
           <div className="tile tile--equal">
             <div className="tile-content">
-              <span>6 tasks await you </span>
+              <span>{tasks.length} tasks await you </span>
               <span className="arrow">→</span>
             </div>
             <div className="tasks-list">
-              <label className="task-item">
-                <input type="checkbox" />
-                <span className="task-text">Apply to Meta</span>
-              </label>
-              <label className="task-item">
-                <input type="checkbox" />
-                <span className="task-text">Upload Empower Cover Letter</span>
-              </label>
-              <label className="task-item">
-                <input type="checkbox" />
-                <span className="task-text">Upload Portfolio</span>
-              </label>
-              <label className="task-item">
-                <input type="checkbox" />
-                <span className="task-text">Apply to LinkedIn</span>
-              </label>
-              <label className="task-item">
-                <input type="checkbox" />
-                <span className="task-text">Apply to Coverix</span>
-              </label>
-              <label className="task-item">
-                <input type="checkbox" />
-                <span className="task-text">Upload Work Sample</span>
-              </label>
+              {loadingTasks ? (
+                <div className="task-item">loading tasks...</div>
+              ) : tasks.length === 0 ? (
+                <div className="task-item">no tasks yet</div>
+              ) : (
+                tasks.map(task => (
+                  <label key={task.task_id} className="task-item">
+                    <input type="checkbox" disabled />
+                    <span className="task-text">{task.text}</span>
+                  </label>
+                ))
+              )}
             </div>
           </div>
 
