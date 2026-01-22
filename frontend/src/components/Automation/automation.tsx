@@ -256,10 +256,8 @@ export default function Automation() {
       return
     }
 
-    addLog(`Running ${searchTerms.length} search terms...`)
-
     for (const term of searchTerms) {
-      addLog(`Typing "${term}" into search box...`)
+      addLog(`Searching for "${term}"...`)
       const typeResult = await webview.executeJavaScript(`
         (async () => {
           const input = document.querySelector('input#jobs-keyword-input');
@@ -474,33 +472,8 @@ export default function Automation() {
               if (!userId) {
                 addLog('Decision skipped (no user).')
               } else {
-                // If NUWorks shows a "how to apply" section, send that directly as employer instructions.
-                const howToApply = await webview.executeJavaScript(`
-                  (() => {
-                    const el = document.querySelector('p#how-to-apply');
-                    if (!el) return '';
-                    return (el.textContent || '').trim();
-                  })();
-                `)
-                if (howToApply && howToApply.length > 0) {
-                  addLog('Employer instructions present.')
-                  try {
-                    const resp = await fetch(`http://localhost:8080/tasks/${userId}/add-instructions`, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ employer_instructions: howToApply })
-                    })
-                    if (resp.ok) {
-                      addLog('Sent NUWorks how-to-apply instructions to formatter.')
-                    } else {
-                      addLog('Failed to send NUWorks how-to-apply instructions.')
-                    }
-                  } catch (err) {
-                    addLog('Error sending NUWorks how-to-apply instructions.')
-                  }
-                  return
-                }
-
+                // Always extract via LLM; inline handling/logging moved before submit click.
+                addLog('Extracting via LLM.')
                 const resp = await fetch(`http://localhost:8080/jobs/${userId}/send-job`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -532,30 +505,41 @@ export default function Automation() {
                       })();
                     `)
                     if (applied) {
-                      const dividerExists = await webview.executeJavaScript(`!!document.querySelector('div.vr.ng-star-inserted')`)
-                      let formatterSent = false
-                      if (dividerExists && instructions.length) {
-                        try {
-                          const resp = await fetch(`http://localhost:8080/tasks/${userId}/add-instructions`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ employer_instructions: JSON.stringify(instructions) })
-                          })
-                          if (resp.ok) {
-                            formatterSent = true
-                            addLog('Sent employer instructions to formatter (divider present).')
-                          } else {
-                            addLog('Formatter request failed; falling back to direct tasks.')
-                          }
-                        } catch (err) {
-                          addLog('Failed to send employer instructions to formatter; falling back to direct tasks.')
+                      // Wait/check for resume UI presence before inline-instructions check.
+                      const resumeUIPresent = await webview.executeJavaScript(`
+                        (() => {
+                          const select = document.querySelector('select[id*="resume"]');
+                          return !!select;
+                        })();
+                      `)
+                      addLog(resumeUIPresent ? 'resume ui present' : 'resume ui NOT present')
+
+                      // Delay inline-instructions check until after resume UI is present.
+                      const dividerExists = await webview.executeJavaScript(`
+                        (() => {
+                          const divider = document.querySelector('div.vr.ng-star-inserted');
+                          const heading = Array.from(document.querySelectorAll('h4')).find(
+                            el => (el.textContent || '').toLowerCase().includes('how to apply')
+                          );
+                          return !!(divider || heading);
+                        })();
+                      `)
+                      addLog(dividerExists ? 'Inline instructions heading/divider present' : 'Inline instructions heading/divider NOT present')
+                      if (dividerExists) {
+                        const howToApplyText = await webview.executeJavaScript(`
+                          (() => {
+                            const el = document.querySelector('p#how-to-apply');
+                            return el ? (el.innerText || el.textContent || '').trim() : '';
+                          })();
+                        `)
+                        addLog('Inline divider detected before submit.')
+                        if (howToApplyText) {
+                          addLog(`LINE EXISTS: ${howToApplyText}`)
                         }
                       }
-                      if (!formatterSent && instructions.length) {
-                        console.log("i am here")
+                      if (instructions.length) {
                         await addEmployerTasks(instructions, userId)
                       }
-                      console.log(instructions)
                       const submitAfterApply = await webview.executeJavaScript(`
                         (() => {
                           const btn = Array.from(document.querySelectorAll('button')).find(b => {
@@ -698,9 +682,6 @@ export default function Automation() {
                                     return true;
                                   })();
                                 `)
-                                addLog(closed
-                                  ? 'Submit/Save button no longer visible; closed modal and continuing automation.'
-                                  : 'Submit/Save button no longer visible; modal close not found, continuing automation.')
                                 setStatus('running')
                                 break
                               }
@@ -886,7 +867,7 @@ export default function Automation() {
             addLog(`Job card #${idx + 1} missing or not clickable.`)
           }
 
-          await sleep(1200)
+          await sleep(2000)
         }
       }
     }

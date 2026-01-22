@@ -76,6 +76,7 @@ const userController = () => {
 
     try {
       const result = await getSearchTerms(user_id);
+      console.log(result)
 
       if ('error' in result) {
         res.status(400).json({
