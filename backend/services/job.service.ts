@@ -56,6 +56,7 @@ export const sendJobDescription = async (user_id: string, job_description: strin
           - "description" field: MUST include the full URL or email address
           - Keep instructions short and action-oriented
           - Always use format: "Action through/at [platform]" for instruction, full link in description
+          - Make sure the instruction is accurate to the link (e.g. https://ats.rippling.com/tive-careers is for Tive, not Rippling).
           
           Examples:
           {

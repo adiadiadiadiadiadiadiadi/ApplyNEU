@@ -23,7 +23,6 @@ export default function Automation() {
 
         const response = await fetch(`http://localhost:8080/users/${userId}/search-terms`)
         if (!response.ok) {
-          console.log(response)
           addLog('Error occured. Invalid response.')
           return
         }
@@ -512,7 +511,6 @@ export default function Automation() {
                           return !!select;
                         })();
                       `)
-                      addLog(resumeUIPresent ? 'resume ui present' : 'resume ui NOT present')
 
                       // Delay inline-instructions check until after resume UI is present.
                       const dividerExists = await webview.executeJavaScript(`
@@ -524,7 +522,6 @@ export default function Automation() {
                           return !!(divider || heading);
                         })();
                       `)
-                      addLog(dividerExists ? 'Inline instructions heading/divider present' : 'Inline instructions heading/divider NOT present')
                       if (dividerExists) {
                         const howToApplyText = await webview.executeJavaScript(`
                           (() => {
@@ -532,9 +529,7 @@ export default function Automation() {
                             return el ? (el.innerText || el.textContent || '').trim() : '';
                           })();
                         `)
-                        addLog('Inline divider detected before submit.')
                         if (howToApplyText) {
-                          addLog(`LINE EXISTS: ${howToApplyText}`)
                           try {
                             const resp = await fetch(`http://localhost:8080/tasks/${userId}/add-instructions`, {
                               method: 'POST',
@@ -863,7 +858,6 @@ export default function Automation() {
                     addLog('Decision unknown; skipping.')
                   }
                 } else {
-                  console.log(resp)
                   addLog('Decision request failed; skipping.')
                 }
               }
