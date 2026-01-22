@@ -1,6 +1,6 @@
 import express, { type Request, type Response } from 'express';
 import type { PostTaskRequest, PostInstructionsRequest } from '../types/tasks.ts';
-import { addInstructions, addTask, toggleTask } from '../services/task.service.ts';
+import { addInstructions, addTask, toggleTask, getTasks } from '../services/task.service.ts';
 
 /**
  * This controller handles task-related routes.
@@ -93,9 +93,37 @@ const taskController = () => {
     }
   };
 
+  const getTasksRoute = async (req: Request, res: Response) => {
+    const { user_id } = req.params;
+
+    if (!user_id) {
+      res.status(404).json({
+        "message": "Missing arguments to get tasks."
+      });
+      return;
+    }
+
+    try {
+      const task = await getTasks(user_id);
+
+      if ('error' in task) {
+        res.status(400).json({
+          "message": "Unable to get tasks."
+        });
+        return;
+      }
+      res.status(200).json(task);
+    } catch (err: unknown) {
+      res.status(400).json({
+        "message": "Unable to toggle task completion."
+      });
+    }
+  };
+
   router.post('/:user_id/new', addTaskRoute);
   router.post('/:user_id/add-instructions', addInstructionsRoute)
   router.put('/:task_id/complete', toggleTaskRoute);
+  router.get('/:user_id', getTasksRoute);
   return router;
 };
 
