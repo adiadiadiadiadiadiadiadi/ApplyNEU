@@ -605,49 +605,64 @@ export default function Automation() {
                             // If cover letter control exists, pause and wait for user to handle it; otherwise continue.
                             const coverLetterExists = await webview.executeJavaScript(`
                               (() => {
-                                return !!(
-                                  document.querySelector('button[id*="formfield"][id*="cover_let"]') ||
-                                  document.querySelector('select[id*="formfield"][id*="cover_letter"]') ||
-                                  Array.from(document.querySelectorAll('button')).find(b =>
-                                    (b.textContent || '').toLowerCase().includes('cover letter')
-                                  ) ||
-                                  document.querySelector('input[id*="cover"]') ||
-                                  document.querySelector('textarea[id*="cover"]')
+                                const addBtn = document.querySelector('button[id*="formfield"][id*="cover_let"]');
+                                const sel = document.querySelector('select[id*="formfield"][id*="cover_letter"]');
+                                const textBtn = Array.from(document.querySelectorAll('button')).find(b =>
+                                  (b.textContent || '').toLowerCase().includes('cover letter')
                                 );
+                                const input = document.querySelector('input[id*="cover"]') || document.querySelector('textarea[id*="cover"]');
+                                return { hasSelect: !!sel, hasAdd: !!addBtn, hasAny: !!(sel || addBtn || textBtn || input) };
                               })();
                             `)
-                            if (coverLetterExists) {
+                            if (coverLetterExists?.hasAny) {
                               addLog('cover letters exist')
-                              // Try to open the cover letter selector/dropdown for the user.
-                              const coverOpenResult = await webview.executeJavaScript(`
-                                (() => {
-                                  const sel =
-                                    document.querySelector('select[id*="formfield"][id*="cover_letter"]') ||
-                                    document.querySelector('button[id*="formfield"][id*="cover_let"]');
-                                  if (!sel) return { status: 'missing', options: [] };
-                                  sel.scrollIntoView({ behavior: 'instant', block: 'center' });
-                                  if (typeof sel.click === 'function') {
-                                    sel.click();
-                                  } else {
-                                    sel.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                              if (coverLetterExists.hasSelect) {
+                                const coverOpenResult = await webview.executeJavaScript(`
+                                  (() => {
+                                    const sel = document.querySelector('select[id*="formfield"][id*="cover_letter"]');
+                                    if (!sel) return { status: 'missing', options: [] };
+                                    sel.scrollIntoView({ behavior: 'instant', block: 'center' });
+                                    if (typeof sel.click === 'function') {
+                                      sel.click();
+                                    } else {
+                                      sel.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                                    }
+                                    const opts = Array.from(sel.querySelectorAll('option')).map(o => (o.innerText || o.textContent || '').trim()).filter(Boolean);
+                                    return { status: 'clicked', options: opts };
+                                  })();
+                                `)
+                                if (coverOpenResult?.status === 'clicked') {
+                                  addLog('Cover letter control clicked.')
+                                  if (Array.isArray(coverOpenResult.options) && coverOpenResult.options.length) {
+                                    addLog(`Cover letter options: ${coverOpenResult.options.join(' | ')}`)
+                                    const hasCompany = companyLower
+                                      ? coverOpenResult.options.some(o => o.toLowerCase().includes(companyLower))
+                                      : false;
+                                    addLog(hasCompany ? 'Cover Letter Exists' : 'Cover Letter Does Not Exist')
                                   }
-                                  const opts = sel.tagName === 'SELECT'
-                                    ? Array.from(sel.querySelectorAll('option')).map(o => (o.innerText || o.textContent || '').trim()).filter(Boolean)
-                                    : [];
-                                  return { status: 'clicked', options: opts };
-                                })();
-                              `)
-                              if (coverOpenResult?.status === 'clicked') {
-                                addLog('Cover letter control clicked.')
-                                if (Array.isArray(coverOpenResult.options) && coverOpenResult.options.length) {
-                                  addLog(`Cover letter options: ${coverOpenResult.options.join(' | ')}`)
-                                  const hasCompany = companyLower
-                                    ? coverOpenResult.options.some(o => o.toLowerCase().includes(companyLower))
-                                    : false;
-                                  addLog(hasCompany ? 'Cover Letter Exists' : 'Cover Letter Does Not Exist')
+                                } else {
+                                  addLog('Cover letter control missing; cannot click.')
                                 }
                               } else {
-                                addLog('Cover letter control missing; cannot click.')
+                                addLog('Cover letter add-new only; closing modal.')
+                                await webview.executeJavaScript(`
+                                  (() => {
+                                    const btn =
+                                      document.querySelector('button.modal-close') ||
+                                      document.querySelector('button.headless-close-btn') ||
+                                      Array.from(document.querySelectorAll('button')).find(b => {
+                                        const cls = (b.className || '').toLowerCase();
+                                        return cls.includes('modal-close') || cls.includes('headless-close-btn');
+                                      });
+                                    if (btn) {
+                                      btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+                                      if (typeof btn.click === 'function') btn.click();
+                                      else btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                          return true;
+                        }
+                        return false;
+                      })();
+                    `)
                               }
                             }
 
@@ -787,6 +802,27 @@ export default function Automation() {
                                 }
                               } else {
                                 addLog('Cover letter control missing; cannot click.')
+                              }
+                              if (!coverLetterExists.hasSelect) {
+                                addLog('Cover letter add-new only; closing modal.')
+                                await webview.executeJavaScript(`
+                                  (() => {
+                                    const btn =
+                                      document.querySelector('button.modal-close') ||
+                                      document.querySelector('button.headless-close-btn') ||
+                                      Array.from(document.querySelectorAll('button')).find(b => {
+                                        const cls = (b.className || '').toLowerCase();
+                                        return cls.includes('modal-close') || cls.includes('headless-close-btn');
+                                      });
+                                    if (btn) {
+                                      btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+                                      if (typeof btn.click === 'function') btn.click();
+                                      else btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                                      return true;
+                                    }
+                                    return false;
+                                  })();
+                                `)
                               }
                             }
 
