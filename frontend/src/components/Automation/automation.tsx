@@ -415,6 +415,11 @@ export default function Automation() {
 
           if (clickJobResult?.status === 'clicked') {
             const titleStr = clickJobResult.displayTitle || clickJobResult.title || 'Untitled job';
+            const companyLower = (clickJobResult.company || (() => {
+              const atIdx = titleStr.indexOf('@');
+              if (atIdx !== -1) return titleStr.slice(atIdx + 1);
+              return '';
+            })()).toString().toLowerCase().trim();
             await sleep(800)
             const descResult = await webview.executeJavaScript(`
               (async () => {
@@ -602,6 +607,7 @@ export default function Automation() {
                               (() => {
                                 return !!(
                                   document.querySelector('button[id*="formfield"][id*="cover_let"]') ||
+                                  document.querySelector('select[id*="formfield"][id*="cover_letter"]') ||
                                   Array.from(document.querySelectorAll('button')).find(b =>
                                     (b.textContent || '').toLowerCase().includes('cover letter')
                                   ) ||
@@ -611,36 +617,38 @@ export default function Automation() {
                               })();
                             `)
                             if (coverLetterExists) {
-                              playAlertSound()
-                              setStatus('paused')
-                    setAwaitingInput(true)
-                              addLog('Cover letter field detected. Waiting for user to handle cover letter...')
-                              // Wait for cover letter control to disappear or submit/save to disappear
-                              while (true) {
-                                const stillNeedsCL = await webview.executeJavaScript(`
-                                  (() => {
-                                    const clBtn =
-                                      document.querySelector('button[id*="formfield"][id*="cover_let"]') ||
-                                      Array.from(document.querySelectorAll('button')).find(b =>
-                                        (b.textContent || '').toLowerCase().includes('cover letter')
-                                      );
-                                    const clInput =
-                                      document.querySelector('input[id*="cover"]') ||
-                                      document.querySelector('textarea[id*="cover"]');
-                                    const submitVisible = Array.from(document.querySelectorAll('button')).some(b => {
-                                      const text = (b.textContent || '').trim().toLowerCase();
-                                      const visible = !!(b.offsetParent);
-                                      return (text === 'submit' || text === 'save') && visible;
-                                    });
-                                    return !!(clBtn || clInput) && submitVisible;
-                                  })();
-                                `)
-                                if (!stillNeedsCL) break
-                                await sleep(400)
+                              addLog('cover letters exist')
+                              // Try to open the cover letter selector/dropdown for the user.
+                              const coverOpenResult = await webview.executeJavaScript(`
+                                (() => {
+                                  const sel =
+                                    document.querySelector('select[id*="formfield"][id*="cover_letter"]') ||
+                                    document.querySelector('button[id*="formfield"][id*="cover_let"]');
+                                  if (!sel) return { status: 'missing', options: [] };
+                                  sel.scrollIntoView({ behavior: 'instant', block: 'center' });
+                                  if (typeof sel.click === 'function') {
+                                    sel.click();
+                                  } else {
+                                    sel.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                                  }
+                                  const opts = sel.tagName === 'SELECT'
+                                    ? Array.from(sel.querySelectorAll('option')).map(o => (o.innerText || o.textContent || '').trim()).filter(Boolean)
+                                    : [];
+                                  return { status: 'clicked', options: opts };
+                                })();
+                              `)
+                              if (coverOpenResult?.status === 'clicked') {
+                                addLog('Cover letter control clicked.')
+                                if (Array.isArray(coverOpenResult.options) && coverOpenResult.options.length) {
+                                  addLog(`Cover letter options: ${coverOpenResult.options.join(' | ')}`)
+                                  const hasCompany = companyLower
+                                    ? coverOpenResult.options.some(o => o.toLowerCase().includes(companyLower))
+                                    : false;
+                                  addLog(hasCompany ? 'Cover Letter Exists' : 'Cover Letter Does Not Exist')
+                                }
+                              } else {
+                                addLog('Cover letter control missing; cannot click.')
                               }
-                    setAwaitingInput(false)
-                              setStatus('running')
-                              addLog('Cover letter handled; resuming.')
                             }
 
                             // Wait for red submit/save to appear (no hard timeout)
@@ -738,6 +746,7 @@ export default function Automation() {
                               (() => {
                                 return !!(
                                   document.querySelector('button[id*="formfield"][id*="cover_let"]') ||
+                                  document.querySelector('select[id*="formfield"][id*="cover_letter"]') ||
                                   Array.from(document.querySelectorAll('button')).find(b =>
                                     (b.textContent || '').toLowerCase().includes('cover letter')
                                   ) ||
@@ -747,35 +756,38 @@ export default function Automation() {
                               })();
                             `)
                             if (coverLetterExists) {
-                              playAlertSound()
-                              setStatus('paused')
-                  setAwaitingInput(true)
-                              addLog('Cover letter field detected. Waiting for user to handle cover letter...')
-                              while (true) {
-                                const stillNeedsCL = await webview.executeJavaScript(`
-                                  (() => {
-                                    const clBtn =
-                                      document.querySelector('button[id*="formfield"][id*="cover_let"]') ||
-                                      Array.from(document.querySelectorAll('button')).find(b =>
-                                        (b.textContent || '').toLowerCase().includes('cover letter')
-                                      );
-                                    const clInput =
-                                      document.querySelector('input[id*="cover"]') ||
-                                      document.querySelector('textarea[id*="cover"]');
-                                    const submitVisible = Array.from(document.querySelectorAll('button')).some(b => {
-                                      const text = (b.textContent || '').trim().toLowerCase();
-                                      const visible = !!(b.offsetParent);
-                                      return (text === 'submit' || text === 'save') && visible;
-                                    });
-                                    return !!(clBtn || clInput) && submitVisible;
-                                  })();
-                                `)
-                                if (!stillNeedsCL) break
-                                await sleep(400)
+                              addLog('cover letters exist')
+                              // Try to open the cover letter selector/dropdown for the user.
+                              const coverOpenResult = await webview.executeJavaScript(`
+                                (() => {
+                                  const sel =
+                                    document.querySelector('select[id*="formfield"][id*="cover_letter"]') ||
+                                    document.querySelector('button[id*="formfield"][id*="cover_let"]');
+                                  if (!sel) return { status: 'missing', options: [] };
+                                  sel.scrollIntoView({ behavior: 'instant', block: 'center' });
+                                  if (typeof sel.click === 'function') {
+                                    sel.click();
+                                  } else {
+                                    sel.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                                  }
+                                  const opts = sel.tagName === 'SELECT'
+                                    ? Array.from(sel.querySelectorAll('option')).map(o => (o.innerText || o.textContent || '').trim()).filter(Boolean)
+                                    : [];
+                                  return { status: 'clicked', options: opts };
+                                })();
+                              `)
+                              if (coverOpenResult?.status === 'clicked') {
+                                addLog('Cover letter control clicked.')
+                                if (Array.isArray(coverOpenResult.options) && coverOpenResult.options.length) {
+                                  addLog(`Cover letter options: ${coverOpenResult.options.join(' | ')}`)
+                                  const hasCompany = companyLower
+                                    ? coverOpenResult.options.some(o => o.toLowerCase().includes(companyLower))
+                                    : false;
+                                  addLog(hasCompany ? 'Cover Letter Exists' : 'Cover Letter Does Not Exist')
+                                }
+                              } else {
+                                addLog('Cover letter control missing; cannot click.')
                               }
-                    setAwaitingInput(false)
-                              setStatus('running')
-                              addLog('Cover letter handled; resuming.')
                             }
 
                             // Wait specifically for red submit/save to appear
@@ -942,7 +954,7 @@ export default function Automation() {
               allowpopups="true"
             ></webview>
           </div>
-          {status === 'running' && !awaitingInput && <div className="interaction-blocker" />}
+          {!awaitingInput && <div className="interaction-blocker" />}
         </div>
       </div>
       <div className={`right-panel ${isPanelOpen ? 'open' : ''}`}>
