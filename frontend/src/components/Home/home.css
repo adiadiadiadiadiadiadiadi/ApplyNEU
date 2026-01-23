@@ -295,6 +295,25 @@
   gap: 1rem;
 }
 
+.tile-empty-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-size: 1.75rem;
+  color: rgba(255, 255, 255, 0.5);
+  text-align: center;
+}
+
+.task-placeholder {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 1.5rem;
+  color: rgba(255, 255, 255, 0.87);
+  font-weight: 400;
+}
+
 .task-item {
   display: flex;
   align-items: center;

@@ -8,6 +8,7 @@ export default function Automation() {
   const [logs, setLogs] = useState<string[]>([])
   const [isPanelOpen, setIsPanelOpen] = useState(false)
   const [searchTerms, setSearchTerms] = useState<string[]>([])
+  const [awaitingInput, setAwaitingInput] = useState(false)
   const logsEndRef = useRef<HTMLDivElement>(null)
   const initializedRef = useRef(false)
 
@@ -112,6 +113,7 @@ export default function Automation() {
 
   const handlePlayClick = async () => {
     setStatus('running')
+    setAwaitingInput(false)
     addLog('Beginning automation...')
     const webview = document.querySelector('webview') as any
     if (!webview) {
@@ -134,10 +136,12 @@ export default function Automation() {
     await waitForLegend(webview, 'Login to Shibboleth')
     addLog('Waiting for user input...')
     playAlertSound()
+    setAwaitingInput(true)
     addLog('Waiting for user input...')
     await waitForSearchBar(webview)
 
     addLog('Continuing...')
+    setAwaitingInput(false)
     await handleAutomationFromDashboard(webview)
   }
 
@@ -593,9 +597,7 @@ export default function Automation() {
                                 return { hasSubmit: !!btn, hasRed: isRed };
                               })();
                             `)
-                            playAlertSound()
-                            setStatus('paused')
-                            // If cover letter control exists, pause and wait for user to handle it
+                            // If cover letter control exists, pause and wait for user to handle it; otherwise continue.
                             const coverLetterExists = await webview.executeJavaScript(`
                               (() => {
                                 return !!(
@@ -609,9 +611,10 @@ export default function Automation() {
                               })();
                             `)
                             if (coverLetterExists) {
-                              addLog('Cover letter field detected. Waiting for user to handle cover letter...')
                               playAlertSound()
                               setStatus('paused')
+                    setAwaitingInput(true)
+                              addLog('Cover letter field detected. Waiting for user to handle cover letter...')
                               // Wait for cover letter control to disappear or submit/save to disappear
                               while (true) {
                                 const stillNeedsCL = await webview.executeJavaScript(`
@@ -635,6 +638,7 @@ export default function Automation() {
                                 if (!stillNeedsCL) break
                                 await sleep(400)
                               }
+                    setAwaitingInput(false)
                               setStatus('running')
                               addLog('Cover letter handled; resuming.')
                             }
@@ -689,11 +693,11 @@ export default function Automation() {
                                     return true;
                                   })();
                                 `)
-                                setStatus('running')
                                 break
                               }
                               await sleep(400)
                             }
+                            setStatus('running')
                           } else if (found?.hasButton) {
                             const clickedResumeBtn = await webview.executeJavaScript(`
                               (() => {
@@ -711,8 +715,6 @@ export default function Automation() {
                             addLog(clickedResumeBtn
                               ? 'Resume label found, form missing. Clicked resume trigger button; waiting for user upload...'
                               : 'Resume label found, resume trigger button not found. Waiting for user input...')
-                            playAlertSound()
-                            setStatus('paused')
                             // Wait for submit/save button to appear, then for it to be clicked (disappear)
                             while (true) {
                               const submitVisible = await webview.executeJavaScript(`
@@ -731,7 +733,7 @@ export default function Automation() {
                               }
                               await sleep(400)
                             }
-                            // If cover letter control exists, pause and wait for user to handle it
+                            // If cover letter control exists, pause and wait for user to handle it; otherwise continue.
                             const coverLetterExists = await webview.executeJavaScript(`
                               (() => {
                                 return !!(
@@ -745,9 +747,10 @@ export default function Automation() {
                               })();
                             `)
                             if (coverLetterExists) {
-                              addLog('Cover letter field detected. Waiting for user to handle cover letter...')
                               playAlertSound()
                               setStatus('paused')
+                  setAwaitingInput(true)
+                              addLog('Cover letter field detected. Waiting for user to handle cover letter...')
                               while (true) {
                                 const stillNeedsCL = await webview.executeJavaScript(`
                                   (() => {
@@ -770,6 +773,7 @@ export default function Automation() {
                                 if (!stillNeedsCL) break
                                 await sleep(400)
                               }
+                    setAwaitingInput(false)
                               setStatus('running')
                               addLog('Cover letter handled; resuming.')
                             }
@@ -873,7 +877,7 @@ export default function Automation() {
             addLog(`Job card #${idx + 1} missing or not clickable.`)
           }
 
-          // no delay between job iterations
+          await sleep(200)
         }
       }
     }
@@ -938,6 +942,7 @@ export default function Automation() {
               allowpopups="true"
             ></webview>
           </div>
+          {status === 'running' && !awaitingInput && <div className="interaction-blocker" />}
         </div>
       </div>
       <div className={`right-panel ${isPanelOpen ? 'open' : ''}`}>
