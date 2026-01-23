@@ -399,6 +399,7 @@
   min-height: 0;
   height: 100%;
   width: 100%;
+  position: relative;
 }
 
 .browser-header {
@@ -453,6 +454,14 @@
   border: none;
   background: #ffffff;
   flex: 1;
+}
+
+.interaction-blocker {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.2);
+  pointer-events: auto;
+  z-index: 5;
 }
 
 @media (max-width: 1200px) {

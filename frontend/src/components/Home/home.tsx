@@ -37,6 +37,12 @@ export default function Home({ onNavigateToAutomation }: HomeProps) {
     await supabase.auth.signOut()
   }
 
+  const tasksTitle = loadingTasks
+    ? 'loading...'
+    : tasks.length === 0
+      ? 'no tasks yet...'
+      : `${tasks.length} task${tasks.length === 1 ? '' : 's'} await${tasks.length === 1 ? 's' : ''} you`
+
   return (
     <>
       <h1 className="welcome-message">home</h1>
@@ -51,24 +57,26 @@ export default function Home({ onNavigateToAutomation }: HomeProps) {
       <div className="home-container">
         <div className="top-row">
           <div className="tile tile--equal">
-            <div className="tile-content">
-              <span>{tasks.length} tasks await you </span>
-              <span className="arrow">→</span>
-            </div>
-            <div className="tasks-list">
-              {loadingTasks ? (
-                <div className="task-item">loading tasks...</div>
-              ) : tasks.length === 0 ? (
-                <div className="task-item">no tasks yet</div>
-              ) : (
-                tasks.map(task => (
-                  <label key={task.task_id} className="task-item">
-                    <input type="checkbox" disabled />
-                    <span className="task-text">{task.text}</span>
-                  </label>
-                ))
-              )}
-            </div>
+            {loadingTasks || tasks.length === 0 ? (
+              <div className="tile-empty-message">
+                {loadingTasks ? 'loading...' : 'no tasks yet...'}
+              </div>
+            ) : (
+              <>
+                <div className="tile-content">
+                  <span>{tasksTitle}</span>
+                  <span className="arrow">→</span>
+                </div>
+                <div className="tasks-list">
+                  {tasks.map(task => (
+                    <label key={task.task_id} className="task-item">
+                      <input type="checkbox" disabled />
+                      <span className="task-text">{task.text}</span>
+                    </label>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
           <div className="tile tile--equal">
