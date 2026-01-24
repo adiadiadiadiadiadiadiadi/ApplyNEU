@@ -12,8 +12,20 @@ export default function Automation() {
   const logsEndRef = useRef<HTMLDivElement>(null)
   const initializedRef = useRef(false)
 
-  async function handleNoCoverLetter(companyName: string, webview: any) {
-    addLog(`Could not find ${companyName}.`)
+  async function handleNoCoverLetter(companyName: string, webview: any, userId: string | undefined) {
+    addLog(`No cover letter found for ${companyName}.`)
+    if (!userId) {
+      addLog(`Error occured.`)
+      return
+    }
+    const resp = await fetch(`http://localhost:8080/tasks/${userId}/new`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: `Upload ${companyName} cover letter`,
+        description: `Upload your ${companyName} cover letter in the 'My Documents' tab in NUWorks. Make sure the document's name includes '${companyName}'`
+      })
+    })
     await webview.executeJavaScript(`
       (() => {
         const btn =
@@ -554,18 +566,14 @@ export default function Automation() {
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({ employer_instructions: howToApplyText })
                             })
-                            if (!resp.ok) {
-                              addLog('Failed to send divider instructions to formatter.')
-                            }
-                          } catch (err) {
-                            addLog('Error sending divider instructions to formatter.')
-                          }
+                            if (!resp.ok) { }
+                          } catch (err) { }
                         }
                       }
                       if (instructions.length) {
                         await addEmployerTasks(instructions, userId)
                       }
-                      const submitAfterApply = await webview.executeJavaScript(`
+                      await webview.executeJavaScript(`
                         (() => {
                           const btn = Array.from(document.querySelectorAll('button')).find(b => {
                             const text = (b.textContent || '').trim().toLowerCase();
@@ -577,6 +585,7 @@ export default function Automation() {
                         })();
                       `)
                       let seenResume = false
+                      let coverLetterTaskAdded = false
                       for (let i = 0; i < 40; i++) {
                         const found = await webview.executeJavaScript(`
                           (() => {
@@ -611,7 +620,6 @@ export default function Automation() {
                                 return { hasSubmit: !!btn, hasRed: isRed };
                               })();
                             `)
-                            // If cover letter control exists, pause and wait for user to handle it; otherwise continue.
                             const coverLetterExists = await webview.executeJavaScript(`
                               (() => {
                                 const addBtn = document.querySelector('button[id*="formfield"][id*="cover_let"]');
@@ -625,6 +633,7 @@ export default function Automation() {
                             `)
                             if (coverLetterExists?.hasAny) {
                               if (coverLetterExists.hasSelect) {
+                                
                                 const coverOpenResult = await webview.executeJavaScript(`
                                   (() => {
                                     const sel = document.querySelector('select[id*="formfield"][id*="cover_letter"]');
@@ -645,30 +654,19 @@ export default function Automation() {
                                       ? coverOpenResult.options.some((o: string) => o.toLowerCase().includes(companyLower))
                                       : false;
                                     if (!hasCompany) {
-                                      handleNoCoverLetter(clickJobResult.company, webview);
+                                      if (!coverLetterTaskAdded) {
+                                        await handleNoCoverLetter(clickJobResult.company, webview, userId);
+                                        coverLetterTaskAdded = true
+                                      }
                                       continue
                                     }
                                   }
                                 }
                               } else {
-                                await webview.executeJavaScript(`
-                                  (() => {
-                                    const btn =
-                                      document.querySelector('button.modal-close') ||
-                                      document.querySelector('button.headless-close-btn') ||
-                                      Array.from(document.querySelectorAll('button')).find(b => {
-                                        const cls = (b.className || '').toLowerCase();
-                                        return cls.includes('modal-close') || cls.includes('headless-close-btn');
-                                      });
-                                    if (btn) {
-                                      btn.scrollIntoView({ behavior: 'instant', block: 'center' });
-                                      if (typeof btn.click === 'function') btn.click();
-                                      else btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-                          return true;
-                        }
-                        return false;
-                      })();
-                    `)
+                                if (!coverLetterTaskAdded) {
+                                  await handleNoCoverLetter(clickJobResult.company, webview, userId)
+                                  coverLetterTaskAdded = true
+                                }
                                 continue
                               }
                             }
@@ -770,7 +768,9 @@ export default function Automation() {
                                 return { hasSelect: !!sel, hasAdd: !!addBtn, hasAny: !!(sel || addBtn || textBtn || input) };
                               })();
                             `)
-                            if (coverLetterExists?.hasAny) {
+                            if (!coverLetterExists?.hasAny) {
+                              addLog('No cover letter input found; continuing without it.')
+                            } else if (coverLetterExists?.hasAny) {
                               // Try to open the cover letter selector/dropdown for the user.
                               const coverOpenResult = await webview.executeJavaScript(`
                                 (() => {
@@ -819,7 +819,10 @@ export default function Automation() {
                                 }
                               }
                               if (!coverLetterExists.hasSelect) {
-                                handleNoCoverLetter(clickJobResult.company, webview);
+                                if (!coverLetterTaskAdded) {
+                                  await handleNoCoverLetter(clickJobResult.company, webview, userId);
+                                  coverLetterTaskAdded = true
+                                }
                                 await webview.executeJavaScript(`
                                   (() => {
                                     const btn =
@@ -945,33 +948,8 @@ export default function Automation() {
   }
 
   const handlePause = () => setStatus('paused')
-  const handleResume = () => {
-    setStatus('running')
-    // Continue from next step here if you add further automation
-  }
+  const handleResume = () => { setStatus('running') }
   const togglePanel = () => setIsPanelOpen(!isPanelOpen)
-
-  const handleNoCoverLetter = async (companyName: string, webview: any) => {
-    addLog(`Could not find ${companyName}.`)
-    await webview.executeJavaScript(`
-      (() => {
-        const btn =
-          document.querySelector('button.modal-close') ||
-          document.querySelector('button.headless-close-btn') ||
-          Array.from(document.querySelectorAll('button')).find(b => {
-            const cls = (b.className || '').toLowerCase();
-            return cls.includes('modal-close') || cls.includes('headless-close-btn');
-          });
-        if (btn) {
-          btn.scrollIntoView({ behavior: 'instant', block: 'center' });
-          if (typeof btn.click === 'function') btn.click();
-          else btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-          return true;
-        }
-        return false;
-      })();
-    `)
-  }
 
   return (
     <div className="automation-container">
