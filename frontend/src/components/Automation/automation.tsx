@@ -11,6 +11,7 @@ export default function Automation() {
   const [awaitingInput, setAwaitingInput] = useState(false)
   const logsEndRef = useRef<HTMLDivElement>(null)
   const initializedRef = useRef(false)
+  const existingTasksRef = useRef<Set<string>>(new Set())
 
   async function handleNoCoverLetter(companyName: string, webview: any, userId: string | undefined) {
     addLog(`No cover letter found for ${companyName}.`)
@@ -18,14 +19,23 @@ export default function Automation() {
       addLog(`Error occured.`)
       return
     }
-    const resp = await fetch(`http://localhost:8080/tasks/${userId}/new`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        text: `Upload ${companyName} cover letter`,
-        description: `Upload your ${companyName} cover letter in the 'My Documents' tab in NUWorks. Make sure the document's name includes '${companyName}'`
+    const text = `Upload ${companyName} cover letter`
+    const description = `Upload your ${companyName} cover letter in the 'My Documents' tab in NUWorks. Make sure the document's name includes '${companyName}'`
+    const key = text.trim().toLowerCase()
+    if (existingTasksRef.current.has(key)) {
+      addLog(`Task already exists; skipping create: ${text}`)
+    } else {
+      const resp = await fetch(`http://localhost:8080/tasks/${userId}/new`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, description })
       })
-    })
+      if (!resp.ok) {
+        addLog('Error occured while creating task.')
+      } else {
+        existingTasksRef.current.add(key)
+      }
+    }
     await webview.executeJavaScript(`
       (() => {
         const btn =
@@ -55,6 +65,21 @@ export default function Automation() {
           return
         }
         addLog(userId)
+
+        try {
+          const tasksResp = await fetch(`http://localhost:8080/tasks/${userId}`)
+          if (tasksResp.ok) {
+            const tasksData = await tasksResp.json().catch(() => [])
+            const taskTexts = Array.isArray(tasksData)
+              ? tasksData
+                  .map((t: any) => String(t?.text ?? '').trim())
+                  .filter(Boolean)
+              : []
+            existingTasksRef.current = new Set(taskTexts.map(t => t.toLowerCase()))
+          }
+        } catch (err) {
+          // best-effort; ignore preload failures
+        }
 
         const response = await fetch(`http://localhost:8080/users/${userId}/search-terms`)
         if (!response.ok) {
@@ -125,6 +150,9 @@ export default function Automation() {
     try {
       await Promise.allSettled(
         tasks.map(async ({ text, description }) => {
+          const key = text.trim().toLowerCase()
+          if (!key || existingTasksRef.current.has(key)) return true
+
           const resp = await fetch(`http://localhost:8080/tasks/${userId}/new`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -134,6 +162,7 @@ export default function Automation() {
             const msg = await resp.text().catch(() => '')
             throw new Error(`status ${resp.status} ${msg}`)
           }
+          existingTasksRef.current.add(key)
           return true
         })
       )
