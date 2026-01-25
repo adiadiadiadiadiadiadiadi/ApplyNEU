@@ -615,6 +615,7 @@ export default function Automation() {
                       `)
                       let seenResume = false
                       let coverLetterTaskAdded = false
+                      let workSampleChecked = false
                       for (let i = 0; i < 40; i++) {
                         const found = await webview.executeJavaScript(`
                           (() => {
@@ -697,6 +698,55 @@ export default function Automation() {
                                   coverLetterTaskAdded = true
                                 }
                                 continue
+                              }
+                            }
+
+                            if (!workSampleChecked) {
+                              const workSampleInfo = await webview.executeJavaScript(`
+                                (() => {
+                                  const sel = document.querySelector('select[id*="writing_sample"]');
+                                  const opts = sel
+                                    ? Array.from(sel.querySelectorAll('option')).map(o => ({
+                                        text: (o.innerText || o.textContent || '').trim(),
+                                        value: o.value
+                                      })).filter(o => o.text)
+                                    : [];
+                                  const btn =
+                                    document.querySelector('button[id*="writing_sample"]') ||
+                                    Array.from(document.querySelectorAll('button')).find(b =>
+                                      (b.textContent || '').toLowerCase().includes('work sample')
+                                    );
+                                  return { hasSelect: !!sel, options: opts, hasButton: !!btn };
+                                })();
+                              `)
+                              if (workSampleInfo?.hasSelect) {
+                                const match = companyLower
+                                  ? workSampleInfo.options.find((o: any) => o.text.toLowerCase().includes(companyLower))
+                                  : null
+                                if (match) {
+                                  await webview.executeJavaScript(`
+                                    (() => {
+                                      const sel = document.querySelector('select[id*="writing_sample"]');
+                                      if (!sel) return false;
+                                      const target = Array.from(sel.options).find(o =>
+                                        (o.innerText || o.textContent || '').toLowerCase().includes(${JSON.stringify(
+                                          companyLower || ''
+                                        )})
+                                      );
+                                      if (!target) return false;
+                                      sel.value = target.value;
+                                      sel.dispatchEvent(new Event('change', { bubbles: true }));
+                                      return true;
+                                    })();
+                                  `)
+                                  addLog('Work sample exists.')
+                                } else {
+                                  addLog('Work sample does not exist.')
+                                }
+                                workSampleChecked = true
+                              } else if (workSampleInfo?.hasButton) {
+                                addLog('No work samples exist.')
+                                workSampleChecked = true
                               }
                             }
 
@@ -871,6 +921,55 @@ export default function Automation() {
                                   })();
                                 `)
                                 continue
+                              }
+                            }
+
+                            if (!workSampleChecked) {
+                              const workSampleInfo = await webview.executeJavaScript(`
+                                (() => {
+                                  const sel = document.querySelector('select[id*="writing_sample"]');
+                                  const opts = sel
+                                    ? Array.from(sel.querySelectorAll('option')).map(o => ({
+                                        text: (o.innerText || o.textContent || '').trim(),
+                                        value: o.value
+                                      })).filter(o => o.text)
+                                    : [];
+                                  const btn =
+                                    document.querySelector('button[id*="writing_sample"]') ||
+                                    Array.from(document.querySelectorAll('button')).find(b =>
+                                      (b.textContent || '').toLowerCase().includes('work sample')
+                                    );
+                                  return { hasSelect: !!sel, options: opts, hasButton: !!btn };
+                                })();
+                              `)
+                              if (workSampleInfo?.hasSelect) {
+                                const match = companyLower
+                                  ? workSampleInfo.options.find((o: any) => o.text.toLowerCase().includes(companyLower))
+                                  : null
+                                if (match) {
+                                  await webview.executeJavaScript(`
+                                    (() => {
+                                      const sel = document.querySelector('select[id*="writing_sample"]');
+                                      if (!sel) return false;
+                                      const target = Array.from(sel.options).find(o =>
+                                        (o.innerText || o.textContent || '').toLowerCase().includes(${JSON.stringify(
+                                          companyLower || ''
+                                        )})
+                                      );
+                                      if (!target) return false;
+                                      sel.value = target.value;
+                                      sel.dispatchEvent(new Event('change', { bubbles: true }));
+                                      return true;
+                                    })();
+                                  `)
+                                  addLog('Work sample exists.')
+                                } else {
+                                  addLog('Work sample does not exist.')
+                                }
+                                workSampleChecked = true
+                              } else if (workSampleInfo?.hasButton) {
+                                addLog('No work samples exist.')
+                                workSampleChecked = true
                               }
                             }
 
