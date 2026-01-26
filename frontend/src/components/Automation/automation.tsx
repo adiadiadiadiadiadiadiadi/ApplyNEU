@@ -56,6 +56,31 @@ export default function Automation() {
     `)
   }
 
+  async function handleNoWorkSample(companyName: string, userId: string | undefined) {
+    addLog(`No work sample found for ${companyName}.`)
+    if (!userId) {
+      addLog(`Error occured.`)
+      return
+    }
+    const text = `Upload ${companyName} work sample`
+    const description = `Upload a work sample for ${companyName} in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
+    const key = text.trim().toLowerCase()
+    if (existingTasksRef.current.has(key)) {
+      addLog(`Task already exists; skipping create: ${text}`)
+      return
+    }
+    const resp = await fetch(`http://localhost:8080/tasks/${userId}/new`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, description })
+    })
+    if (!resp.ok) {
+      addLog('Error occured while creating task.')
+      return
+    }
+    existingTasksRef.current.add(key)
+  }
+
   useEffect(() => {
     const fetchSearchTerms = async () => {
       try {
@@ -741,11 +766,11 @@ export default function Automation() {
                                   `)
                                   addLog('Work sample exists.')
                                 } else {
-                                  addLog('Work sample does not exist.')
+                                  await handleNoWorkSample(clickJobResult.company, userId)
                                 }
                                 workSampleChecked = true
                               } else if (workSampleInfo?.hasButton) {
-                                addLog('No work samples exist.')
+                                await handleNoWorkSample(clickJobResult.company, userId)
                                 workSampleChecked = true
                               }
                             }
