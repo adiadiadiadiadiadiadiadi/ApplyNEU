@@ -22,9 +22,7 @@ export default function Automation() {
     const text = `Upload ${companyName} cover letter`
     const description = `Upload your ${companyName} cover letter in the 'My Documents' tab in NUWorks. Make sure the document's name includes '${companyName}'`
     const key = text.trim().toLowerCase()
-    if (existingTasksRef.current.has(key)) {
-      addLog(`Task already exists; skipping create: ${text}`)
-    } else {
+    if (!existingTasksRef.current.has(key)) {
       const resp = await fetch(`http://localhost:8080/tasks/${userId}/new`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -641,6 +639,7 @@ export default function Automation() {
                       let seenResume = false
                       let coverLetterTaskAdded = false
                       let workSampleChecked = false
+                      let portfolioChecked = false
                       for (let i = 0; i < 40; i++) {
                         const found = await webview.executeJavaScript(`
                           (() => {
@@ -772,6 +771,30 @@ export default function Automation() {
                               } else if (workSampleInfo?.hasButton) {
                                 await handleNoWorkSample(clickJobResult.company, userId)
                                 workSampleChecked = true
+                              }
+                            }
+
+                            if (!portfolioChecked) {
+                              const portfolioInfo = await webview.executeJavaScript(`
+                                (() => {
+                                  const checkboxes = Array.from(document.querySelectorAll('input[type="checkbox"][id*="other_documents"]'));
+                                  return { hasCheckboxes: checkboxes.length > 0 };
+                                })();
+                              `)
+                              if (portfolioInfo?.hasCheckboxes) {
+                                await webview.executeJavaScript(`
+                                  (() => {
+                                    const checkboxes = Array.from(document.querySelectorAll('input[type="checkbox"][id*="other_documents"]'));
+                                    checkboxes.forEach(cb => {
+                                      if (!cb.checked) {
+                                        cb.click();
+                                      }
+                                    });
+                                    return true;
+                                  })();
+                                `)
+                                addLog('Portfolio checkboxes selected.')
+                                portfolioChecked = true
                               }
                             }
 
@@ -995,6 +1018,36 @@ export default function Automation() {
                               } else if (workSampleInfo?.hasButton) {
                                 addLog('No work samples exist.')
                                 workSampleChecked = true
+                              }
+                            }
+
+                            if (!portfolioChecked) {
+                              const portfolioInfo = await webview.executeJavaScript(`
+                                (() => {
+                                  const checkboxes = Array.from(document.querySelectorAll('input[type="checkbox"][id*="other_documents"]'));
+                                  const names = checkboxes
+                                    .map(cb => {
+                                      const lbl = cb.closest('label');
+                                      const text = lbl ? (lbl.innerText || lbl.textContent || '').trim() : '';
+                                      const aria = (cb.getAttribute('aria-label') || '').trim();
+                                      return text || aria;
+                                    })
+                                    .filter(Boolean);
+                                  const btn =
+                                    document.querySelector('button[id*="other_documents"]') ||
+                                    Array.from(document.querySelectorAll('button')).find(b =>
+                                      (b.textContent || '').toLowerCase().includes('portfolio')
+                                    );
+                                  return { hasCheckboxes: checkboxes.length > 0, names, hasButton: !!btn };
+                                })();
+                              `)
+                              if (portfolioInfo?.hasCheckboxes) {
+                                const list = portfolioInfo.names && portfolioInfo.names.length ? portfolioInfo.names.join(', ') : 'none'
+                                addLog(`Portfolio options: ${list}`)
+                                portfolioChecked = true
+                              } else if (portfolioInfo?.hasButton) {
+                                addLog('No portfolios exist.')
+                                portfolioChecked = true
                               }
                             }
 
