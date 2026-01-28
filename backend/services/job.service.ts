@@ -2,28 +2,28 @@ import { pool } from '../db/index.ts';
 import Anthropic from '@anthropic-ai/sdk';
 
 export const sendJobDescription = async (user_id: string, job_description: string) => {
-    try {
-        const result = await pool.query(
-            `SELECT * FROM resumes WHERE user_id::text = $1 ORDER BY created_at DESC LIMIT 1;`,
-            [user_id]
-        )
-        if (!result.rows.length) {
-            return { error: 'Resume not found.' };
-        }
+  try {
+    const result = await pool.query(
+      `SELECT * FROM resumes WHERE user_id::text = $1 ORDER BY created_at DESC LIMIT 1;`,
+      [user_id]
+    )
+    if (!result.rows.length) {
+      return { error: 'Resume not found.' };
+    }
 
-        const row = result.rows[0];
-        const resume = row.short_resume || row.resume_text;
-        if (!resume) {
-            return { error: 'Short resume not cached.' };
-        }
-        const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const row = result.rows[0];
+    const resume = row.short_resume || row.resume_text;
+    if (!resume) {
+      return { error: 'Short resume not cached.' };
+    }
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-        const message = await anthropic.messages.create({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 1024,
-            messages: [{
-              role: 'user',
-              content: `
+    const message = await anthropic.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      messages: [{
+        role: 'user',
+        content: `
           You are a job application filter. Your task: Decide whether the USER should apply to the JOB.
           
           Rules:
@@ -94,23 +94,48 @@ export const sendJobDescription = async (user_id: string, job_description: strin
           
           Return ONLY valid JSON. No extra text, whitespace, or markdown.
           `
-            }]
-          })
+      }]
+    })
 
-        if (!message.content[0] || message.content[0].type !== 'text') {
-            return { error: "Error with API." };
-        }
-
-        const raw = message.content[0].text
-            .replace(/```json/gi, '')
-            .replace(/```/g, '')
-            .replace(/`/g, '')
-            .trim();
-        const topics = JSON.parse(raw);
-        return topics;
-
-    } catch (error) {
-        return { error: "Error extracting topics." }
+    if (!message.content[0] || message.content[0].type !== 'text') {
+      return { error: "Error with API." };
     }
+
+    const raw = message.content[0].text
+      .replace(/```json/gi, '')
+      .replace(/```/g, '')
+      .replace(/`/g, '')
+      .trim();
+    const topics = JSON.parse(raw);
+    return topics;
+
+  } catch (error) {
+    return { error: "Error extracting topics." }
+  }
 }
 
+export const addJob = async (company: string, title: string, description: string) => {
+  try {
+    const result = await pool.query(
+      `
+            INSERT INTO jobs (company, title, description)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (company, title, description) DO NOTHING
+            RETURNING *;
+            `,
+      [company, title, description]
+    );
+
+    if (result.rows.length === 0) {
+      const existing = await pool.query(
+        `SELECT * FROM jobs WHERE company = $1 AND title = $2`,
+        [company, title]
+      );
+      return existing.rows[0];
+    }
+
+    return result.rows[0];
+  } catch (error) {
+    return { error: "Error extracting topics." }
+  }
+}
