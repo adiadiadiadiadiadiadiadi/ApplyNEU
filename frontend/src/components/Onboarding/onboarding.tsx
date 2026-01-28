@@ -57,7 +57,6 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       })
       
       if (response.ok) {
-        console.log('Interests saved successfully')
         
         // Update search terms after saving interests
         await updateSearchTerms(userId)
@@ -78,10 +77,6 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           job_types: selectedJobTypes
         })
       })
-
-      if (response.ok) {
-        console.log('Job types updated successfully')
-      }
     } catch (error) {
       console.error('Error updating job types:', error)
     }

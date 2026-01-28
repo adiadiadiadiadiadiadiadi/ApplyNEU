@@ -118,24 +118,29 @@ export const addJob = async (company: string, title: string, description: string
   try {
     const result = await pool.query(
       `
-            INSERT INTO jobs (company, title, description)
-            VALUES ($1, $2, $3)
-            ON CONFLICT (company, title, description) DO NOTHING
-            RETURNING *;
-            `,
+        INSERT INTO jobs (company, title, description)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (company, title)
+        DO NOTHING
+        RETURNING *;
+        `,
       [company, title, description]
     );
 
-    if (result.rows.length === 0) {
+    // If nothing was inserted (duplicate), return the existing row so callers
+    // don't have to handle an empty result.
+    if (!result.rows.length) {
       const existing = await pool.query(
-        `SELECT * FROM jobs WHERE company = $1 AND title = $2`,
+        `SELECT * FROM jobs WHERE company = $1 AND title = $2 LIMIT 1;`,
         [company, title]
       );
-      return existing.rows[0];
+      if (existing.rows.length) return existing.rows[0];
+      return { error: "Job already exists but could not be retrieved." };
     }
 
     return result.rows[0];
   } catch (error) {
+    console.log(error)
     return { error: "Error extracting topics." }
   }
 }

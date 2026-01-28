@@ -131,7 +131,7 @@ export default function Automation() {
           addLog('Error occured: no user found.')
           return
         }
-        
+
         try {
           const tasksResp = await fetch(`http://localhost:8080/tasks/${userId}`)
           if (tasksResp.ok) {
@@ -599,12 +599,18 @@ export default function Automation() {
 
             // Send description to backend for decision and optionally apply
             try {
+              await fetch(`http://localhost:8080/jobs/add-job`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ company: clickJobResult.company, title: titleStr, description: descResult })
+              })
+
               const userId = await getUserId()
               if (!userId) {
                 addLog('Decision skipped (no user).')
               } else {
                 // Always extract via LLM; inline handling/logging moved before submit click.
-                addLog('Sending job description to LLM.')
+                addLog('Sending job description to agent.')
                 const resp = await fetch(`http://localhost:8080/jobs/${userId}/send-job`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
