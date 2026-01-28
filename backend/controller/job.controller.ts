@@ -1,5 +1,5 @@
 import express, { type Request, type Response } from 'express';
-import { sendJobDescription } from '../services/job.service.ts';
+import { addJob, sendJobDescription } from '../services/job.service.ts';
 
 /**
  * This controller handles job-related routes.
@@ -37,7 +37,34 @@ const jobController = () => {
         }
     };
 
+    const addJobRoute = async (req: Request, res: Response) => {
+        const { company, title, description } = req.body;
+
+        if (!company || !title || !description) {
+            res.status(404).json({
+                "message": "Required arguments not found to add job."
+            });
+            return;
+        }
+
+        try {
+            const result = await addJob(company, title, description);
+            if ('error' in result) {
+                res.status(400).json({
+                    "message": "Unable to add job."
+                });
+                return;
+            }
+            res.status(200).json(result);
+        } catch (err: unknown) {
+            res.status(400).json({
+                "message": "Unable to add job."
+            });
+        }
+    }
+
     router.post('/:user_id/send-job', sendJobDescriptionRoute);
+    router.post('add-job', addJobRoute);
 
     return router;
 };
