@@ -131,8 +131,7 @@ export default function Automation() {
           addLog('Error occured: no user found.')
           return
         }
-        addLog(userId)
-
+        
         try {
           const tasksResp = await fetch(`http://localhost:8080/tasks/${userId}`)
           if (tasksResp.ok) {
