@@ -104,6 +104,25 @@ export default function Automation() {
     existingTasksRef.current.add(key)
   }
 
+  const closeModalIfPresent = async (webview: any) => {
+    return webview.executeJavaScript(`
+      (() => {
+        const btn =
+          document.querySelector('button.modal-close') ||
+          document.querySelector('button.headless-close-btn') ||
+          Array.from(document.querySelectorAll('button')).find(b => {
+            const cls = (b.className || '').toLowerCase();
+            return cls.includes('modal-close') || cls.includes('headless-close-btn');
+          });
+        if (!btn) return false;
+        btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+        if (typeof btn.click === 'function') btn.click();
+        else btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        return true;
+      })();
+    `)
+  }
+
   useEffect(() => {
     const fetchSearchTerms = async () => {
       try {
@@ -320,7 +339,7 @@ export default function Automation() {
           await sleep(10)
         }
 
-        const applied = await webview.executeJavaScript(`
+        await webview.executeJavaScript(`
           (() => {
             const selections = ${JSON.stringify(jobTypes.map(t => t.toLowerCase()))};
             const cbs = Array.from(document.querySelectorAll('input[type="checkbox"][id^="job_type"]'));
@@ -597,7 +616,7 @@ export default function Automation() {
                   const instructions = normalizeEmployerInstructions(data?.employer_instructions)
                   if (data.decision === 'APPLY') {
                     addLog(`Applying to "${titleStr}"...`)
-                    const applied = await webview.executeJavaScript(`
+                    const applyClicked = await webview.executeJavaScript(`
                       (() => {
                         const btn = Array.from(document.querySelectorAll('button')).find(b => {
                           const text = (b.textContent || '').trim().toLowerCase();
@@ -606,19 +625,11 @@ export default function Automation() {
                         });
                         if (!btn) return false;
                         btn.scrollIntoView({ behavior: 'instant', block: 'center' });
-                          btn.click();
-                          return true;
+                        btn.click();
+                        return true;
                       })();
                     `)
-                    if (applied) {
-                      // Wait/check for resume UI presence before inline-instructions check.
-                      const resumeUIPresent = await webview.executeJavaScript(`
-                        (() => {
-                          const select = document.querySelector('select[id*="resume"]');
-                          return !!select;
-                        })();
-                      `)
-
+                    if (applyClicked) {
                       // Delay inline-instructions check until after resume UI is present.
                       const dividerExists = await webview.executeJavaScript(`
                         (() => {
@@ -831,8 +842,9 @@ export default function Automation() {
                               }
                             }
 
-                            // Wait for red submit/save to appear (no hard timeout)
-                            while (true) {
+                            // Wait for red submit/save to appear; if it never turns red, close modal and continue.
+                            let submitClicked = false
+                            for (let attempt = 0; attempt < 20; attempt++) { // ~0.2s
                               const redNow = await webview.executeJavaScript(`
                                 (() => {
                                   const btn = Array.from(document.querySelectorAll('button')).find(b => {
@@ -849,12 +861,19 @@ export default function Automation() {
                                 })();
                               `)
                               if (redNow?.clicked) {
+                                submitClicked = true
                                 break
                               }
                               await sleep(10)
                             }
+                            if (!submitClicked) {
+                              addLog('Submit not ready; closing modal and continuing.')
+                              await closeModalIfPresent(webview)
+                              break
+                            }
                             // Wait for submit button to disappear (user clicked it) before continuing (no hard timeout)
-                            while (true) {
+                            let submitGone = false
+                            for (let attempt = 0; attempt < 20; attempt++) { // ~0.2s
                               const submitStillThere = await webview.executeJavaScript(`
                                 (() => {
                                   const btn = Array.from(document.querySelectorAll('button')).find(b => {
@@ -866,24 +885,15 @@ export default function Automation() {
                                 })();
                               `)
                               if (!submitStillThere) {
-                                await webview.executeJavaScript(`
-                                  (() => {
-                                    const btn =
-                                      document.querySelector('button.modal-close') ||
-                                      document.querySelector('button.headless-close-btn') ||
-                                      Array.from(document.querySelectorAll('button')).find(b => {
-                                        const cls = (b.className || '').toLowerCase();
-                                        return cls.includes('modal-close') || cls.includes('headless-close-btn');
-                                      });
-                                    if (!btn) return false;
-                                    btn.scrollIntoView({ behavior: 'instant', block: 'center' });
-                                    btn.click();
-                                    return true;
-                                  })();
-                                `)
+                                await closeModalIfPresent(webview)
+                                submitGone = true
                                 break
                               }
                               await sleep(10)
+                            }
+                            if (!submitGone) {
+                              addLog('Submit still visible; closing modal and continuing.')
+                              await closeModalIfPresent(webview)
                             }
                             setStatus('running')
                           } else if (found?.hasButton) {
@@ -1087,7 +1097,8 @@ export default function Automation() {
                             }
 
                             // Wait specifically for red submit/save to appear
-                            while (true) {
+                            let submitClicked = false
+                            for (let attempt = 0; attempt < 20; attempt++) { // ~0.2s
                               const redNow = await webview.executeJavaScript(`
                                 (() => {
                                   const btn = Array.from(document.querySelectorAll('button')).find(b => {
@@ -1106,12 +1117,19 @@ export default function Automation() {
                                 })();
                               `)
                               if (redNow?.clicked) {
+                                submitClicked = true
                                 break
                               }
                               await sleep(10)
                             }
+                            if (!submitClicked) {
+                              addLog('Submit not ready; closing modal and continuing.')
+                              await closeModalIfPresent(webview)
+                              break
+                            }
                             // Wait for submit to disappear
-                            while (true) {
+                            let submitGone = false
+                            for (let attempt = 0; attempt < 20; attempt++) { // ~0.2s
                               const submitStillThere = await webview.executeJavaScript(`
                                 (() => {
                                   const btn = Array.from(document.querySelectorAll('button')).find(b => {
@@ -1123,25 +1141,17 @@ export default function Automation() {
                                 })();
                               `)
                               if (!submitStillThere) {
-                                await webview.executeJavaScript(`
-                                  (() => {
-                                    const btn =
-                                      document.querySelector('button.modal-close') ||
-                                      document.querySelector('button.headless-close-btn') ||
-                                      Array.from(document.querySelectorAll('button')).find(b => {
-                                        const cls = (b.className || '').toLowerCase();
-                                        return cls.includes('modal-close') || cls.includes('headless-close-btn');
-                                      });
-                                    if (!btn) return false;
-                                    btn.scrollIntoView({ behavior: 'instant', block: 'center' });
-                                    btn.click();
-                                    return true;
-                                  })();
-                                `)
+                                await closeModalIfPresent(webview)
                                 setStatus('running')
+                                submitGone = true
                                 break
                               }
                               await sleep(10)
+                            }
+                            if (!submitGone) {
+                              addLog('Submit still visible; closing modal and continuing.')
+                              await closeModalIfPresent(webview)
+                              setStatus('running')
                             }
                           }
                           break
