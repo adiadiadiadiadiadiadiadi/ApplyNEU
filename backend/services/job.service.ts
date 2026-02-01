@@ -114,6 +114,14 @@ export const sendJobDescription = async (user_id: string, job_description: strin
   }
 }
 
+/**
+ * Adds job to database and avoids existing jobs.
+ * 
+ * @param company 
+ * @param title 
+ * @param description 
+ * @returns job in database
+ */
 export const addJob = async (company: string, title: string, description: string) => {
   try {
     const result = await pool.query(
@@ -127,8 +135,6 @@ export const addJob = async (company: string, title: string, description: string
       [company, title, description]
     );
 
-    // If nothing was inserted (duplicate), return the existing row so callers
-    // don't have to handle an empty result.
     if (!result.rows.length) {
       const existing = await pool.query(
         `SELECT * FROM jobs WHERE company = $1 AND title = $2 LIMIT 1;`,
