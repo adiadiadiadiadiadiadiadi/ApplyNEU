@@ -958,6 +958,7 @@ export default function Automation() {
                             if (!submitClicked) {
                               addLog('Submit not ready; closing modal and continuing.')
                               await closeModalIfPresent(webview, preferHeadlessClose)
+                              skipJob = true
                               break
                             }
                             // Wait for submit button to disappear (user clicked it) before continuing (no hard timeout)
@@ -1223,6 +1224,7 @@ export default function Automation() {
                             if (!submitClicked) {
                               addLog('Submit not ready; closing modal and continuing.')
                               await closeModalIfPresent(webview, preferHeadlessClose)
+                              skipJob = true
                               break
                             }
                             // Wait for submit to disappear
