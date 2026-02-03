@@ -21,7 +21,6 @@ const applicationController = () => {
         }
 
         try {
-            console.log("here")
             const result = await addJobApplication(user_id, company, title, description);
             // if ('error' in result) {
             //     res.status(400).json({
