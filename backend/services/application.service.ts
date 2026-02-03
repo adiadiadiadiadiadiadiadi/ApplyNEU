@@ -4,9 +4,8 @@ export const addJobApplication = async (user_id: string, company: string, title:
     try {
         const job = await pool.query(
             `
-            SELECT job_id FROM jobs WHERE title = $1, company = $2, description = $3
-            VALUES ($1, $2, $3)
-            RETURNING *;
+            SELECT * FROM jobs WHERE title = $1 AND company = $2 AND description = $3
+            VALUES ($1, $2, $3);
             `,
             [title, company, description]
         );
