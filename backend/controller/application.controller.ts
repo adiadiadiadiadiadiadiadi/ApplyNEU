@@ -21,14 +21,14 @@ const applicationController = () => {
         }
 
         try {
-            const result = await addJobApplication(job_id, user_id, company, title, description);
-            if ('error' in result) {
-                res.status(400).json({
-                    "message": "Unable to add job application."
-                });
-                return;
-            }
-            res.status(200).json(result);
+            const result = await addJobApplication(user_id, company, title, description);
+            // if ('error' in result) {
+            //     res.status(400).json({
+            //         "message": "Unable to add job application."
+            //     });
+            //     return;
+            // }
+            // res.status(200).json(result);
         } catch (err: unknown) {
             res.status(400).json({
                 "message": "Unable to send job description."

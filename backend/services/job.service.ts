@@ -1,6 +1,8 @@
 import { pool } from '../db/index.ts';
 import Anthropic from '@anthropic-ai/sdk';
 
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
 export const sendJobDescription = async (user_id: string, job_description: string) => {
   try {
     const result = await pool.query(
@@ -16,7 +18,6 @@ export const sendJobDescription = async (user_id: string, job_description: strin
     if (!resume) {
       return { error: 'Short resume not cached.' };
     }
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
     const message = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
@@ -146,7 +147,6 @@ export const addJob = async (company: string, title: string, description: string
 
     return result.rows[0];
   } catch (error) {
-    console.log(error)
     return { error: "Error extracting topics." }
   }
 }

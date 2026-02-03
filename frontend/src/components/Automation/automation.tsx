@@ -104,12 +104,15 @@ export default function Automation() {
     existingTasksRef.current.add(key)
   }
 
-  const closeModalIfPresent = async (webview: any) => {
+  const closeModalIfPresent = async (webview: any, preferHeadless = false) => {
     return webview.executeJavaScript(`
       (() => {
+        const ordered =
+          ${preferHeadless ? `[ 'button.headless-close-btn', 'button.modal-close' ]` : `[ 'button.modal-close', 'button.headless-close-btn' ]`};
         const btn =
-          document.querySelector('button.modal-close') ||
-          document.querySelector('button.headless-close-btn') ||
+          ordered
+            .map(sel => document.querySelector(sel))
+            .find(Boolean) ||
           Array.from(document.querySelectorAll('button')).find(b => {
             const cls = (b.className || '').toLowerCase();
             return cls.includes('modal-close') || cls.includes('headless-close-btn');
@@ -118,6 +121,33 @@ export default function Automation() {
         btn.scrollIntoView({ behavior: 'instant', block: 'center' });
         if (typeof btn.click === 'function') btn.click();
         else btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        return true;
+      })();
+    `)
+  }
+
+  const startSubmissionModalWatcher = async (webview: any) => {
+    return webview.executeJavaScript(`
+      (() => {
+        // Avoid multiple intervals
+        if (window.__applyModalWatcher) return true;
+        window.__applyModalWatcher = setInterval(() => {
+          const hasSuccessText = Array.from(document.querySelectorAll('p, h1, h2, h3, h4, div, span'))
+            .some(el => ((el.innerText || el.textContent || '').toLowerCase().includes('your application has been submitted')));
+          if (!hasSuccessText) return;
+          const btn =
+            document.querySelector('button.headless-close-btn') ||
+            document.querySelector('button.modal-close') ||
+            Array.from(document.querySelectorAll('button')).find(b => {
+              const cls = (b.className || '').toLowerCase();
+              return cls.includes('headless-close-btn') || cls.includes('modal-close');
+            });
+          if (btn) {
+            btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+            if (typeof btn.click === 'function') btn.click();
+            else btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+          }
+        }, 250);
         return true;
       })();
     `)
@@ -645,6 +675,7 @@ export default function Automation() {
                       })();
                     `)
                     if (applyClicked) {
+                      await startSubmissionModalWatcher(webview)
                       // Delay inline-instructions check until after resume UI is present.
                       const dividerExists = await webview.executeJavaScript(`
                         (() => {
@@ -859,6 +890,7 @@ export default function Automation() {
 
                             // Wait for red submit/save to appear; if it never turns red, close modal and continue.
                             let submitClicked = false
+                            let preferHeadlessClose = false
                             for (let attempt = 0; attempt < 20; attempt++) { // ~0.2s
                               const redNow = await webview.executeJavaScript(`
                                 (() => {
@@ -877,13 +909,14 @@ export default function Automation() {
                               `)
                               if (redNow?.clicked) {
                                 submitClicked = true
+                                preferHeadlessClose = !!redNow?.hasDivider
                                 break
                               }
                               await sleep(10)
                             }
                             if (!submitClicked) {
                               addLog('Submit not ready; closing modal and continuing.')
-                              await closeModalIfPresent(webview)
+                              await closeModalIfPresent(webview, preferHeadlessClose)
                               break
                             }
                             // Wait for submit button to disappear (user clicked it) before continuing (no hard timeout)
@@ -900,7 +933,7 @@ export default function Automation() {
                                 })();
                               `)
                               if (!submitStillThere) {
-                                await closeModalIfPresent(webview)
+                                await closeModalIfPresent(webview, preferHeadlessClose)
                                 submitGone = true
                                 break
                               }
@@ -908,7 +941,7 @@ export default function Automation() {
                             }
                             if (!submitGone) {
                               addLog('Submit still visible; closing modal and continuing.')
-                              await closeModalIfPresent(webview)
+                              await closeModalIfPresent(webview, preferHeadlessClose)
                             }
                             setStatus('running')
                           } else if (found?.hasButton) {
@@ -1113,6 +1146,7 @@ export default function Automation() {
 
                             // Wait specifically for red submit/save to appear
                             let submitClicked = false
+                            let preferHeadlessClose = false
                             for (let attempt = 0; attempt < 20; attempt++) { // ~0.2s
                               const redNow = await webview.executeJavaScript(`
                                 (() => {
@@ -1133,13 +1167,14 @@ export default function Automation() {
                               `)
                               if (redNow?.clicked) {
                                 submitClicked = true
+                                preferHeadlessClose = !!redNow?.hasDivider
                                 break
                               }
                               await sleep(10)
                             }
                             if (!submitClicked) {
                               addLog('Submit not ready; closing modal and continuing.')
-                              await closeModalIfPresent(webview)
+                              await closeModalIfPresent(webview, preferHeadlessClose)
                               break
                             }
                             // Wait for submit to disappear
@@ -1156,7 +1191,7 @@ export default function Automation() {
                                 })();
                               `)
                               if (!submitStillThere) {
-                                await closeModalIfPresent(webview)
+                                await closeModalIfPresent(webview, preferHeadlessClose)
                                 setStatus('running')
                                 submitGone = true
                                 break
@@ -1165,7 +1200,7 @@ export default function Automation() {
                             }
                             if (!submitGone) {
                               addLog('Submit still visible; closing modal and continuing.')
-                              await closeModalIfPresent(webview)
+                              await closeModalIfPresent(webview, preferHeadlessClose)
                               setStatus('running')
                             }
                           }
