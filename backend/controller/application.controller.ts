@@ -9,11 +9,11 @@ import { addJobApplication } from '../services/application.service.ts';
 const applicationController = () => {
     const router = express.Router();
 
-    const sendJobDescriptionRoute = async (req: Request, res: Response) => {
-        const { user_id, job_id } = req.params;
+    const addApplicationRoute = async (req: Request, res: Response) => {
+        const { user_id } = req.params;
         const { company, title, description } = req.body;
 
-        if (!user_id || !job_id || !title || !description) {
+        if (!user_id || !title || !description || !company) {
             res.status(404).json({
                 "message": "Required arguments not found to add job application."
             });
@@ -21,6 +21,7 @@ const applicationController = () => {
         }
 
         try {
+            console.log("here")
             const result = await addJobApplication(user_id, company, title, description);
             // if ('error' in result) {
             //     res.status(400).json({
@@ -36,7 +37,7 @@ const applicationController = () => {
         }
     };
 
-    router.post('/:user_id/new', sendJobDescriptionRoute);
+    router.post('/:user_id/new', addApplicationRoute);
 
     return router;
 };
