@@ -599,12 +599,22 @@ export default function Automation() {
 
             // Send description to backend for decision and optionally apply
             try {
-              await fetch(`http://localhost:8080/jobs/add-job`, {
+              const companyName = (clickJobResult.company || '').trim()
+              const jobTitle = (titleStr || '').trim()
+              const jobDescription = (descResult || '').toString()
+
+              const addJobResp = await fetch(`http://localhost:8080/jobs/add-job`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ company: clickJobResult.company, title: titleStr, description: descResult })
+                body: JSON.stringify({
+                  company: companyName,
+                  title: jobTitle,
+                  description: jobDescription
+                })
               })
-
+              if (!addJobResp.ok) {
+                addLog('Failed to record job in backend.')
+              }
               const userId = await getUserId()
               if (!userId) {
                 addLog('Decision skipped (no user).')
@@ -1168,6 +1178,19 @@ export default function Automation() {
                         playAlertSound()
                         setStatus('paused')
                         return
+                      }
+                      const applicationPayload = {
+                        company: (clickJobResult.company || '').trim() || 'Unknown company',
+                        title: (titleStr || '').trim() || 'Untitled job',
+                        description: (descResult || '').toString()
+                      }
+                      const resp = await fetch(`http://localhost:8080/applications/${userId}/new`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(applicationPayload)
+                      })
+                      if (!resp.ok) {
+                        addLog('Failed to record application.')
                       }
                     } else {
                       addLog('Apply button not found.')
