@@ -126,31 +126,57 @@ export default function Automation() {
     `)
   }
 
-  const startSubmissionModalWatcher = async (webview: any) => {
-    return webview.executeJavaScript(`
-      (() => {
-        // Avoid multiple intervals
-        if (window.__applyModalWatcher) return true;
-        window.__applyModalWatcher = setInterval(() => {
+  const waitForDividerSubmissionAndClose = async (webview: any) => {
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+    for (let i = 0; i < 240; i++) { // up to ~60s
+      const res = await webview.executeJavaScript(`
+        (() => {
+          const modalEl = document.querySelector('div.job-success-modal') || document.querySelector('div.job-success-modal.padding-lg');
           const hasSuccessText = Array.from(document.querySelectorAll('p, h1, h2, h3, h4, div, span'))
             .some(el => ((el.innerText || el.textContent || '').toLowerCase().includes('your application has been submitted')));
-          if (!hasSuccessText) return;
-          const btn =
-            document.querySelector('button.headless-close-btn') ||
-            document.querySelector('button.modal-close') ||
-            Array.from(document.querySelectorAll('button')).find(b => {
-              const cls = (b.className || '').toLowerCase();
-              return cls.includes('headless-close-btn') || cls.includes('modal-close');
-            });
+          if (!modalEl && !hasSuccessText) {
+            return { detected: false, closed: false };
+          }
+          const candidates = [
+            'button.headless-close-btn',
+            'button.modal-close',
+            'button[aria-label="Close"]',
+            'button[aria-label="close"]',
+            'button[title*="lose"]',
+            'button[title*="Close"]',
+          ];
+          let btn = null;
+          for (const sel of candidates) {
+            const el = document.querySelector(sel);
+            if (el) { btn = el; break; }
+          }
+          if (!btn) {
+            btn = Array.from(document.querySelectorAll('button, [role="button"]')).find(el => {
+              const text = (el.innerText || el.textContent || '').trim().toLowerCase();
+              const cls = (el.className || '').toLowerCase();
+              return text === '×' || text === 'x' || text === 'close' || cls.includes('headless-close-btn') || cls.includes('modal-close');
+            }) || null;
+          }
           if (btn) {
             btn.scrollIntoView({ behavior: 'instant', block: 'center' });
             if (typeof btn.click === 'function') btn.click();
             else btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            return { detected: true, closed: true };
           }
-        }, 250);
-        return true;
-      })();
-    `)
+          return { detected: true, closed: false };
+        })();
+      `)
+      if (res?.closed) {
+        addLog('Submission modal detected and closed.')
+        return true
+      }
+      if (res?.detected) {
+        addLog('Submission modal detected; waiting for close control.')
+      }
+      await sleep(250)
+    }
+    addLog('Submission modal not detected within timeout.')
+    return false
   }
 
   useEffect(() => {
@@ -217,6 +243,17 @@ export default function Automation() {
     const timestamp = new Date().toLocaleTimeString()
     setLogs(prev => [...prev, `[${timestamp}] ${message}`])
   }
+
+  useEffect(() => {
+    // Expose a lightweight logger for injected scripts running inside the webview.
+    // This is best-effort and only used for debugging popup handling.
+    ;(window as any).__automationLog = (msg: any) => addLog(String(msg ?? ''))
+    return () => {
+      if ((window as any).__automationLog) {
+        delete (window as any).__automationLog
+      }
+    }
+  }, [addLog])
 
   type EmployerInstruction = { text: string; description: string }
 
@@ -675,7 +712,6 @@ export default function Automation() {
                       })();
                     `)
                     if (applyClicked) {
-                      await startSubmissionModalWatcher(webview)
                       // Delay inline-instructions check until after resume UI is present.
                       const dividerExists = await webview.executeJavaScript(`
                         (() => {
@@ -719,6 +755,7 @@ export default function Automation() {
                         })();
                       `)
                       let seenResume = false
+                      let skipJob = false
                       let coverLetterTaskAdded = false
                       let workSampleChecked = false
                       let portfolioChecked = false
@@ -794,7 +831,9 @@ export default function Automation() {
                                         await handleNoCoverLetter(clickJobResult.company, webview, userId);
                                         coverLetterTaskAdded = true
                                       }
-                                      continue
+                                      addLog('Missing cover letter match; skipping this job.')
+                                      skipJob = true
+                                      break
                                     }
                                   }
                                 }
@@ -803,7 +842,9 @@ export default function Automation() {
                                   await handleNoCoverLetter(clickJobResult.company, webview, userId)
                                   coverLetterTaskAdded = true
                                 }
-                                continue
+                                addLog('No cover letter control; skipping this job.')
+                                skipJob = true
+                                break
                               }
                             }
 
@@ -942,8 +983,13 @@ export default function Automation() {
                             if (!submitGone) {
                               addLog('Submit still visible; closing modal and continuing.')
                               await closeModalIfPresent(webview, preferHeadlessClose)
+                              skipJob = true
                             }
                             setStatus('running')
+                            if (preferHeadlessClose) {
+                              await waitForDividerSubmissionAndClose(webview)
+                            }
+                            if (skipJob) break
                           } else if (found?.hasButton) {
                             await webview.executeJavaScript(`
                               (() => {
@@ -1059,7 +1105,9 @@ export default function Automation() {
                                     return false;
                                   })();
                                 `)
-                                continue
+                                addLog('No cover letter options; skipping this job.')
+                                skipJob = true
+                                break
                               }
                             }
 
@@ -1202,11 +1250,20 @@ export default function Automation() {
                               addLog('Submit still visible; closing modal and continuing.')
                               await closeModalIfPresent(webview, preferHeadlessClose)
                               setStatus('running')
+                              skipJob = true
                             }
+                            if (preferHeadlessClose) {
+                              await waitForDividerSubmissionAndClose(webview)
+                            }
+                            if (skipJob) break
                           }
                           break
                         }
+                         if (skipJob) break
                          await sleep(100)
+                      }
+                      if (skipJob) {
+                        continue
                       }
                       if (!seenResume) {
                         addLog('Waiting for user resume upload...')
