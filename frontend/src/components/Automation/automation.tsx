@@ -304,6 +304,101 @@ export default function Automation() {
     }
   }
 
+  const applyPanelFilters = async (webview: any) => {
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+    const moreClicked = await webview.executeJavaScript(`
+      (() => {
+        const el = Array.from(document.querySelectorAll('span.filter-text, button, a')).find(node => {
+          const text = (node.innerText || node.textContent || '').trim().toLowerCase();
+          return text === 'more filters';
+        });
+        if (!el) return false;
+        el.scrollIntoView({ behavior: 'instant', block: 'center' });
+        if (typeof el.click === 'function') el.click();
+        else el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        return true;
+      })();
+    `)
+    if (!moreClicked) {
+      addLog('"More Filters" not found; skipping panel filters.')
+      return
+    }
+    // Wait for panel visible
+    for (let i = 0; i < 60; i++) {
+      const panelVisible = await webview.executeJavaScript(`
+        (() => {
+          const panel = document.querySelector('div#cfEmployersAdvFilters') || document.querySelector('div[id*="EmployersAdvFilters"]');
+          if (!panel) return false;
+          const style = window.getComputedStyle(panel);
+          return style && style.display !== 'none' && style.visibility !== 'hidden';
+        })();
+      `)
+      if (panelVisible) {
+        addLog('More Filters panel visible.')
+        break
+      }
+      await sleep(100)
+    }
+    // Toggle exclude applied jobs
+    for (let j = 0; j < 60; j++) {
+      const checkboxResult = await webview.executeJavaScript(`
+        (() => {
+          const cb =
+            document.querySelector('input[type="checkbox"][id*="exclude_applied_jobs"]') ||
+            Array.from(document.querySelectorAll('input[type="checkbox"]')).find(el =>
+              ((el.getAttribute('aria-label') || '').toLowerCase().includes("exclude jobs i've applied for"))
+            );
+          if (!cb) return { found: false, clicked: false, already: false };
+          const box = cb;
+          const already = !!box.checked;
+          if (!box.checked) {
+            if (typeof box.click === 'function') box.click();
+            else box.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            return { found: true, clicked: true, already };
+          }
+          return { found: true, clicked: false, already };
+        })();
+      `)
+      if (checkboxResult?.found) {
+        addLog('Exclude jobs checkbox available.')
+        if (checkboxResult.clicked) {
+          addLog('Clicked "Exclude jobs I’ve applied for".')
+        } else if (checkboxResult.already) {
+          addLog('"Exclude jobs I’ve applied for" was already selected.')
+        }
+        break
+      }
+      await sleep(100)
+    }
+    // Click Apply in panel
+    for (let k = 0; k < 120; k++) {
+      const applied = await webview.executeJavaScript(`
+        (() => {
+          const panel = document.querySelector('div#cfEmployersAdvFilters') || document.querySelector('div[id*="EmployersAdvFilters"]');
+          const scope = panel || document;
+          const btn = Array.from(scope.querySelectorAll('button')).find(b => {
+            const text = (b.textContent || '').trim().toLowerCase();
+            const aria = (b.getAttribute('aria-label') || '').toLowerCase();
+            const enabled = !b.disabled && !!b.offsetParent;
+            return enabled && (text === 'apply' || aria === 'apply');
+          });
+          if (!btn) return 'missing';
+          btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+          if (typeof btn.click === 'function') btn.click();
+          else btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+          return 'clicked';
+        })();
+      `)
+      if (applied === 'clicked') {
+        addLog('Clicked Apply in More Filters.')
+        return
+      }
+      await sleep(100)
+    }
+    addLog('Apply button in More Filters not found within timeout.')
+  }
+
+
   const handlePlayClick = async () => {
     setStatus('running')
     setAwaitingInput(false)
@@ -359,6 +454,38 @@ export default function Automation() {
       }
     })()
 
+    // Select "Jobs I Qualify For" in the Show Me filter before applying job types
+    await (async () => {
+      for (let i = 0; i < 40; i++) {
+        const result = await webview.executeJavaScript(`
+          (() => {
+            const sel =
+              document.querySelector('select#single-select-filter') ||
+              document.querySelector('select[id*="single-select-filter"]') ||
+              document.querySelector('select[name*="show_me"]') ||
+              document.querySelector('select[aria-label*="Show Me"]');
+            if (!sel) return 'missing';
+            sel.scrollIntoView({ behavior: 'instant', block: 'center' });
+            const options = Array.from(sel.options || []);
+            const target = options.find(o => ((o.innerText || o.textContent || '').trim().toLowerCase().includes('jobs i qualify for')));
+            if (!target) return 'no-option';
+            sel.value = target.value;
+            sel.dispatchEvent(new Event('change', { bubbles: true }));
+            return 'set';
+          })();
+        `)
+        if (result === 'set') {
+          addLog('Show Me set to "Jobs I Qualify For".')
+          break
+        }
+        if (result === 'no-option') {
+          addLog('"Jobs I Qualify For" option not found in Show Me filter.')
+          break
+        }
+        await sleep(100)
+      }
+    })()
+
     // Open job type dropdown before searches
     await (async () => {
       for (let i = 0; i < 40; i++) {
@@ -374,7 +501,7 @@ export default function Automation() {
         if (result === 'clicked') {
           return
         }
-         await sleep(100)
+        await sleep(100)
       }
     })()
 
@@ -433,6 +560,98 @@ export default function Automation() {
         addLog('Error applying job type filters.')
       }
     })()
+
+    // Click "More Filters", then click "Exclude jobs I've applied for", then click Apply.
+    const moreFiltersClicked = await webview.executeJavaScript(`
+      (() => {
+        const el = Array.from(document.querySelectorAll('span.filter-text, button, a')).find(node => {
+          const text = (node.innerText || node.textContent || '').trim().toLowerCase();
+          return text === 'more filters';
+        });
+        if (!el) return false;
+        el.scrollIntoView({ behavior: 'instant', block: 'center' });
+        if (typeof el.click === 'function') el.click();
+        else el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        return true;
+      })();
+    `)
+    if (moreFiltersClicked) {
+      addLog('Clicked "More Filters"; waiting for panel...')
+      // Wait for more-filters panel to render
+      for (let i = 0; i < 60; i++) {
+        const panelVisible = await webview.executeJavaScript(`
+          (() => {
+            const panel = document.querySelector('div#cfEmployersAdvFilters') || document.querySelector('div[id*="EmployersAdvFilters"]');
+            if (!panel) return false;
+            const style = window.getComputedStyle(panel);
+            return style && style.display !== 'none' && style.visibility !== 'hidden';
+          })();
+        `)
+        if (panelVisible) {
+          addLog('More Filters panel visible.')
+          break
+        }
+        await new Promise(res => setTimeout(res, 100))
+      }
+      // Wait for and click exclude applied jobs checkbox
+      for (let j = 0; j < 60; j++) {
+        const checkboxResult = await webview.executeJavaScript(`
+          (() => {
+            const cb =
+              document.querySelector('input[type="checkbox"][id*="exclude_applied_jobs"]') ||
+              Array.from(document.querySelectorAll('input[type="checkbox"]')).find(el =>
+                ((el.getAttribute('aria-label') || '').toLowerCase().includes("exclude jobs i've applied for"))
+              );
+            if (!cb) return { found: false, clicked: false, already: false };
+            const box = cb;
+            const already = !!box.checked;
+            if (!box.checked) {
+              if (typeof box.click === 'function') box.click();
+              else box.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+              return { found: true, clicked: true, already };
+            }
+            return { found: true, clicked: false, already };
+          })();
+        `)
+        if (checkboxResult?.found) {
+          addLog('Exclude jobs checkbox available.')
+          if (checkboxResult.clicked) {
+            addLog('Clicked "Exclude jobs I’ve applied for".')
+          } else if (checkboxResult.already) {
+            addLog('"Exclude jobs I’ve applied for" was already selected.')
+          }
+          break
+        }
+        await new Promise(res => setTimeout(res, 100))
+      }
+      // Click the Apply button inside the panel
+      for (let k = 0; k < 120; k++) {
+        const applied = await webview.executeJavaScript(`
+          (() => {
+            const panel = document.querySelector('div#cfEmployersAdvFilters') || document.querySelector('div[id*="EmployersAdvFilters"]');
+            const scope = panel || document;
+            const btn = Array.from(scope.querySelectorAll('button')).find(b => {
+              const text = (b.textContent || '').trim().toLowerCase();
+              const aria = (b.getAttribute('aria-label') || '').toLowerCase();
+              const enabled = !b.disabled && !!b.offsetParent;
+              return enabled && (text === 'apply' || aria === 'apply');
+            });
+            if (!btn) return 'missing';
+            btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+            if (typeof btn.click === 'function') btn.click();
+            else btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            return 'clicked';
+          })();
+        `)
+        if (applied === 'clicked') {
+          addLog('Clicked Apply in More Filters; stopping.')
+          break
+        }
+        await new Promise(res => setTimeout(res, 100))
+      }
+    } else {
+      addLog('"More Filters" not found; continuing without it.')
+    }
 
     // Wait for the search input on the jobs page
     await (async () => {
@@ -530,24 +749,46 @@ export default function Automation() {
 
        await sleep(100)
 
-      // After search results load, click each job card on the page and log its title
+      // Wait for any job cards to render
       await (async () => {
         for (let i = 0; i < 40; i++) {
           const found = await webview.executeJavaScript(`
             (() => Array.from(document.querySelectorAll('div[id^="list-item-"]')).length)();
           `)
           if (found && found > 0) return
-           await sleep(100)
+          await sleep(100)
         }
       })()
 
-      const jobCount = await webview.executeJavaScript(`
+      let jobCount = await webview.executeJavaScript(`
         (() => Array.from(document.querySelectorAll('div[id^="list-item-"]')).length)();
       `)
 
       if (!jobCount || jobCount <= 0) {
         addLog(`No job cards found for "${term}".`)
       } else {
+        // Apply panel filters (More Filters) after results load
+        await applyPanelFilters(webview)
+
+        // Recount after panel filters
+        await (async () => {
+          for (let i = 0; i < 40; i++) {
+            const found = await webview.executeJavaScript(`
+              (() => Array.from(document.querySelectorAll('div[id^="list-item-"]')).length)();
+            `)
+            if (found && found > 0) return
+            await sleep(100)
+          }
+        })()
+        jobCount = await webview.executeJavaScript(`
+          (() => Array.from(document.querySelectorAll('div[id^="list-item-"]')).length)();
+        `)
+
+        if (!jobCount || jobCount <= 0) {
+          addLog(`No job cards found for "${term}" after panel filters.`)
+          continue
+        }
+
         addLog(`Found ${jobCount} job cards for "${term}". Clicking through...`)
         for (let idx = 0; idx < jobCount; idx++) {
           const clickJobResult = await webview.executeJavaScript(`
@@ -741,7 +982,7 @@ export default function Automation() {
                         }
                       }
                       if (instructions.length) {
-                        await addEmployerTasks(instructions, userId)
+                        await addEmployerTasks(instructions, userId as string)
                       }
                       await webview.executeJavaScript(`
                         (() => {
@@ -1310,7 +1551,7 @@ export default function Automation() {
             addLog(`Job card #${idx + 1} missing or not clickable.`)
           }
 
-          await sleep(100)
+          // No pause between card clicks
         }
       }
     }
