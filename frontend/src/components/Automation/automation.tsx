@@ -1228,9 +1228,7 @@ export default function Automation() {
                               skipJob = true
                             }
                             setStatus('running')
-                            if (preferHeadlessClose) {
-                              await waitForDividerSubmissionAndClose(webview)
-                            }
+                            await waitForDividerSubmissionAndClose(webview)
                             if (skipJob) break
                           } else if (found?.hasButton) {
                             await webview.executeJavaScript(`
@@ -1495,9 +1493,7 @@ export default function Automation() {
                               setStatus('running')
                               skipJob = true
                             }
-                            if (preferHeadlessClose) {
-                              await waitForDividerSubmissionAndClose(webview)
-                            }
+                            await waitForDividerSubmissionAndClose(webview)
                             if (skipJob) break
                           }
                           break
