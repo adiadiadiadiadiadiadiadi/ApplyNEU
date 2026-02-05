@@ -12,6 +12,7 @@ export default function Automation() {
   const logsEndRef = useRef<HTMLDivElement>(null)
   const initializedRef = useRef(false)
   const existingTasksRef = useRef<Set<string>>(new Set())
+  const searchTermsRef = useRef<Set<string>>(new Set())
 
   async function handleNoCoverLetter(companyName: string, webview: any, userId: string | undefined) {
     addLog(`No cover letter found for ${companyName}.`)
@@ -128,7 +129,8 @@ export default function Automation() {
 
   const waitForDividerSubmissionAndClose = async (webview: any) => {
     const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
-    for (let i = 0; i < 240; i++) { // up to ~60s
+    let detectedLogged = false
+    for (let i = 0; i < 24; i++) { // up to ~6s
       const res = await webview.executeJavaScript(`
         (() => {
           const modalEl = document.querySelector('div.job-success-modal') || document.querySelector('div.job-success-modal.padding-lg');
@@ -170,12 +172,13 @@ export default function Automation() {
         addLog('Submission modal detected and closed.')
         return true
       }
-      if (res?.detected) {
+      if (res?.detected && !detectedLogged) {
         addLog('Submission modal detected; waiting for close control.')
+        detectedLogged = true
       }
       await sleep(250)
     }
-    addLog('Submission modal not detected within timeout.')
+    addLog('Submission modal not detected within timeout; continuing.')
     return false
   }
 
@@ -212,6 +215,11 @@ export default function Automation() {
         const data = await response.json()
         const terms = Array.isArray(data?.search_terms) ? data.search_terms : []
         setSearchTerms(terms)
+        searchTermsRef.current = new Set(
+          terms
+            .map((t: any) => String(t ?? '').trim().toLowerCase())
+            .filter(Boolean)
+        )
       } catch (error) {
         addLog('Error occured. Could not get search terms.')
       }
@@ -668,8 +676,29 @@ export default function Automation() {
       return
     }
 
-    for (const term of searchTerms) {
+    const normalizedTerms = searchTerms
+      .map(term => String(term ?? '').trim())
+      .filter(Boolean)
+    addLog(`Loaded ${normalizedTerms.length} search term(s): ${normalizedTerms.join(' | ')}`)
+
+    termLoop: for (const term of normalizedTerms) {
       addLog(`Searching for "${term}"...`)
+      const beforeValue = await webview.executeJavaScript(`
+        (() => {
+          const input = document.querySelector('input#jobs-keyword-input');
+          if (!input) return { found: false };
+          return {
+            found: true,
+            value: input.value || '',
+            placeholder: input.placeholder || ''
+          };
+        })();
+      `)
+      if (beforeValue?.found) {
+        addLog(`Current search box value before typing: "${beforeValue.value || ''}" (ph="${beforeValue.placeholder || ''}")`)
+      } else {
+        addLog('Search box not found before typing.')
+      }
       const typeResult = await webview.executeJavaScript(`
         (async () => {
           const input = document.querySelector('input#jobs-keyword-input');
@@ -696,10 +725,20 @@ export default function Automation() {
 
       if (typeResult === 'missing-input') {
         addLog(`Failed to type "${term}" (input not found).`)
-        continue
+        continue termLoop
       }
 
       addLog(`Typing complete for "${term}". Pressing Enter...`)
+      const afterTypeValue = await webview.executeJavaScript(`
+        (() => {
+          const input = document.querySelector('input#jobs-keyword-input');
+          if (!input) return { found: false };
+          return { found: true, value: input.value || '' };
+        })();
+      `)
+      if (afterTypeValue?.found) {
+        addLog(`Search box value after typing: "${afterTypeValue.value || ''}"`)
+      }
 
       const enterResult = await webview.executeJavaScript(`
         (() => {
@@ -715,7 +754,7 @@ export default function Automation() {
 
       if (enterResult === 'missing-input') {
         addLog(`Failed to press Enter for "${term}" (input not found).`)
-        continue
+        continue termLoop
       }
 
       let clicked = false
@@ -747,28 +786,37 @@ export default function Automation() {
         addLog(`Search button not found for "${term}".`)
       }
 
-       await sleep(100)
+      await sleep(100)
 
-      // Wait for any job cards to render
-      await (async () => {
-        for (let i = 0; i < 40; i++) {
-          const found = await webview.executeJavaScript(`
-            (() => Array.from(document.querySelectorAll('div[id^="list-item-"]')).length)();
-          `)
-          if (found && found > 0) return
-          await sleep(100)
+      let pageIndex = 1
+      while (true) {
+        // Wait for any job cards to render
+        await (async () => {
+          for (let i = 0; i < 40; i++) {
+            const found = await webview.executeJavaScript(`
+              (() => Array.from(document.querySelectorAll('div[id^="list-item-"]')).length)();
+            `)
+            if (found && found > 0) return
+            await sleep(100)
+          }
+        })()
+
+        let jobCount = await webview.executeJavaScript(`
+          (() => Array.from(document.querySelectorAll('div[id^="list-item-"]')).length)();
+        `)
+
+        if (!jobCount || jobCount <= 0) {
+          addLog(`No job cards found for "${term}".`)
+          addLog(`Finished search for "${term}" (0 jobs reviewed).`)
+          break
         }
-      })()
 
-      let jobCount = await webview.executeJavaScript(`
-        (() => Array.from(document.querySelectorAll('div[id^="list-item-"]')).length)();
-      `)
-
-      if (!jobCount || jobCount <= 0) {
-        addLog(`No job cards found for "${term}".`)
-      } else {
-        // Apply panel filters (More Filters) after results load
-        await applyPanelFilters(webview)
+        // Apply panel filters only on first page
+        if (pageIndex === 1) {
+          await applyPanelFilters(webview)
+        } else {
+          addLog('Skipping panel filters on subsequent pages.')
+        }
 
         // Recount after panel filters
         await (async () => {
@@ -786,10 +834,10 @@ export default function Automation() {
 
         if (!jobCount || jobCount <= 0) {
           addLog(`No job cards found for "${term}" after panel filters.`)
-          continue
+          break
         }
 
-        addLog(`Found ${jobCount} job cards for "${term}". Clicking through...`)
+        addLog(`Found ${jobCount} job cards for "${term}" on page ${pageIndex}. Clicking through...`)
         for (let idx = 0; idx < jobCount; idx++) {
           const clickJobResult = await webview.executeJavaScript(`
             (() => {
@@ -1549,7 +1597,51 @@ export default function Automation() {
 
           // No pause between card clicks
         }
+        addLog(`Finished page ${pageIndex} for "${term}" (${jobCount} jobs reviewed).`)
+
+        const nextResult = await webview.executeJavaScript(`
+          (() => {
+            const btn = Array.from(document.querySelectorAll('button')).find(b => {
+              const text = (b.textContent || '').trim().toLowerCase();
+              const visible = !!(b.offsetParent);
+              return visible && (text === 'next' || text === 'next >' || text.includes('next'));
+            });
+            if (!btn) return { exists: false };
+            const disabled = btn.disabled || btn.getAttribute('aria-disabled') === 'true' || (btn.className || '').toLowerCase().includes('disabled');
+            if (disabled) return { exists: true, disabled: true, clicked: false };
+            btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+            if (typeof btn.click === 'function') btn.click();
+            else btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            return { exists: true, disabled: false, clicked: true };
+          })();
+        `)
+
+        if (nextResult?.exists && nextResult.clicked && !nextResult.disabled) {
+          addLog(`Next pagination clicked for "${term}" (moving to page ${pageIndex + 1}).`)
+          pageIndex += 1
+          await sleep(400)
+          continue
+        }
+
+        if (nextResult?.exists && nextResult.clicked && !nextResult.disabled) {
+          addLog(`Next pagination clicked for "${term}" (moving to page ${pageIndex + 1}).`)
+          pageIndex += 1
+          await sleep(400)
+          continue
+        }
+
+        // Any case where Next is missing, disabled, or not clicked: move on to next search term
+        if (nextResult?.exists && nextResult.disabled) {
+          addLog(`Next pagination button disabled for "${term}". Moving to next search term.`)
+        } else if (!nextResult?.exists) {
+          addLog('Next pagination button not found; moving to next search term.')
+        } else {
+          addLog('Next pagination button present but not clicked; moving to next search term.')
+        }
+        continue termLoop
       }
+
+      addLog(`Finished search for "${term}" across ${pageIndex} page(s).`)
     }
 
     addLog('Completed running search terms.')
