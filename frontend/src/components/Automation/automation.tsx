@@ -837,6 +837,7 @@ export default function Automation() {
           break
         }
 
+        let consecutiveDoNotApply = 0
         addLog(`Found ${jobCount} job cards for "${term}" on page ${pageIndex}. Clicking through...`)
         for (let idx = 0; idx < jobCount; idx++) {
           const clickJobResult = await webview.executeJavaScript(`
@@ -986,6 +987,7 @@ export default function Automation() {
                   const data = await resp.json()
                   const instructions = normalizeEmployerInstructions(data?.employer_instructions)
                   if (data.decision === 'APPLY') {
+                    consecutiveDoNotApply = 0
                     addLog(`Applying to "${titleStr}"...`)
                     const applyClicked = await webview.executeJavaScript(`
                       (() => {
@@ -1575,23 +1577,33 @@ export default function Automation() {
                       addLog('Apply button not found.')
                     }
                   } else if (data.decision === 'DO_NOT_APPLY') {
+                    consecutiveDoNotApply += 1
                     addLog(`Decision: DO_NOT_APPLY for "${titleStr}". Skipping.`)
+                    if (consecutiveDoNotApply >= 4) {
+                      addLog('Hit 4 DO_NOT_APPLY decisions in a row; moving to next search term.')
+                      continue termLoop
+                    }
                   } else {
+                    consecutiveDoNotApply = 0
                     addLog('Decision unknown; skipping.')
                   }
                 } else {
+                  consecutiveDoNotApply = 0
                   addLog('Decision request failed; skipping.')
                 }
               }
             } catch (e) {
+              consecutiveDoNotApply = 0
               addLog('Decision error; skipping.')
             }
           } else if (clickJobResult?.status === 'skipped') {
+            consecutiveDoNotApply = 0
             const reason = clickJobResult.reason
               ? ` (${String(clickJobResult.reason).toUpperCase()})`
               : ''
             addLog(`Skipped job #${idx + 1}${reason}.`)
           } else {
+            consecutiveDoNotApply = 0
             addLog(`Job card #${idx + 1} missing or not clickable.`)
           }
 
