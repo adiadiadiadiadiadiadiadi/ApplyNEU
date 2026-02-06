@@ -1123,6 +1123,7 @@ export default function Automation() {
                                         coverLetterTaskAdded = true
                                       }
                                       addLog('Missing cover letter match; skipping this job.')
+                                      addLog("1")
                                       skipJob = true
                                       break
                                     }
@@ -1134,6 +1135,7 @@ export default function Automation() {
                                   coverLetterTaskAdded = true
                                 }
                                 addLog('No cover letter control; skipping this job.')
+                                addLog("2")
                                 skipJob = true
                                 break
                               }
@@ -1249,10 +1251,10 @@ export default function Automation() {
                             if (!submitClicked) {
                               addLog('Submit not ready; closing modal and continuing.')
                               await closeModalIfPresent(webview, preferHeadlessClose)
+                              addLog("3")
                               skipJob = true
                               break
                             }
-                            // Wait for submit button to disappear (user clicked it) before continuing (no hard timeout)
                             let submitGone = false
                             for (let attempt = 0; attempt < 20; attempt++) { // ~0.2s
                               const submitStillThere = await webview.executeJavaScript(`
@@ -1275,7 +1277,6 @@ export default function Automation() {
                             if (!submitGone) {
                               addLog('Submit still visible; closing modal and continuing.')
                               await closeModalIfPresent(webview, preferHeadlessClose)
-                              skipJob = true
                             }
                             setStatus('running')
                             await waitForDividerSubmissionAndClose(webview)
@@ -1397,6 +1398,7 @@ export default function Automation() {
                                 `)
                                 addLog('No cover letter options; skipping this job.')
                                 skipJob = true
+                                addLog("5")
                                 break
                               }
                             }
@@ -1513,6 +1515,7 @@ export default function Automation() {
                             if (!submitClicked) {
                               addLog('Submit not ready; closing modal and continuing.')
                               await closeModalIfPresent(webview, preferHeadlessClose)
+                              addLog("6")
                               skipJob = true
                               break
                             }
@@ -1541,6 +1544,7 @@ export default function Automation() {
                               addLog('Submit still visible; closing modal and continuing.')
                               await closeModalIfPresent(webview, preferHeadlessClose)
                               setStatus('running')
+                              addLog("7")
                               skipJob = true
                             }
                             await waitForDividerSubmissionAndClose(webview)
@@ -1552,6 +1556,7 @@ export default function Automation() {
                          await sleep(100)
                       }
                       if (skipJob) {
+                        addLog("eeeek")
                         continue
                       }
                       if (!seenResume) {
@@ -1560,18 +1565,28 @@ export default function Automation() {
                         setStatus('paused')
                         return
                       }
+                      addLog("her")
                       const applicationPayload = {
                         company: (clickJobResult.company || '').trim() || 'Unknown company',
                         title: (titleStr || '').trim() || 'Untitled job',
                         description: (descResult || '').toString()
                       }
+                      addLog("boutta send")
                       const resp = await fetch(`http://localhost:8080/applications/${userId}/new`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(applicationPayload)
                       })
+                      let respBody = ''
+                      try {
+                        respBody = await resp.text()
+                      } catch (err) {
+                        respBody = ''
+                      }
                       if (!resp.ok) {
-                        addLog('Failed to record application.')
+                        addLog(`Failed to record application. status=${resp.status} body="${respBody || '(empty)'}"`)
+                      } else {
+                        addLog(`Recorded application. status=${resp.status} body="${respBody || '(empty)'}"`)
                       }
                     } else {
                       addLog('Apply button not found.')
