@@ -984,6 +984,7 @@ export default function Automation() {
                       let coverLetterTaskAdded = false
                       let workSampleChecked = false
                       let portfolioChecked = false
+                      let transcriptChecked = false
                       for (let i = 0; i < 40; i++) {
                         const found = await webview.executeJavaScript(`
                           (() => {
@@ -1006,6 +1007,63 @@ export default function Automation() {
                         `)
                         if (found?.hasLabel || found?.hasSelect || found?.hasButton) {
                           seenResume = true
+                          if (!transcriptChecked) {
+                            const transcriptExists = await webview.executeJavaScript(`
+                              (() => {
+                                const nodes = Array.from(document.querySelectorAll('label, span, div, p, button'));
+                                return nodes.some(el =>
+                                  ((el.innerText || el.textContent || '').toLowerCase().includes('transcript'))
+                                );
+                              })();
+                            `)
+                            if (transcriptExists) {
+                              setStatus('paused')
+                              await sleep(3000)
+                              setStatus('running')
+                              let transcriptHandled = false
+                              for (let t = 0; t < 40; t++) {
+                                const selectResult = await webview.executeJavaScript(`
+                                  (() => {
+                                    const sel = document.querySelector('select[id*="transcript"]');
+                                    if (!sel) return { found: false };
+                                    sel.scrollIntoView({ behavior: 'instant', block: 'center' });
+                                    if (typeof sel.click === 'function') sel.click();
+                                    else sel.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                                    const options = Array.from(sel.options || []).map(o => ({
+                                      value: o.value,
+                                      text: (o.innerText || o.textContent || '').trim()
+                                    })).filter(o => o.text || o.value);
+                                    return { found: true, hasOptions: options.length > 0, options };
+                                  })();
+                                `)
+                                if (selectResult?.found) {
+                                  transcriptHandled = true
+                                  if (selectResult.hasOptions && selectResult.options?.length) {
+                                    await webview.executeJavaScript(`
+                                      (() => {
+                                        const sel = document.querySelector('select[id*="transcript"]');
+                                        if (!sel) return false;
+                                        const target = Array.from(sel.options || [])[0];
+                                        if (!target) return false;
+                                        sel.value = target.value;
+                                        sel.dispatchEvent(new Event('change', { bubbles: true }));
+                                        sel.dispatchEvent(new Event('input', { bubbles: true }));
+                                        return true;
+                                      })();
+                                    `)
+                                  } else {
+                                    addLog('Transcript not found.')
+                                  }
+                                  break
+                                }
+                                await sleep(100)
+                              }
+                              if (!transcriptHandled) {
+                                addLog('Transcript not found.')
+                              }
+                            }
+                            transcriptChecked = true
+                          }
                           if (found?.hasSelect) {
                             await webview.executeJavaScript(`
                               (() => {
