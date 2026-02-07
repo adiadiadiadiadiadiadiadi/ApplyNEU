@@ -169,16 +169,13 @@ export default function Automation() {
         })();
       `)
       if (res?.closed) {
-        addLog('Submission modal detected and closed.')
         return true
       }
       if (res?.detected && !detectedLogged) {
-        addLog('Submission modal detected; waiting for close control.')
         detectedLogged = true
       }
       await sleep(250)
     }
-    addLog('Submission modal not detected within timeout; continuing.')
     return false
   }
 
@@ -187,10 +184,9 @@ export default function Automation() {
       try {
         const userId = await getUserId()
         if (!userId) {
-          addLog('Error occured: no user found.')
+          addLog('Error occured: no user found. Retrying...')
           return
         }
-
         try {
           const tasksResp = await fetch(`http://localhost:8080/tasks/${userId}`)
           if (tasksResp.ok) {
@@ -202,15 +198,10 @@ export default function Automation() {
               : []
             existingTasksRef.current = new Set(taskTexts.map(t => t.toLowerCase()))
           }
-        } catch (err) {
-          // best-effort; ignore preload failures
-        }
+        } catch (err) {}
 
         const response = await fetch(`http://localhost:8080/users/${userId}/search-terms`)
-        if (!response.ok) {
-          addLog('Error occured. Invalid response.')
-          return
-        }
+        if (!response.ok) { addLog('Error occured. Could not fetch search terms. Retrying...'); return; }
 
         const data = await response.json()
         const terms = Array.isArray(data?.search_terms) ? data.search_terms : []
@@ -234,7 +225,7 @@ export default function Automation() {
     const webview = document.querySelector('webview')
     if (webview) {
       const handleLoadError = (event: any) => {
-        addLog(`Error: ${event.errorDescription || 'failed to load'}`)
+        addLog(`Error: ${event.errorDescription || 'failed to load'}. Retrying...`)
       }
       webview.addEventListener('did-fail-load', handleLoadError)
       return () => {
@@ -253,8 +244,6 @@ export default function Automation() {
   }
 
   useEffect(() => {
-    // Expose a lightweight logger for injected scripts running inside the webview.
-    // This is best-effort and only used for debugging popup handling.
     ;(window as any).__automationLog = (msg: any) => addLog(String(msg ?? ''))
     return () => {
       if ((window as any).__automationLog) {
@@ -328,10 +317,8 @@ export default function Automation() {
       })();
     `)
     if (!moreClicked) {
-      addLog('"More Filters" not found; skipping panel filters.')
       return
     }
-    // Wait for panel visible
     for (let i = 0; i < 60; i++) {
       const panelVisible = await webview.executeJavaScript(`
         (() => {
@@ -342,7 +329,6 @@ export default function Automation() {
         })();
       `)
       if (panelVisible) {
-        addLog('More Filters panel visible.')
         break
       }
       await sleep(100)
@@ -368,12 +354,6 @@ export default function Automation() {
         })();
       `)
       if (checkboxResult?.found) {
-        addLog('Exclude jobs checkbox available.')
-        if (checkboxResult.clicked) {
-          addLog('Clicked "Exclude jobs I’ve applied for".')
-        } else if (checkboxResult.already) {
-          addLog('"Exclude jobs I’ve applied for" was already selected.')
-        }
         break
       }
       await sleep(100)
@@ -398,12 +378,10 @@ export default function Automation() {
         })();
       `)
       if (applied === 'clicked') {
-        addLog('Clicked Apply in More Filters.')
         return
       }
       await sleep(100)
     }
-    addLog('Apply button in More Filters not found within timeout.')
   }
 
 
@@ -483,11 +461,9 @@ export default function Automation() {
           })();
         `)
         if (result === 'set') {
-          addLog('Show Me set to "Jobs I Qualify For".')
           break
         }
         if (result === 'no-option') {
-          addLog('"Jobs I Qualify For" option not found in Show Me filter.')
           break
         }
         await sleep(100)
@@ -515,17 +491,11 @@ export default function Automation() {
 
     // Apply saved job type filters from backend
     await (async () => {
-      const userId = await getUserId()
-      if (!userId) {
-        addLog('Unable to fetch job types (no user).')
-        return
-      }
+      const userId = await getUserId();
+      if (!userId) { addLog('Unable to fetch job types (no user).'); return }
       try {
         const resp = await fetch(`http://localhost:8080/users/${userId}/job-types`)
-        if (!resp.ok) {
-          addLog('Failed to fetch job types.')
-          return
-        }
+        if (!resp.ok) { addLog('Failed to fetch job types.'); return }
         const data = await resp.json()
         const jobTypes: string[] = Array.isArray(data?.job_types) ? data.job_types : []
         if (!jobTypes.length) {
@@ -533,7 +503,6 @@ export default function Automation() {
           return
         }
 
-        // Wait for dropdown checkboxes to render
         for (let i = 0; i < 20; i++) {
           const ready = await webview.executeJavaScript(`!!document.querySelector('input[type="checkbox"][id^="job_type"]')`)
           if (ready) break
@@ -584,7 +553,6 @@ export default function Automation() {
       })();
     `)
     if (moreFiltersClicked) {
-      addLog('Clicked "More Filters"; waiting for panel...')
       // Wait for more-filters panel to render
       for (let i = 0; i < 60; i++) {
         const panelVisible = await webview.executeJavaScript(`
@@ -596,7 +564,6 @@ export default function Automation() {
           })();
         `)
         if (panelVisible) {
-          addLog('More Filters panel visible.')
           break
         }
         await new Promise(res => setTimeout(res, 100))
@@ -622,17 +589,10 @@ export default function Automation() {
           })();
         `)
         if (checkboxResult?.found) {
-          addLog('Exclude jobs checkbox available.')
-          if (checkboxResult.clicked) {
-            addLog('Clicked "Exclude jobs I’ve applied for".')
-          } else if (checkboxResult.already) {
-            addLog('"Exclude jobs I’ve applied for" was already selected.')
-          }
           break
         }
         await new Promise(res => setTimeout(res, 100))
       }
-      // Click the Apply button inside the panel
       for (let k = 0; k < 120; k++) {
         const applied = await webview.executeJavaScript(`
           (() => {
@@ -652,16 +612,14 @@ export default function Automation() {
           })();
         `)
         if (applied === 'clicked') {
-          addLog('Clicked Apply in More Filters; stopping.')
+          addLog('Applied filters.')
           break
         }
         await new Promise(res => setTimeout(res, 100))
       }
-    } else {
-      addLog('"More Filters" not found; continuing without it.')
     }
 
-    // Wait for the search input on the jobs page
+    // Search
     await (async () => {
       for (let i = 0; i < 40; i++) {
         const found = await webview.executeJavaScript(`!!document.querySelector('input#jobs-keyword-input')`)
@@ -671,7 +629,7 @@ export default function Automation() {
     })()
 
     if (!searchTerms.length) {
-      addLog('No search terms available to search.')
+      addLog('Error occured. Please try again later.')
       setStatus('idle')
       return
     }
@@ -679,11 +637,11 @@ export default function Automation() {
     const normalizedTerms = searchTerms
       .map(term => String(term ?? '').trim())
       .filter(Boolean)
-    addLog(`Loaded ${normalizedTerms.length} search term(s): ${normalizedTerms.join(' | ')}`)
 
     termLoop: for (const term of normalizedTerms) {
       addLog(`Searching for "${term}"...`)
-      const beforeValue = await webview.executeJavaScript(`
+
+      await webview.executeJavaScript(`
         (() => {
           const input = document.querySelector('input#jobs-keyword-input');
           if (!input) return { found: false };
@@ -694,11 +652,7 @@ export default function Automation() {
           };
         })();
       `)
-      if (beforeValue?.found) {
-        addLog(`Current search box value before typing: "${beforeValue.value || ''}" (ph="${beforeValue.placeholder || ''}")`)
-      } else {
-        addLog('Search box not found before typing.')
-      }
+
       const typeResult = await webview.executeJavaScript(`
         (async () => {
           const input = document.querySelector('input#jobs-keyword-input');
@@ -723,22 +677,15 @@ export default function Automation() {
         })();
       `)
 
-      if (typeResult === 'missing-input') {
-        addLog(`Failed to type "${term}" (input not found).`)
-        continue termLoop
-      }
+      if (typeResult === 'missing-input') { continue termLoop }
 
-      addLog(`Typing complete for "${term}". Pressing Enter...`)
-      const afterTypeValue = await webview.executeJavaScript(`
+      await webview.executeJavaScript(`
         (() => {
           const input = document.querySelector('input#jobs-keyword-input');
           if (!input) return { found: false };
           return { found: true, value: input.value || '' };
         })();
       `)
-      if (afterTypeValue?.found) {
-        addLog(`Search box value after typing: "${afterTypeValue.value || ''}"`)
-      }
 
       const enterResult = await webview.executeJavaScript(`
         (() => {
@@ -753,11 +700,9 @@ export default function Automation() {
       `)
 
       if (enterResult === 'missing-input') {
-        addLog(`Failed to press Enter for "${term}" (input not found).`)
         continue termLoop
       }
 
-      let clicked = false
       for (let attempt = 0; attempt < 40; attempt++) {
         const clickResult = await webview.executeJavaScript(`
           (() => {
@@ -776,21 +721,15 @@ export default function Automation() {
         `)
 
         if (clickResult === 'clicked') {
-          clicked = true
           break
         }
          await sleep(100)
-      }
-
-      if (!clicked) {
-        addLog(`Search button not found for "${term}".`)
       }
 
       await sleep(100)
 
       let pageIndex = 1
       while (true) {
-        // Wait for any job cards to render
         await (async () => {
           for (let i = 0; i < 40; i++) {
             const found = await webview.executeJavaScript(`
@@ -806,16 +745,12 @@ export default function Automation() {
         `)
 
         if (!jobCount || jobCount <= 0) {
-          addLog(`No job cards found for "${term}".`)
-          addLog(`Finished search for "${term}" (0 jobs reviewed).`)
           break
         }
 
         // Apply panel filters only on first page
         if (pageIndex === 1) {
           await applyPanelFilters(webview)
-        } else {
-          addLog('Skipping panel filters on subsequent pages.')
         }
 
         // Recount after panel filters
@@ -833,12 +768,12 @@ export default function Automation() {
         `)
 
         if (!jobCount || jobCount <= 0) {
-          addLog(`No job cards found for "${term}" after panel filters.`)
+          addLog(`No job cards found for "${term}".`)
           break
         }
 
         let consecutiveDoNotApply = 0
-        addLog(`Found ${jobCount} job cards for "${term}" on page ${pageIndex}. Clicking through...`)
+        addLog(`${jobCount} jobs found for "${term}" on page ${pageIndex}.`)
         for (let idx = 0; idx < jobCount; idx++) {
           const clickJobResult = await webview.executeJavaScript(`
             (() => {
@@ -970,14 +905,13 @@ export default function Automation() {
                 })
               })
               if (!addJobResp.ok) {
-                addLog('Failed to record job in backend.')
+                addLog('Server error.')
               }
               const userId = await getUserId()
               if (!userId) {
                 addLog('Decision skipped (no user).')
               } else {
-                // Always extract via LLM; inline handling/logging moved before submit click.
-                addLog('Sending job description to agent.')
+                addLog(`Reviewing ${titleStr}...`)
                 const resp = await fetch(`http://localhost:8080/jobs/${userId}/send-job`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -988,7 +922,7 @@ export default function Automation() {
                   const instructions = normalizeEmployerInstructions(data?.employer_instructions)
                   if (data.decision === 'APPLY') {
                     consecutiveDoNotApply = 0
-                    addLog(`Applying to "${titleStr}"...`)
+                    addLog(`Decision: apply.`)
                     const applyClicked = await webview.executeJavaScript(`
                       (() => {
                         const btn = Array.from(document.querySelectorAll('button')).find(b => {
@@ -1122,8 +1056,6 @@ export default function Automation() {
                                         await handleNoCoverLetter(clickJobResult.company, webview, userId);
                                         coverLetterTaskAdded = true
                                       }
-                                      addLog('Missing cover letter match; skipping this job.')
-                                      addLog("1")
                                       skipJob = true
                                       break
                                     }
@@ -1134,8 +1066,6 @@ export default function Automation() {
                                   await handleNoCoverLetter(clickJobResult.company, webview, userId)
                                   coverLetterTaskAdded = true
                                 }
-                                addLog('No cover letter control; skipping this job.')
-                                addLog("2")
                                 skipJob = true
                                 break
                               }
@@ -1179,7 +1109,6 @@ export default function Automation() {
                                       return true;
                                     })();
                                   `)
-                                  addLog('Work sample exists.')
                                 } else {
                                   await handleNoWorkSample(clickJobResult.company, userId)
                                 }
@@ -1214,7 +1143,6 @@ export default function Automation() {
                                     return true;
                                   })();
                                 `)
-                                addLog('Portfolio checkboxes selected.')
                                 portfolioChecked = true
                               } else if (portfolioInfo?.hasButton) {
                                 await handleNoPortfolio(clickJobResult.company, userId)
@@ -1249,9 +1177,7 @@ export default function Automation() {
                               await sleep(10)
                             }
                             if (!submitClicked) {
-                              addLog('Submit not ready; closing modal and continuing.')
                               await closeModalIfPresent(webview, preferHeadlessClose)
-                              addLog("3")
                               skipJob = true
                               break
                             }
@@ -1275,7 +1201,6 @@ export default function Automation() {
                               await sleep(10)
                             }
                             if (!submitGone) {
-                              addLog('Submit still visible; closing modal and continuing.')
                               await closeModalIfPresent(webview, preferHeadlessClose)
                             }
                             setStatus('running')
@@ -1323,9 +1248,7 @@ export default function Automation() {
                                 return { hasSelect: !!sel, hasAdd: !!addBtn, hasAny: !!(sel || addBtn || textBtn || input) };
                               })();
                             `)
-                            if (!coverLetterExists?.hasAny) {
-                              addLog('No cover letter input found; continuing without it.')
-                            } else if (coverLetterExists?.hasAny) {
+                            if (coverLetterExists?.hasAny) {
                               // Try to open the cover letter selector/dropdown for the user.
                               const coverOpenResult = await webview.executeJavaScript(`
                                 (() => {
@@ -1396,9 +1319,7 @@ export default function Automation() {
                                     return false;
                                   })();
                                 `)
-                                addLog('No cover letter options; skipping this job.')
                                 skipJob = true
-                                addLog("5")
                                 break
                               }
                             }
@@ -1441,13 +1362,9 @@ export default function Automation() {
                                       return true;
                                     })();
                                   `)
-                                  addLog('Work sample exists.')
-                                } else {
-                                  addLog('Work sample does not exist.')
                                 }
                                 workSampleChecked = true
                               } else if (workSampleInfo?.hasButton) {
-                                addLog('No work samples exist.')
                                 workSampleChecked = true
                               }
                             }
@@ -1476,7 +1393,6 @@ export default function Automation() {
                                     return true;
                                   })();
                                 `)
-                                addLog('Portfolio checkboxes selected.')
                                 portfolioChecked = true
                               } else if (portfolioInfo?.hasButton) {
                                 await handleNoPortfolio(clickJobResult.company, userId)
@@ -1513,9 +1429,7 @@ export default function Automation() {
                               await sleep(10)
                             }
                             if (!submitClicked) {
-                              addLog('Submit not ready; closing modal and continuing.')
                               await closeModalIfPresent(webview, preferHeadlessClose)
-                              addLog("6")
                               skipJob = true
                               break
                             }
@@ -1541,7 +1455,6 @@ export default function Automation() {
                               await sleep(10)
                             }
                             if (!submitGone) {
-                              addLog('Submit still visible; closing modal and continuing.')
                               await closeModalIfPresent(webview, preferHeadlessClose)
                               setStatus('running')
                               skipJob = true
@@ -1563,13 +1476,11 @@ export default function Automation() {
                         setStatus('paused')
                         return
                       }
-                      addLog("her")
                       const applicationPayload = {
                         company: (clickJobResult.company || '').trim() || 'Unknown company',
                         title: (titleStr || '').trim() || 'Untitled job',
                         description: (descResult || '').toString()
                       }
-                      addLog("boutta send")
                       const resp = await fetch(`http://localhost:8080/applications/${userId}/new`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -1581,19 +1492,12 @@ export default function Automation() {
                       } catch (err) {
                         respBody = ''
                       }
-                      if (!resp.ok) {
-                        addLog(`Failed to record application. status=${resp.status} body="${respBody || '(empty)'}"`)
-                      } else {
-                        addLog(`Recorded application. status=${resp.status} body="${respBody || '(empty)'}"`)
-                      }
-                    } else {
-                      addLog('Apply button not found.')
                     }
                   } else if (data.decision === 'DO_NOT_APPLY') {
                     consecutiveDoNotApply += 1
-                    addLog(`Decision: DO_NOT_APPLY for "${titleStr}". Skipping.`)
+                    addLog(`Decision: skip.`)                    
                     if (consecutiveDoNotApply >= 4) {
-                      addLog('Hit 4 DO_NOT_APPLY decisions in a row; moving to next search term.')
+                      addLog('Moving to next search term...')
                       continue termLoop
                     }
                   } else {
@@ -1622,7 +1526,6 @@ export default function Automation() {
 
           // No pause between card clicks
         }
-        addLog(`Finished page ${pageIndex} for "${term}" (${jobCount} jobs reviewed).`)
 
         const nextResult = await webview.executeJavaScript(`
           (() => {
@@ -1642,31 +1545,21 @@ export default function Automation() {
         `)
 
         if (nextResult?.exists && nextResult.clicked && !nextResult.disabled) {
-          addLog(`Next pagination clicked for "${term}" (moving to page ${pageIndex + 1}).`)
+          addLog(`Moving to page ${pageIndex + 1})...`)
           pageIndex += 1
           await sleep(400)
           continue
         }
 
         if (nextResult?.exists && nextResult.clicked && !nextResult.disabled) {
-          addLog(`Next pagination clicked for "${term}" (moving to page ${pageIndex + 1}).`)
+          addLog(`Moving to page ${pageIndex + 1})...`)
           pageIndex += 1
           await sleep(400)
           continue
         }
 
-        // Any case where Next is missing, disabled, or not clicked: move on to next search term
-        if (nextResult?.exists && nextResult.disabled) {
-          addLog(`Next pagination button disabled for "${term}". Moving to next search term.`)
-        } else if (!nextResult?.exists) {
-          addLog('Next pagination button not found; moving to next search term.')
-        } else {
-          addLog('Next pagination button present but not clicked; moving to next search term.')
-        }
         continue termLoop
       }
-
-      addLog(`Finished search for "${term}" across ${pageIndex} page(s).`)
     }
 
     addLog('Completed running search terms.')
