@@ -1544,7 +1544,6 @@ export default function Automation() {
                               addLog('Submit still visible; closing modal and continuing.')
                               await closeModalIfPresent(webview, preferHeadlessClose)
                               setStatus('running')
-                              addLog("7")
                               skipJob = true
                             }
                             await waitForDividerSubmissionAndClose(webview)
@@ -1556,7 +1555,6 @@ export default function Automation() {
                          await sleep(100)
                       }
                       if (skipJob) {
-                        addLog("eeeek")
                         continue
                       }
                       if (!seenResume) {
