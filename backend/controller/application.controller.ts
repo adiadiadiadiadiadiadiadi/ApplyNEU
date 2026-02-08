@@ -11,10 +11,9 @@ const applicationController = () => {
 
     const addApplicationRoute = async (req: Request, res: Response) => {
         const { user_id } = req.params;
-        const { company, title, description } = req.body;
-        console.log("hahahha")
+        const { company, title, description, status } = req.body;
 
-        if (!user_id || !title || !description || !company) {
+        if (!user_id || !title || !description || !company || !status) {
             res.status(404).json({
                 "message": "Required arguments not found to add job application."
             });
@@ -22,8 +21,7 @@ const applicationController = () => {
         }
 
         try {
-            console.log('[application] saving application', { user_id, company, title });
-            const result = await addJobApplication(user_id, company, title, description);
+            const result = await addJobApplication(user_id, company, title, description, status);
             if ('error' in result) {
                 console.error('[application] save failed', result.error);
                 res.status(400).json({
@@ -33,7 +31,6 @@ const applicationController = () => {
             }
             res.status(200).json(result);
         } catch (err: unknown) {
-            console.error('[application] unexpected error', err);
             res.status(400).json({
                 "message": "Unable to send job description."
             });
