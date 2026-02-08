@@ -65,7 +65,6 @@ export default function Automation() {
     const description = `Upload a work sample for ${companyName} in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
     const key = text.trim().toLowerCase()
     if (existingTasksRef.current.has(key)) {
-      addLog(`Task already exists; skipping create: ${text}`)
       return
     }
     const resp = await fetch(`http://localhost:8080/tasks/${userId}/new`, {
@@ -90,7 +89,6 @@ export default function Automation() {
     const description = `Upload a portfolio for ${companyName} in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
     const key = text.trim().toLowerCase()
     if (existingTasksRef.current.has(key)) {
-      addLog(`Task already exists; skipping create: ${text}`)
       return
     }
     const resp = await fetch(`http://localhost:8080/tasks/${userId}/new`, {
@@ -115,7 +113,6 @@ export default function Automation() {
     const description = `Upload a transcript for ${companyName} in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
     const key = text.trim().toLowerCase()
     if (existingTasksRef.current.has(key)) {
-      addLog(`Task already exists; skipping create: ${text}`)
       return
     }
     const resp = await fetch(`http://localhost:8080/tasks/${userId}/new`, {
@@ -1010,6 +1007,7 @@ export default function Automation() {
                       let workSampleChecked = false
                       let portfolioChecked = false
                       let transcriptChecked = false
+                      let preferHeadlessClose = false
                       for (let i = 0; i < 40; i++) {
                         const found = await webview.executeJavaScript(`
                           (() => {
@@ -1042,9 +1040,8 @@ export default function Automation() {
                               })();
                             `)
                             if (transcriptExists) {
-                              addLog('transcript detected')
                               let transcriptHandled = false
-                              for (let t = 0; t < 40; t++) {
+                              for (let t = 0; t < 10; t++) { // shorter wait to avoid long gaps
                                 const selectResult = await webview.executeJavaScript(`
                                   (() => {
                                     const sel = document.querySelector('select[id*="transcript"]');
@@ -1075,24 +1072,28 @@ export default function Automation() {
                                       })();
                                     `)
                                   } else {
-                                    addLog('No transcript detected.')
-                                    await handleNoTranscript(clickJobResult.company, userId)
+                                  await handleNoTranscript(clickJobResult.company, userId)
+                                  skipJob = true
                                   }
                                   break
                                 }
-                                await sleep(100)
+                                await sleep(50)
                               }
                               if (!transcriptHandled) {
-                                addLog('No transcript detected.')
-                                await handleNoTranscript(clickJobResult.company, userId)
+                              await handleNoTranscript(clickJobResult.company, userId)
+                              skipJob = true
                               }
                             }
                             if (!transcriptExists) {
-                              addLog('no transcript')
-                              await handleNoTranscript(clickJobResult.company, userId)
+                            await handleNoTranscript(clickJobResult.company, userId)
+                            skipJob = true
                             }
                             transcriptChecked = true
                           }
+                        if (skipJob) {
+                          await closeModalIfPresent(webview)
+                          break
+                        }
                           if (found?.hasSelect) {
                             await webview.executeJavaScript(`
                               (() => {
@@ -1198,13 +1199,16 @@ export default function Automation() {
                                   `)
                                 } else {
                                   await handleNoWorkSample(clickJobResult.company, userId)
+                                  skipJob = true
                                 }
                                 workSampleChecked = true
                               } else if (workSampleInfo?.hasButton) {
                                 await handleNoWorkSample(clickJobResult.company, userId)
+                                skipJob = true
                                 workSampleChecked = true
                               } else {
                                 await handleNoWorkSample(clickJobResult.company, userId)
+                                skipJob = true
                                 workSampleChecked = true
                               }
                             }
@@ -1236,16 +1240,22 @@ export default function Automation() {
                                 portfolioChecked = true
                               } else if (portfolioInfo?.hasButton) {
                                 await handleNoPortfolio(clickJobResult.company, userId)
+                                skipJob = true
                                 portfolioChecked = true
                               } else {
                                 await handleNoPortfolio(clickJobResult.company, userId)
+                                skipJob = true
                                 portfolioChecked = true
                               }
+                            }
+                            if (skipJob) {
+                              await closeModalIfPresent(webview)
+                              break
                             }
 
                             // Wait for red submit/save to appear; if it never turns red, close modal and continue.
                             let submitClicked = false
-                            let preferHeadlessClose = false
+                            preferHeadlessClose = false
                             for (let attempt = 0; attempt < 20; attempt++) { // ~0.2s
                               const redNow = await webview.executeJavaScript(`
                                 (() => {
@@ -1298,7 +1308,10 @@ export default function Automation() {
                             }
                             setStatus('running')
                             await waitForDividerSubmissionAndClose(webview)
-                            if (skipJob) break
+                            if (skipJob) {
+                              await closeModalIfPresent(webview, preferHeadlessClose)
+                              break
+                            }
                           } else if (found?.hasButton) {
                             await webview.executeJavaScript(`
                               (() => {
@@ -1459,9 +1472,11 @@ export default function Automation() {
                                 workSampleChecked = true
                               } else if (workSampleInfo?.hasButton) {
                                 await handleNoWorkSample(clickJobResult.company, userId)
+                            skipJob = true
                                 workSampleChecked = true
                               } else {
                                 await handleNoWorkSample(clickJobResult.company, userId)
+                            skipJob = true
                                 workSampleChecked = true
                               }
                             }
@@ -1493,16 +1508,22 @@ export default function Automation() {
                                 portfolioChecked = true
                               } else if (portfolioInfo?.hasButton) {
                                 await handleNoPortfolio(clickJobResult.company, userId)
+                        skipJob = true
                                 portfolioChecked = true
                               } else {
                                 await handleNoPortfolio(clickJobResult.company, userId)
+                        skipJob = true
                                 portfolioChecked = true
                               }
                             }
+                    if (skipJob) {
+                      await closeModalIfPresent(webview)
+                      break
+                    }
 
                             // Wait specifically for red submit/save to appear
                             let submitClicked = false
-                            let preferHeadlessClose = false
+                            preferHeadlessClose = false
                             for (let attempt = 0; attempt < 20; attempt++) { // ~0.2s
                               const redNow = await webview.executeJavaScript(`
                                 (() => {
@@ -1560,38 +1581,39 @@ export default function Automation() {
                               skipJob = true
                             }
                             await waitForDividerSubmissionAndClose(webview)
-                            if (skipJob) break
+                          if (skipJob) {
+                            await closeModalIfPresent(webview, preferHeadlessClose)
+                            break
+                          }
                           }
                           break
                         }
-                         if (skipJob) break
+                         if (skipJob) {
+                           await closeModalIfPresent(webview, preferHeadlessClose)
+                           break
+                         }
                          await sleep(100)
                       }
                       if (skipJob) {
+                        await closeModalIfPresent(webview, preferHeadlessClose)
                         continue
                       }
-                      if (!seenResume) {
-                        addLog('Waiting for user resume upload...')
-                        playAlertSound()
-                        setStatus('paused')
-                        return
-                      }
+                    if (!seenResume) {
+                      addLog('Waiting for user resume upload...')
+                      playAlertSound()
+                      setStatus('paused')
+                      return
+                    }
                       const applicationPayload = {
                         company: (clickJobResult.company || '').trim() || 'Unknown company',
                         title: (titleStr || '').trim() || 'Untitled job',
                         description: (descResult || '').toString()
                       }
-                      const resp = await fetch(`http://localhost:8080/applications/${userId}/new`, {
+                      await fetch(`http://localhost:8080/applications/${userId}/new`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(applicationPayload)
                       })
-                      let respBody = ''
-                      try {
-                        respBody = await resp.text()
-                      } catch (err) {
-                        respBody = ''
-                      }
                     }
                   } else if (data.decision === 'DO_NOT_APPLY') {
                     consecutiveDoNotApply += 1
@@ -1611,7 +1633,6 @@ export default function Automation() {
               }
             } catch (e) {
               consecutiveDoNotApply = 0
-              addLog('Decision error; skipping.')
             }
           } else if (clickJobResult?.status === 'skipped') {
             consecutiveDoNotApply = 0

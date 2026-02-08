@@ -68,7 +68,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
   const updateJobTypes = async (userId: string) => {
     try {
-      const response = await fetch(`http://localhost:8080/users/${userId}/job-types`, {
+      await fetch(`http://localhost:8080/users/${userId}/job-types`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

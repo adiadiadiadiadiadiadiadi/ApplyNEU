@@ -2,12 +2,6 @@
  * Automation Helper Functions
  */
 
-interface AutomationResult {
-  success: boolean
-  message: string
-  data?: any
-}
-
 export const waitForSelector = async (webview: any, selector: string): Promise<void> => {
   while (true) {
     const found = await webview.executeJavaScript(`!!document.querySelector(${JSON.stringify(selector)})`)

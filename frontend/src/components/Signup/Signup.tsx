@@ -109,7 +109,7 @@ export default function Signup({ onNavigateToLogin }: SignupProps) {
             setError(error.message)
             setLoading(false)
         } else {
-            const res = await fetch("http://localhost:3000/api/users", {
+            await fetch("http://localhost:3000/api/users", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
