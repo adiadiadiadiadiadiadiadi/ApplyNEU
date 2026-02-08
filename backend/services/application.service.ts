@@ -1,6 +1,8 @@
 import { pool } from '../db/index.ts';
 
-export const addJobApplication = async (user_id: string, company: string, title: string, description: string) => {
+export const addJobApplication = async (
+  user_id: string, company: string, title: string, description: string, status: string
+  ) => {
   try {
 
     const job = await pool.query(
@@ -33,10 +35,10 @@ export const addJobApplication = async (user_id: string, company: string, title:
         INSERT INTO job_applications (job_id, user_id)
         VALUES ($1, $2)
         ON CONFLICT (job_id, user_id)
-        DO UPDATE SET applied_at = NOW()
+        DO UPDATE SET applied_at = NOW(), status = $3
         RETURNING *;
       `,
-      [job_id, user_id]
+      [job_id, user_id, status]
     );
 
     return result.rows[0] ?? { error: 'Application already exists for this job/user.' };

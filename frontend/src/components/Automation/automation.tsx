@@ -1008,6 +1008,26 @@ export default function Automation() {
                       let portfolioChecked = false
                       let transcriptChecked = false
                       let preferHeadlessClose = false
+                      let applicationRecorded = false
+                      const recordApplication = async (status: 'draft' | 'submitted') => {
+                        if (applicationRecorded) return
+                        const userId = await getUserId()
+                        if (!userId) return
+                        const applicationPayload = {
+                          company: (clickJobResult.company || '').trim() || 'Unknown company',
+                          title: (titleStr || '').trim() || 'Untitled job',
+                          description: (descResult || '').toString(),
+                          status
+                        }
+                        try {
+                          await fetch(`http://localhost:8080/applications/${userId}/new`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(applicationPayload)
+                          })
+                          applicationRecorded = true
+                        } catch (err) {}
+                      }
                       for (let i = 0; i < 40; i++) {
                         const found = await webview.executeJavaScript(`
                           (() => {
@@ -1091,6 +1111,7 @@ export default function Automation() {
                             transcriptChecked = true
                           }
                         if (skipJob) {
+                          await recordApplication('draft')
                           await closeModalIfPresent(webview)
                           break
                         }
@@ -1249,6 +1270,7 @@ export default function Automation() {
                               }
                             }
                             if (skipJob) {
+                              await recordApplication('draft')
                               await closeModalIfPresent(webview)
                               break
                             }
@@ -1309,6 +1331,7 @@ export default function Automation() {
                             setStatus('running')
                             await waitForDividerSubmissionAndClose(webview)
                             if (skipJob) {
+                              await recordApplication('draft')
                               await closeModalIfPresent(webview, preferHeadlessClose)
                               break
                             }
@@ -1517,6 +1540,7 @@ export default function Automation() {
                               }
                             }
                     if (skipJob) {
+                      await recordApplication('draft')
                       await closeModalIfPresent(webview)
                       break
                     }
@@ -1582,6 +1606,7 @@ export default function Automation() {
                             }
                             await waitForDividerSubmissionAndClose(webview)
                           if (skipJob) {
+                            await recordApplication('draft')
                             await closeModalIfPresent(webview, preferHeadlessClose)
                             break
                           }
@@ -1589,12 +1614,14 @@ export default function Automation() {
                           break
                         }
                          if (skipJob) {
+                           await recordApplication('draft')
                            await closeModalIfPresent(webview, preferHeadlessClose)
                            break
                          }
                          await sleep(100)
                       }
                       if (skipJob) {
+                        await recordApplication('draft')
                         await closeModalIfPresent(webview, preferHeadlessClose)
                         continue
                       }
@@ -1604,16 +1631,7 @@ export default function Automation() {
                       setStatus('paused')
                       return
                     }
-                      const applicationPayload = {
-                        company: (clickJobResult.company || '').trim() || 'Unknown company',
-                        title: (titleStr || '').trim() || 'Untitled job',
-                        description: (descResult || '').toString()
-                      }
-                      await fetch(`http://localhost:8080/applications/${userId}/new`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(applicationPayload)
-                      })
+                      await recordApplication('submitted')
                     }
                   } else if (data.decision === 'DO_NOT_APPLY') {
                     consecutiveDoNotApply += 1
@@ -1644,8 +1662,6 @@ export default function Automation() {
             consecutiveDoNotApply = 0
             addLog(`Job card #${idx + 1} missing or not clickable.`)
           }
-
-          // No pause between card clicks
         }
 
         const nextResult = await webview.executeJavaScript(`
