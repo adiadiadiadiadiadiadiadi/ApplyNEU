@@ -36,7 +36,8 @@ export const addInstructions = async (user_id: string, employer_instructions: st
           - "instruction" field: Brief action in imperative form (e.g., "Apply through company portal")
           - "description" field: MUST include the full URL or email address
           - Keep instructions short and action-oriented
-          - Always use format: "Action through/at [platform]" for instruction, full link in description
+          - Always use format: "Action through/at [company]" for instruction, full link in description.
+          - Avoid mentioning the actual site the link is on (for example, mention the company name instead of Workday).
           
           Examples:
           {
@@ -142,3 +143,15 @@ export const getTasks = async (user_id: string) => {
 
   return result.rows;
 }
+
+export const getCompletedTasksForApplication = async (user_id: string) => {
+    const result = await pool.query(
+        `
+        SELECT text, task_id FROM tasks WHERE user_id = $1 AND completed = false
+        ORDER BY created_at ASC;
+        `,
+        [user_id]
+    )
+  
+    return result.rows;
+  }
