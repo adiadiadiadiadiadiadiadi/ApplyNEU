@@ -1043,9 +1043,6 @@ export default function Automation() {
                             `)
                             if (transcriptExists) {
                               addLog('transcript detected')
-                              setStatus('paused')
-                              await sleep(3000)
-                              setStatus('running')
                               let transcriptHandled = false
                               for (let t = 0; t < 40; t++) {
                                 const selectResult = await webview.executeJavaScript(`
@@ -1078,7 +1075,7 @@ export default function Automation() {
                                       })();
                                     `)
                                   } else {
-                                    addLog('no transcript')
+                                    addLog('No transcript detected.')
                                     await handleNoTranscript(clickJobResult.company, userId)
                                   }
                                   break
@@ -1086,7 +1083,7 @@ export default function Automation() {
                                 await sleep(100)
                               }
                               if (!transcriptHandled) {
-                                addLog('no transcript')
+                                addLog('No transcript detected.')
                                 await handleNoTranscript(clickJobResult.company, userId)
                               }
                             }
