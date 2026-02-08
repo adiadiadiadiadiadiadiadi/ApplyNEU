@@ -105,6 +105,31 @@ export default function Automation() {
     existingTasksRef.current.add(key)
   }
 
+  async function handleNoTranscript(companyName: string, userId: string | undefined) {
+    addLog(`No transcript found for ${companyName}.`)
+    if (!userId) {
+      addLog(`Error occured.`)
+      return
+    }
+    const text = `Upload ${companyName} transcript`
+    const description = `Upload a transcript for ${companyName} in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
+    const key = text.trim().toLowerCase()
+    if (existingTasksRef.current.has(key)) {
+      addLog(`Task already exists; skipping create: ${text}`)
+      return
+    }
+    const resp = await fetch(`http://localhost:8080/tasks/${userId}/new`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, description })
+    })
+    if (!resp.ok) {
+      addLog('Error occured while creating task.')
+      return
+    }
+    existingTasksRef.current.add(key)
+  }
+
   const closeModalIfPresent = async (webview: any, preferHeadless = false) => {
     return webview.executeJavaScript(`
       (() => {
@@ -1017,6 +1042,7 @@ export default function Automation() {
                               })();
                             `)
                             if (transcriptExists) {
+                              addLog('transcript detected')
                               setStatus('paused')
                               await sleep(3000)
                               setStatus('running')
@@ -1052,15 +1078,21 @@ export default function Automation() {
                                       })();
                                     `)
                                   } else {
-                                    addLog('Transcript not found.')
+                                    addLog('no transcript')
+                                    await handleNoTranscript(clickJobResult.company, userId)
                                   }
                                   break
                                 }
                                 await sleep(100)
                               }
                               if (!transcriptHandled) {
-                                addLog('Transcript not found.')
+                                addLog('no transcript')
+                                await handleNoTranscript(clickJobResult.company, userId)
                               }
+                            }
+                            if (!transcriptExists) {
+                              addLog('no transcript')
+                              await handleNoTranscript(clickJobResult.company, userId)
                             }
                             transcriptChecked = true
                           }
@@ -1174,6 +1206,9 @@ export default function Automation() {
                               } else if (workSampleInfo?.hasButton) {
                                 await handleNoWorkSample(clickJobResult.company, userId)
                                 workSampleChecked = true
+                              } else {
+                                await handleNoWorkSample(clickJobResult.company, userId)
+                                workSampleChecked = true
                               }
                             }
 
@@ -1203,6 +1238,9 @@ export default function Automation() {
                                 `)
                                 portfolioChecked = true
                               } else if (portfolioInfo?.hasButton) {
+                                await handleNoPortfolio(clickJobResult.company, userId)
+                                portfolioChecked = true
+                              } else {
                                 await handleNoPortfolio(clickJobResult.company, userId)
                                 portfolioChecked = true
                               }
@@ -1423,6 +1461,10 @@ export default function Automation() {
                                 }
                                 workSampleChecked = true
                               } else if (workSampleInfo?.hasButton) {
+                                await handleNoWorkSample(clickJobResult.company, userId)
+                                workSampleChecked = true
+                              } else {
+                                await handleNoWorkSample(clickJobResult.company, userId)
                                 workSampleChecked = true
                               }
                             }
@@ -1453,6 +1495,9 @@ export default function Automation() {
                                 `)
                                 portfolioChecked = true
                               } else if (portfolioInfo?.hasButton) {
+                                await handleNoPortfolio(clickJobResult.company, userId)
+                                portfolioChecked = true
+                              } else {
                                 await handleNoPortfolio(clickJobResult.company, userId)
                                 portfolioChecked = true
                               }
