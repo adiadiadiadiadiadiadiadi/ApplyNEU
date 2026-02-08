@@ -1053,10 +1053,8 @@ export default function Automation() {
                           if (!transcriptChecked) {
                             const transcriptExists = await webview.executeJavaScript(`
                               (() => {
-                                const nodes = Array.from(document.querySelectorAll('label, span, div, p, button'));
-                                return nodes.some(el =>
-                                  ((el.innerText || el.textContent || '').toLowerCase().includes('transcript'))
-                                );
+                                const sel = document.querySelector('select[id*="transcript"]');
+                                return !!sel;
                               })();
                             `)
                             if (transcriptExists) {
@@ -1103,10 +1101,6 @@ export default function Automation() {
                               await handleNoTranscript(clickJobResult.company, userId)
                               skipJob = true
                               }
-                            }
-                            if (!transcriptExists) {
-                            await handleNoTranscript(clickJobResult.company, userId)
-                            skipJob = true
                             }
                             transcriptChecked = true
                           }
@@ -1198,7 +1192,8 @@ export default function Automation() {
                                   return { hasSelect: !!sel, options: opts, hasButton: !!btn };
                                 })();
                               `)
-                              if (workSampleInfo?.hasSelect) {
+                              const workSampleVisible = !!(workSampleInfo?.hasSelect || workSampleInfo?.hasButton)
+                              if (workSampleVisible && workSampleInfo?.hasSelect) {
                                 const match = companyLower
                                   ? workSampleInfo.options.find((o: any) => o.text.toLowerCase().includes(companyLower))
                                   : null
@@ -1222,16 +1217,11 @@ export default function Automation() {
                                   await handleNoWorkSample(clickJobResult.company, userId)
                                   skipJob = true
                                 }
-                                workSampleChecked = true
-                              } else if (workSampleInfo?.hasButton) {
+                              } else if (workSampleVisible && workSampleInfo?.hasButton) {
                                 await handleNoWorkSample(clickJobResult.company, userId)
                                 skipJob = true
-                                workSampleChecked = true
-                              } else {
-                                await handleNoWorkSample(clickJobResult.company, userId)
-                                skipJob = true
-                                workSampleChecked = true
                               }
+                              workSampleChecked = true
                             }
 
                             if (!portfolioChecked) {
@@ -1246,28 +1236,24 @@ export default function Automation() {
                                   return { hasCheckboxes: checkboxes.length > 0, hasButton: !!btn };
                                 })();
                               `)
-                              if (portfolioInfo?.hasCheckboxes) {
-                                await webview.executeJavaScript(`
-                                  (() => {
-                                    const checkboxes = Array.from(document.querySelectorAll('input[type="checkbox"][id*="other_documents"]'));
-                                    checkboxes.forEach(cb => {
-                                      if (!cb.checked) {
-                                        cb.click();
-                                      }
-                                    });
-                                    return true;
-                                  })();
-                                `)
-                                portfolioChecked = true
-                              } else if (portfolioInfo?.hasButton) {
-                                await handleNoPortfolio(clickJobResult.company, userId)
-                                skipJob = true
-                                portfolioChecked = true
-                              } else {
-                                await handleNoPortfolio(clickJobResult.company, userId)
-                                skipJob = true
-                                portfolioChecked = true
-                              }
+                            const portfolioVisible = !!(portfolioInfo?.hasCheckboxes || portfolioInfo?.hasButton)
+                            if (portfolioVisible && portfolioInfo?.hasCheckboxes) {
+                              await webview.executeJavaScript(`
+                                (() => {
+                                  const checkboxes = Array.from(document.querySelectorAll('input[type="checkbox"][id*="other_documents"]'));
+                                  checkboxes.forEach(cb => {
+                                    if (!cb.checked) {
+                                      cb.click();
+                                    }
+                                  });
+                                  return true;
+                                })();
+                              `)
+                            } else if (portfolioVisible && portfolioInfo?.hasButton) {
+                              await handleNoPortfolio(clickJobResult.company, userId)
+                              skipJob = true
+                            }
+                            portfolioChecked = true
                             }
                             if (skipJob) {
                               await recordApplication('draft')
