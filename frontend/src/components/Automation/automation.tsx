@@ -959,6 +959,7 @@ export default function Automation() {
                       })();
                     `)
                     if (applyClicked) {
+                      addLog('Apply clicked; starting form handling')
                       // Delay inline-instructions check until after resume UI is present.
                       const dividerExists = await webview.executeJavaScript(`
                         (() => {
@@ -969,6 +970,7 @@ export default function Automation() {
                           return !!(divider || heading);
                         })();
                       `)
+                      // defer "here" logging until after all document checks complete
                       if (dividerExists) {
                         const howToApplyText = await webview.executeJavaScript(`
                           (() => {
@@ -1008,8 +1010,10 @@ export default function Automation() {
                       let portfolioChecked = false
                       let transcriptChecked = false
                       let preferHeadlessClose = false
+                      let docFieldFound = false
+                      let needsExternalAction = false
                       let applicationRecorded = false
-                      const recordApplication = async (status: 'draft' | 'submitted') => {
+                      const recordApplication = async (status: 'draft' | 'submitted' | 'external') => {
                         if (applicationRecorded) return
                         const userId = await getUserId()
                         if (!userId) return
@@ -1028,7 +1032,7 @@ export default function Automation() {
                           applicationRecorded = true
                         } catch (err) {}
                       }
-                      for (let i = 0; i < 40; i++) {
+                      for (let i = 0; i < 10; i++) { // faster resume/doc detection
                         const found = await webview.executeJavaScript(`
                           (() => {
                             const resumeSelect =
@@ -1050,6 +1054,7 @@ export default function Automation() {
                         `)
                         if (found?.hasLabel || found?.hasSelect || found?.hasButton) {
                           seenResume = true
+                          docFieldFound = true
                           if (!transcriptChecked) {
                             const transcriptExists = await webview.executeJavaScript(`
                               (() => {
@@ -1058,6 +1063,7 @@ export default function Automation() {
                               })();
                             `)
                             if (transcriptExists) {
+                              docFieldFound = true
                               let transcriptHandled = false
                               for (let t = 0; t < 10; t++) { // shorter wait to avoid long gaps
                                 const selectResult = await webview.executeJavaScript(`
@@ -1133,6 +1139,7 @@ export default function Automation() {
                               })();
                             `)
                             if (coverLetterExists?.hasAny) {
+                              docFieldFound = true
                               if (coverLetterExists.hasSelect) {
                                 
                                 const coverOpenResult = await webview.executeJavaScript(`
@@ -1194,6 +1201,7 @@ export default function Automation() {
                               `)
                               const workSampleVisible = !!(workSampleInfo?.hasSelect || workSampleInfo?.hasButton)
                               if (workSampleVisible && workSampleInfo?.hasSelect) {
+                                docFieldFound = true
                                 const match = companyLower
                                   ? workSampleInfo.options.find((o: any) => o.text.toLowerCase().includes(companyLower))
                                   : null
@@ -1218,6 +1226,7 @@ export default function Automation() {
                                   skipJob = true
                                 }
                               } else if (workSampleVisible && workSampleInfo?.hasButton) {
+                                docFieldFound = true
                                 await handleNoWorkSample(clickJobResult.company, userId)
                                 skipJob = true
                               }
@@ -1238,6 +1247,7 @@ export default function Automation() {
                               `)
                             const portfolioVisible = !!(portfolioInfo?.hasCheckboxes || portfolioInfo?.hasButton)
                             if (portfolioVisible && portfolioInfo?.hasCheckboxes) {
+                              docFieldFound = true
                               await webview.executeJavaScript(`
                                 (() => {
                                   const checkboxes = Array.from(document.querySelectorAll('input[type="checkbox"][id*="other_documents"]'));
@@ -1250,6 +1260,7 @@ export default function Automation() {
                                 })();
                               `)
                             } else if (portfolioVisible && portfolioInfo?.hasButton) {
+                              docFieldFound = true
                               await handleNoPortfolio(clickJobResult.company, userId)
                               skipJob = true
                             }
@@ -1604,11 +1615,90 @@ export default function Automation() {
                            await closeModalIfPresent(webview, preferHeadlessClose)
                            break
                          }
-                         await sleep(100)
+                          await sleep(50)
                       }
                       if (skipJob) {
                         await recordApplication('draft')
                         await closeModalIfPresent(webview, preferHeadlessClose)
+                        continue
+                      }
+                      if (!docFieldFound) {
+                        try {
+                          const instructionsText = await webview.executeJavaScript(`
+                            (() => {
+                              const el = document.querySelector('#how-to-apply') || document.querySelector('p#how-to-apply');
+                              const text = el ? (el.innerText || el.textContent || '').trim() : '';
+                              if (text) return text;
+                              const paragraphs = Array.from(document.querySelectorAll('p')).map(p => (p.innerText || p.textContent || '').trim()).filter(Boolean);
+                              return paragraphs.join('\\n').trim();
+                            })();
+                          `)
+                          const userId = await getUserId()
+                          if (instructionsText && userId) {
+                            needsExternalAction = true
+                            await fetch(`http://localhost:8080/tasks/${userId}/add-instructions`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ employer_instructions: instructionsText })
+                            })
+                          }
+                        } catch (err) {}
+                        await recordApplication(needsExternalAction ? 'external' : 'draft')
+                        await closeModalIfPresent(webview, preferHeadlessClose)
+                        // Wait for the "One more thing..." modal to appear, click through, then continue.
+                        for (let m = 0; m < 20; m++) {
+                          const modalVisible = await webview.executeJavaScript(`
+                            (() => {
+                              const text = Array.from(document.querySelectorAll('div, h1, h2, h3, h4, p')).find(el =>
+                                (el.innerText || el.textContent || '').trim().toLowerCase().includes('one more thing')
+                              );
+                              const yesNo = Array.from(document.querySelectorAll('button')).some(b => {
+                                const t = (b.textContent || '').trim().toLowerCase();
+                                return t === 'yes' || t === 'no';
+                              });
+                              return !!(text || yesNo);
+                            })();
+                          `)
+                          if (modalVisible) {
+                            for (let y = 0; y < 30; y++) {
+                              const clicked = await webview.executeJavaScript(`
+                                (() => {
+                                  const btn = Array.from(document.querySelectorAll('button')).find(b => {
+                                    const txt = (b.textContent || '').trim().toLowerCase();
+                                    const cls = (b.className || '').toLowerCase();
+                                    return txt === 'yes' || cls.includes('yes');
+                                  });
+                                  if (!btn) return false;
+                                  btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+                                  if (typeof btn.click === 'function') btn.click();
+                                  else btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                                  return true;
+                                })();
+                              `)
+                              if (clicked) break
+                              await new Promise(res => setTimeout(res, 100))
+                            }
+                            // Wait for the modal to disappear before continuing.
+                            for (let z = 0; z < 30; z++) {
+                              const stillVisible = await webview.executeJavaScript(`
+                                (() => {
+                                  const text = Array.from(document.querySelectorAll('div, h1, h2, h3, h4, p')).find(el =>
+                                    (el.innerText || el.textContent || '').trim().toLowerCase().includes('one more thing')
+                                  );
+                                  const yesNo = Array.from(document.querySelectorAll('button')).some(b => {
+                                    const t = (b.textContent || '').trim().toLowerCase();
+                                    return t === 'yes' || t === 'no';
+                                  });
+                                  return !!(text || yesNo);
+                                })();
+                              `)
+                              if (!stillVisible) break
+                              await new Promise(res => setTimeout(res, 100))
+                            }
+                            break
+                          }
+                          await new Promise(res => setTimeout(res, 100))
+                        }
                         continue
                       }
                     if (!seenResume) {
@@ -1617,7 +1707,7 @@ export default function Automation() {
                       setStatus('paused')
                       return
                     }
-                      await recordApplication('submitted')
+                      await recordApplication(needsExternalAction ? 'external' : 'submitted')
                     }
                   } else if (data.decision === 'DO_NOT_APPLY') {
                     consecutiveDoNotApply += 1
