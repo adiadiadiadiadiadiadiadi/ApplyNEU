@@ -6,9 +6,10 @@ interface HomeProps {
   onNavigateToAutomation: () => void
 }
 
-export default function Home({ onNavigateToAutomation }: HomeProps) {
+export default function Home({ onNavigateToAutomation: _onNavigateToAutomation }: HomeProps) {
   const [tasks, setTasks] = useState<{ task_id: string; text: string }[]>([])
   const [loadingTasks, setLoadingTasks] = useState(false)
+  void _onNavigateToAutomation
 
   useEffect(() => {
     const fetchTasks = async () => {

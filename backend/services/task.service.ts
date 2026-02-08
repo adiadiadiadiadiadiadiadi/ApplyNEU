@@ -37,7 +37,8 @@ export const addInstructions = async (user_id: string, employer_instructions: st
           - "description" field: MUST include the full URL or email address
           - Keep instructions short and action-oriented
           - Always use format: "Action through/at [company]" for instruction, full link in description.
-          - Avoid mentioning the actual site the link is on (for example, mention the company name instead of Workday).
+          - Avoid mentioning the actual site the link is on (for example, mention the specific company name 
+            not generic "company" instead of Workday).
           
           Examples:
           {
