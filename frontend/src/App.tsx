@@ -7,6 +7,7 @@ import Home from './components/Home/home'
 import Onboarding from './components/Onboarding/onboarding'
 import './index.css'
 import Automation from './components/Automation/automation'
+import Profile from './components/Profile/profile'
 
 function SideNav() {
   return (
@@ -20,11 +21,15 @@ function SideNav() {
           <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
         </svg>
       </NavLink>
-      <button className="nav-icon" title="Profile" type="button">
+      <NavLink
+        to="/profile"
+        title="Profile"
+        className={({ isActive }) => `nav-icon${isActive ? ' nav-icon--active' : ''}`}
+      >
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M12 11c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4zm-6 9c0-3.31 2.69-6 6-6s6 2.69 6 6H6z"></path>
         </svg>
-      </button>
+      </NavLink>
       <NavLink
         to="/automation"
         title="Play"
@@ -74,6 +79,7 @@ function AppRoutes() {
       <Route element={<AuthenticatedLayout />}>
         <Route path="/" element={<Home />} />
         <Route path="/automation" element={<Automation />} />
+        <Route path="/profile" element={<Profile />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

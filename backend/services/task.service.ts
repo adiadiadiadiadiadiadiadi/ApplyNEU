@@ -1,15 +1,25 @@
 import { pool } from '../db/index.ts';
 import Anthropic from '@anthropic-ai/sdk';
 
-export const addTask = async (user_id: string, text: string, description: string) => {
+export const addTask = async (user_id: string, text: string, description: string, application_id?: string) => {
     try {
+        const columns = ['user_id', 'text', 'description'];
+        const values: Array<string> = [user_id, text, description];
+        const placeholders = ['$', '1', ', ', '$', '2', ', ', '$', '3'];
+
+        if (application_id) {
+            columns.push('application_id');
+            values.push(application_id);
+            placeholders.push(', ', '$', (values.length).toString());
+        }
+
         const result = await pool.query(
             `
-            INSERT INTO tasks (user_id, text, description)
-            VALUES ($1, $2, $3)
+            INSERT INTO tasks (${columns.join(', ')})
+            VALUES (${placeholders.join('')})
             RETURNING *;
             `,
-            [user_id, text, description]
+            values
         );
         return result.rows[0];
 
@@ -18,7 +28,7 @@ export const addTask = async (user_id: string, text: string, description: string
     }
 }
 
-export const addInstructions = async (user_id: string, employer_instructions: string) => {
+export const addInstructions = async (user_id: string, employer_instructions: string, application_id?: string) => {
     try {
         const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
         const message = await anthropic.messages.create({
@@ -104,7 +114,7 @@ export const addInstructions = async (user_id: string, employer_instructions: st
 
         const inserted: any[] = [];
         for (const item of normalized) {
-            const res = await addTask(user_id, item.instruction, item.description);
+            const res = await addTask(user_id, item.instruction, item.description, application_id);
             if (!('error' in res)) {
                 inserted.push(res);
             }
@@ -136,7 +146,7 @@ export const toggleTask = async (task_id: string) => {
 export const getTasks = async (user_id: string) => {
   const result = await pool.query(
       `
-      SELECT text, task_id FROM tasks WHERE user_id = $1 AND completed = false
+      SELECT text, task_id, application_id FROM tasks WHERE user_id = $1 AND completed = false
       ORDER BY created_at ASC;
       `,
       [user_id]
@@ -148,7 +158,7 @@ export const getTasks = async (user_id: string) => {
 export const getCompletedTasksForApplication = async (user_id: string) => {
     const result = await pool.query(
         `
-        SELECT text, task_id FROM tasks WHERE user_id = $1 AND completed = false
+        SELECT text, task_id, application_id FROM tasks WHERE user_id = $1 AND completed = false
         ORDER BY created_at ASC;
         `,
         [user_id]
@@ -156,3 +166,18 @@ export const getCompletedTasksForApplication = async (user_id: string) => {
   
     return result.rows;
   }
+
+export const deleteTasksForApplication = async (user_id: string, application_id: string) => {
+    try {
+        await pool.query(
+            `
+            DELETE FROM tasks
+            WHERE user_id = $1 AND application_id = $2;
+            `,
+            [user_id, application_id]
+        );
+        return { success: true };
+    } catch (error) {
+        return { error: 'Error deleting tasks for application.' };
+    }
+}
