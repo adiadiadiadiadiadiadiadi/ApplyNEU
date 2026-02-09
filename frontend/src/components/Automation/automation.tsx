@@ -332,6 +332,7 @@ export default function Automation() {
       addLog('Error occured.')
     }
   }
+  void addEmployerTasks
 
   const clearTasksForApplication = async (userId: string, applicationId: string) => {
     try {
@@ -967,6 +968,7 @@ export default function Automation() {
                 if (resp.ok) {
                   const data = await resp.json()
                   const instructions = normalizeEmployerInstructions(data?.employer_instructions)
+                  void instructions
                   if (data.decision === 'APPLY') {
                     consecutiveDoNotApply = 0
                     addLog(`Decision: apply.`)
@@ -1009,6 +1011,7 @@ export default function Automation() {
                       return currentJobApplicationIdRef.current
                     }
                     await recordApplication('draft')
+                    let documentsMissing = false
                     const applyClicked = await webview.executeJavaScript(`
                       (() => {
                         const btn = Array.from(document.querySelectorAll('button')).find(b => {
@@ -1033,31 +1036,7 @@ export default function Automation() {
                           return !!(divider || heading);
                         })();
                       `)
-                      // defer "here" logging until after all document checks complete
-                      if (dividerExists) {
-                        const howToApplyText = await webview.executeJavaScript(`
-                          (() => {
-                            const el = document.querySelector('p#how-to-apply');
-                            return el ? (el.innerText || el.textContent || '').trim() : '';
-                          })();
-                        `)
-                        if (howToApplyText) {
-                          try {
-                            const resp = await fetch(`http://localhost:8080/tasks/${userId}/add-instructions`, {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                employer_instructions: howToApplyText,
-                                application_id: currentJobApplicationIdRef.current ?? undefined
-                              })
-                            })
-                            if (!resp.ok) { }
-                          } catch (err) { }
-                        }
-                      }
-                      if (instructions.length) {
-                        await addEmployerTasks(instructions, userId as string, currentJobApplicationIdRef.current)
-                      }
+                      // defer instruction/task creation until after document checks below
                       await webview.executeJavaScript(`
                         (() => {
                           const btn = Array.from(document.querySelectorAll('button')).find(b => {
@@ -1069,6 +1048,7 @@ export default function Automation() {
                           return { hasSubmit: !!btn, hasRed: isRed };
                         })();
                       `)
+                      void dividerExists
                       let seenResume = false
                       let skipJob = false
                       let coverLetterTaskAdded = false
@@ -1209,6 +1189,7 @@ export default function Automation() {
                                       : false;
                                     if (!hasCompany) {
                                       if (!coverLetterTaskAdded) {
+                                        documentsMissing = true
                                         await handleNoCoverLetter(clickJobResult.company, webview, userId, currentJobApplicationIdRef.current);
                                         coverLetterTaskAdded = true
                                       }
@@ -1219,6 +1200,7 @@ export default function Automation() {
                                 }
                               } else {
                                 if (!coverLetterTaskAdded) {
+                                  documentsMissing = true
                                   await handleNoCoverLetter(clickJobResult.company, webview, userId, currentJobApplicationIdRef.current)
                                   coverLetterTaskAdded = true
                                 }
@@ -1268,11 +1250,13 @@ export default function Automation() {
                                     })();
                                   `)
                                 } else {
+                                  documentsMissing = true
                                   await handleNoWorkSample(clickJobResult.company, userId, currentJobApplicationIdRef.current)
                                   skipJob = true
                                 }
                               } else if (workSampleVisible && workSampleInfo?.hasButton) {
                                 docFieldFound = true
+                                documentsMissing = true
                                 await handleNoWorkSample(clickJobResult.company, userId, currentJobApplicationIdRef.current)
                                 skipJob = true
                               }
@@ -1668,7 +1652,7 @@ export default function Automation() {
                         await closeModalIfPresent(webview, preferHeadlessClose)
                         continue
                       }
-                      if (!docFieldFound) {
+                      if (!docFieldFound && !documentsMissing) {
                         try {
                           const instructionsText = await webview.executeJavaScript(`
                             (() => {
@@ -1750,6 +1734,30 @@ export default function Automation() {
                         }
                         continue
                       }
+                    if (!documentsMissing && dividerExists) {
+                      const howToApplyText = await webview.executeJavaScript(`
+                        (() => {
+                          const el = document.querySelector('p#how-to-apply');
+                          return el ? (el.innerText || el.textContent || '').trim() : '';
+                        })();
+                      `)
+                      if (howToApplyText) {
+                        try {
+                          const resp = await fetch(`http://localhost:8080/tasks/${userId}/add-instructions`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              employer_instructions: howToApplyText,
+                              application_id: currentJobApplicationIdRef.current ?? undefined
+                            })
+                          })
+                          if (!resp.ok) { /* ignore */ }
+                        } catch (err) { /* ignore */ }
+                      }
+                    }
+                    if (!documentsMissing && instructions.length) {
+                      await addEmployerTasks(instructions, userId as string, currentJobApplicationIdRef.current)
+                    }
                     if (!seenResume) {
                       addLog('Waiting for user resume upload...')
                       playAlertSound()
