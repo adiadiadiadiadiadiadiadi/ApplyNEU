@@ -2,47 +2,74 @@ import './home.css'
 import { supabase } from '../../lib/supabase'
 import { useEffect, useState } from 'react'
 
-interface HomeProps {
-  onNavigateToAutomation: () => void
-}
+type Task = { task_id: string; text: string; completed?: boolean }
 
-export default function Home({ onNavigateToAutomation: _onNavigateToAutomation }: HomeProps) {
-  const [tasks, setTasks] = useState<{ task_id: string; text: string }[]>([])
+export default function Home() {
+  const [tasks, setTasks] = useState<Task[]>([])
   const [loadingTasks, setLoadingTasks] = useState(false)
-  void _onNavigateToAutomation
+  const [toggling, setToggling] = useState<string | null>(null)
+
+  const sortTasks = (list: Task[]) => [...list.filter(t => !t.completed), ...list.filter(t => t.completed)]
+
+  const fetchTasks = async () => {
+    setLoadingTasks(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      setLoadingTasks(false)
+      return
+    }
+    try {
+      const resp = await fetch(`http://localhost:8080/tasks/${user.id}`)
+      if (resp.ok) {
+        const data = await resp.json()
+        const parsedTasks = Array.isArray(data)
+          ? data
+            .map((task: Task) => ({
+              ...task,
+              completed: Boolean((task as any).completed)
+            }))
+            // on next load, only surface tasks that still need attention
+            .filter(task => !task.completed)
+          : []
+        setTasks(sortTasks(parsedTasks))
+      }
+    } catch (err) {
+      // swallow errors for now
+    } finally {
+      setLoadingTasks(false)
+    }
+  }
 
   useEffect(() => {
-    const fetchTasks = async () => {
-      setLoadingTasks(true)
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        setLoadingTasks(false)
-        return
-      }
-      try {
-        const resp = await fetch(`http://localhost:8080/tasks/${user.id}`)
-        if (resp.ok) {
-          const data = await resp.json()
-          setTasks(Array.isArray(data) ? data : [])
-        }
-      } catch (err) {
-        // swallow errors for now
-      } finally {
-        setLoadingTasks(false)
-      }
-    }
     fetchTasks()
   }, [])
+
+  const handleToggle = async (taskId: string) => {
+    setToggling(taskId)
+    setTasks(prev => {
+      const updated = prev.map(t => (t.task_id === taskId ? { ...t, completed: true } : t))
+      return sortTasks(updated)
+    })
+    try {
+      await fetch(`http://localhost:8080/tasks/${taskId}/complete`, { method: 'PUT' })
+    } catch (err) {
+      // swallow errors for now
+    } finally {
+      setToggling(null)
+    }
+  }
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
   }
 
+  const incompleteCount = tasks.filter(t => !t.completed).length
+
   const tasksTitle = loadingTasks
     ? 'loading...'
     : tasks.length === 0
       ? 'no tasks yet...'
-      : `${tasks.length} task${tasks.length === 1 ? '' : 's'} await${tasks.length === 1 ? 's' : ''} you`
+      : `${incompleteCount} task${incompleteCount === 1 ? '' : 's'} await${incompleteCount === 1 ? 's' : ''} you`
 
   return (
     <>
@@ -71,8 +98,13 @@ export default function Home({ onNavigateToAutomation: _onNavigateToAutomation }
                 <div className="tasks-list">
                   {tasks.map(task => (
                     <label key={task.task_id} className="task-item">
-                      <input type="checkbox" disabled />
-                      <span className="task-text">{task.text}</span>
+                    <input
+                      type="checkbox"
+                      onChange={() => handleToggle(task.task_id)}
+                      disabled={toggling === task.task_id}
+                      checked={Boolean(task.completed)}
+                    />
+                    <span className="task-text">{task.text}</span>
                     </label>
                   ))}
                 </div>

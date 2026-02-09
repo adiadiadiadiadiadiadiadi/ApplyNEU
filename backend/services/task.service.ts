@@ -120,7 +120,7 @@ export const addInstructions = async (user_id: string, employer_instructions: st
 export const toggleTask = async (task_id: string) => {
     const result = await pool.query(
         `
-        UPDATE tasks SET status = NOT status WHERE task_id = $1
+        UPDATE tasks SET completed = NOT completed WHERE task_id = $1
         RETURNING *;
         `,
         [task_id]
