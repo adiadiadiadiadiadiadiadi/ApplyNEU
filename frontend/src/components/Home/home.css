@@ -235,6 +235,9 @@
   font-size: 1.5rem;
   position: relative;
   z-index: 2;
+  justify-content: space-between;
+  flex: 1;
+  min-height: 2.1rem;
 }
 
 .dots-animation::after {
@@ -286,6 +289,102 @@
 .arrow {
   font-size: 1.8rem;
   color: rgba(255, 255, 255, 0.87);
+}
+
+.tile-content--tasks {
+  justify-content: flex-start;
+}
+
+.tile-content--hidden {
+  visibility: hidden;
+  opacity: 0;
+}
+
+.tile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 2.5rem;
+  position: relative;
+  padding-right: 3rem;
+}
+
+.tile-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.archive-toggle {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.archive-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.archive-visual {
+  width: 2rem;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.65);
+  border-radius: 0.5rem;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.archive-toggle:hover .archive-visual {
+  color: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.archive-toggle:active .archive-visual {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.archive-toggle:focus-within .archive-visual {
+  outline: none;
+  box-shadow: none;
+}
+
+.tile--loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tile-loading-centered {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  width: 100%;
+  min-height: 10rem;
+  flex: 1;
+}
+
+.tile-loading-text {
+  font-size: 1.75rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.tile-loading-centered .archive-button {
+  margin-left: 0;
 }
 
 .tasks-list {
