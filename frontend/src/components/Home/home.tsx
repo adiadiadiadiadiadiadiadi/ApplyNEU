@@ -2,7 +2,7 @@ import './home.css'
 import { supabase } from '../../lib/supabase'
 import { useEffect, useState } from 'react'
 
-type Task = { task_id: string; text: string; completed?: boolean }
+type Task = { task_id: string; text: string; completed?: boolean; application_id?: string | null }
 
 export default function Home() {
   const [tasks, setTasks] = useState<Task[]>([])
@@ -24,12 +24,14 @@ export default function Home() {
         const data = await resp.json()
         const parsedTasks = Array.isArray(data)
           ? data
-            .map((task: Task) => ({
-              ...task,
-              completed: Boolean((task as any).completed)
-            }))
-            // on next load, only surface tasks that still need attention
-            .filter(task => !task.completed)
+              .map((task: any) => ({
+                task_id: String(task?.task_id ?? ''),
+                text: String(task?.text ?? ''),
+                application_id: task?.application_id ?? null,
+                completed: Boolean(task?.completed)
+              }))
+              // on next load, only surface tasks that still need attention
+              .filter(task => !task.completed && task.text)
           : []
         setTasks(sortTasks(parsedTasks))
       }
@@ -46,12 +48,26 @@ export default function Home() {
 
   const handleToggle = async (taskId: string) => {
     setToggling(taskId)
+    const targetTask = tasks.find(t => t.task_id === taskId)
+    let nextTasks: Task[] = []
     setTasks(prev => {
       const updated = prev.map(t => (t.task_id === taskId ? { ...t, completed: true } : t))
-      return sortTasks(updated)
+      const sorted = sortTasks(updated)
+      nextTasks = sorted
+      return sorted
     })
     try {
       await fetch(`http://localhost:8080/tasks/${taskId}/complete`, { method: 'PUT' })
+      const appId = targetTask?.application_id
+      if (appId) {
+        const hasRemainingForApp = nextTasks.some(t => t.application_id === appId && !t.completed)
+        if (!hasRemainingForApp) {
+          const { data: { user } } = await supabase.auth.getUser()
+          if (user) {
+            await fetch(`http://localhost:8080/tasks/${user.id}/application/${appId}`, { method: 'DELETE' })
+          }
+        }
+      }
     } catch (err) {
       // swallow errors for now
     } finally {
