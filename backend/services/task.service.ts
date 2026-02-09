@@ -140,7 +140,38 @@ export const toggleTask = async (task_id: string) => {
         return { error: 'Task not found.' };
     }
 
-    return result.rows[0];
+    const updated = result.rows[0];
+
+    // If this task is linked to an application and we just completed it,
+    // check whether all tasks for that application are now done.
+    if (updated.completed && updated.application_id && updated.user_id) {
+        try {
+            const remaining = await pool.query(
+                `
+                SELECT COUNT(*) AS count
+                FROM tasks
+                WHERE application_id = $1 AND user_id = $2 AND completed = false;
+                `,
+                [updated.application_id, updated.user_id]
+            );
+
+            const remainingCount = Number(remaining.rows?.[0]?.count ?? 0);
+            if (remainingCount === 0) {
+                await pool.query(
+                    `
+                    UPDATE job_applications
+                    SET status = 'submitted'
+                    WHERE application_id = $1 AND user_id = $2 AND status = 'external';
+                    `,
+                    [updated.application_id, updated.user_id]
+                );
+            }
+        } catch (err) {
+            // Swallow errors to avoid breaking task toggle flow.
+        }
+    }
+
+    return updated;
 }
 
 export const getTasks = async (user_id: string) => {
