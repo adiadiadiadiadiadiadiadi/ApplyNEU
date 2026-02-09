@@ -146,7 +146,9 @@ export const toggleTask = async (task_id: string) => {
 export const getTasks = async (user_id: string) => {
   const result = await pool.query(
       `
-      SELECT text, task_id, application_id FROM tasks WHERE user_id = $1 AND completed = false
+      SELECT text, task_id, application_id, completed
+      FROM tasks
+      WHERE user_id = $1 AND completed = false
       ORDER BY created_at ASC;
       `,
       [user_id]

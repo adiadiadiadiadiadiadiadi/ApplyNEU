@@ -30,8 +30,7 @@ export default function Home() {
                 application_id: task?.application_id ?? null,
                 completed: Boolean(task?.completed)
               }))
-              // on next load, only surface tasks that still need attention
-              .filter(task => !task.completed && task.text)
+              .filter(task => task.task_id && task.text)
           : []
         setTasks(sortTasks(parsedTasks))
       }
@@ -48,26 +47,9 @@ export default function Home() {
 
   const handleToggle = async (taskId: string) => {
     setToggling(taskId)
-    const targetTask = tasks.find(t => t.task_id === taskId)
-    let nextTasks: Task[] = []
-    setTasks(prev => {
-      const updated = prev.map(t => (t.task_id === taskId ? { ...t, completed: true } : t))
-      const sorted = sortTasks(updated)
-      nextTasks = sorted
-      return sorted
-    })
+    setTasks(prev => sortTasks(prev.map(t => (t.task_id === taskId ? { ...t, completed: true } : t))))
     try {
       await fetch(`http://localhost:8080/tasks/${taskId}/complete`, { method: 'PUT' })
-      const appId = targetTask?.application_id
-      if (appId) {
-        const hasRemainingForApp = nextTasks.some(t => t.application_id === appId && !t.completed)
-        if (!hasRemainingForApp) {
-          const { data: { user } } = await supabase.auth.getUser()
-          if (user) {
-            await fetch(`http://localhost:8080/tasks/${user.id}/application/${appId}`, { method: 'DELETE' })
-          }
-        }
-      }
     } catch (err) {
       // swallow errors for now
     } finally {
@@ -83,9 +65,7 @@ export default function Home() {
 
   const tasksTitle = loadingTasks
     ? 'loading...'
-    : tasks.length === 0
-      ? 'no tasks yet...'
-      : `${incompleteCount} task${incompleteCount === 1 ? '' : 's'} await${incompleteCount === 1 ? 's' : ''} you`
+    : `${incompleteCount} task${incompleteCount === 1 ? '' : 's'} await${incompleteCount === 1 ? 's' : ''} you`
 
   return (
     <>
