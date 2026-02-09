@@ -1,4 +1,22 @@
 .profile-blank {
   min-height: 100vh;
   background: #000;
+  position: relative;
+}
+
+.welcome-message {
+  position: fixed;
+  top: 3rem;
+  left: calc(50% - 600px + 157px);
+  color: rgba(230, 230, 230, 0.9);
+  text-align: left;
+  z-index: 1000;
+  margin: 0;
+}
+
+.welcome-email {
+  margin-left: 0.75rem;
+  font-size: 0.9rem;
+  color: rgba(200, 200, 200, 0.75);
+  font-weight: 400;
 }
