@@ -5,11 +5,13 @@ import { useEffect, useState } from 'react'
 type Task = { task_id: string; text: string; completed?: boolean; application_id?: string | null }
 
 export default function Home() {
-  const [tasks, setTasks] = useState<Task[]>([])
+  const [activeTasks, setActiveTasks] = useState<Task[]>([])
+  const [completedTasks, setCompletedTasks] = useState<Task[]>([])
   const [loadingTasks, setLoadingTasks] = useState(false)
   const [toggling, setToggling] = useState<string | null>(null)
+  const [showActive, setShowActive] = useState(true)
 
-  const sortTasks = (list: Task[]) => [...list.filter(t => !t.completed), ...list.filter(t => t.completed)]
+  const sortTasks = (list: Task[]) => [...list]
 
   const fetchTasks = async () => {
     setLoadingTasks(true)
@@ -19,7 +21,7 @@ export default function Home() {
       return
     }
     try {
-      const resp = await fetch(`http://localhost:8080/tasks/${user.id}`)
+      const resp = await fetch(`http://localhost:8080/tasks/${user.id}?includeCompleted=true`)
       if (resp.ok) {
         const data = await resp.json()
         const parsedTasks = Array.isArray(data)
@@ -32,7 +34,10 @@ export default function Home() {
               }))
               .filter(task => task.task_id && task.text)
           : []
-        setTasks(sortTasks(parsedTasks))
+        const active = sortTasks(parsedTasks.filter(task => !task.completed))
+        const completed = sortTasks(parsedTasks.filter(task => task.completed))
+        setActiveTasks(active)
+        setCompletedTasks(completed)
       }
     } catch (err) {
       // swallow errors for now
@@ -42,12 +47,21 @@ export default function Home() {
   }
 
   useEffect(() => {
-    fetchTasks()
+    fetchTasks(true)
   }, [])
 
   const handleToggle = async (taskId: string) => {
     setToggling(taskId)
-    setTasks(prev => sortTasks(prev.map(t => (t.task_id === taskId ? { ...t, completed: true } : t))))
+    let movedTask: Task | null = null
+    setActiveTasks(prev => {
+      const found = prev.find(t => t.task_id === taskId)
+      if (!found) return prev
+      movedTask = { ...found, completed: true }
+      return prev.filter(t => t.task_id !== taskId)
+    })
+    if (movedTask) {
+      setCompletedTasks(prev => sortTasks([movedTask!, ...prev]))
+    }
     try {
       await fetch(`http://localhost:8080/tasks/${taskId}/complete`, { method: 'PUT' })
     } catch (err) {
@@ -57,15 +71,25 @@ export default function Home() {
     }
   }
 
+  const handleArchiveToggle = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const next = e.target.checked
+    setShowActive(next)
+  }
+
   const handleLogout = async () => {
     await supabase.auth.signOut()
   }
 
-  const incompleteCount = tasks.filter(t => !t.completed).length
+  const displayedTasks = showActive ? activeTasks : completedTasks
 
-  const tasksTitle = loadingTasks
-    ? 'loading...'
-    : `${incompleteCount} task${incompleteCount === 1 ? '' : 's'} await${incompleteCount === 1 ? 's' : ''} you`
+  const tasksTitle =
+    displayedTasks.length === 0
+      ? showActive
+        ? 'no tasks yet...'
+        : 'no completed tasks'
+      : showActive
+        ? `${displayedTasks.length} task${displayedTasks.length === 1 ? '' : 's'} await${displayedTasks.length === 1 ? 's' : ''} you`
+        : `${displayedTasks.length} completed`
 
   return (
     <>
@@ -81,19 +105,43 @@ export default function Home() {
       <div className="home-container">
         <div className="top-row">
           <div className="tile tile--equal">
-            {loadingTasks || tasks.length === 0 ? (
-              <div className="tile-empty-message">
-                {loadingTasks ? 'loading...' : 'no tasks yet...'}
+            <div className="tile-header">
+              <div className={`tile-content tile-content--tasks ${(loadingTasks || displayedTasks.length === 0) ? 'tile-content--hidden' : ''}`}>
+                <span>{tasksTitle}</span>
+                <span className="arrow">→</span>
               </div>
+              <label className="archive-toggle" title="Show tasks needing attention">
+                <input
+                  type="checkbox"
+                  checked={showActive}
+                  onChange={handleArchiveToggle}
+                />
+                <span className="archive-visual" aria-hidden="true">
+                  {showActive ? (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    </svg>
+                  ) : (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 3h18v4H3z"></path>
+                      <path d="M5 7v14h14V7"></path>
+                      <path d="M10 11h4"></path>
+                    </svg>
+                  )}
+                </span>
+              </label>
+            </div>
+            {loadingTasks ? (
+              <div className="tile-loading-centered">
+                <span className="tile-loading-text">loading...</span>
+              </div>
+            ) : displayedTasks.length === 0 ? (
+              <div className="tile-empty-message">no tasks yet...</div>
             ) : (
-              <>
-                <div className="tile-content">
-                  <span>{tasksTitle}</span>
-                  <span className="arrow">→</span>
-                </div>
-                <div className="tasks-list">
-                  {tasks.map(task => (
-                    <label key={task.task_id} className="task-item">
+              <div className="tasks-list">
+                {displayedTasks.map(task => (
+                  <label key={task.task_id} className="task-item">
                     <input
                       type="checkbox"
                       onChange={() => handleToggle(task.task_id)}
@@ -101,10 +149,9 @@ export default function Home() {
                       checked={Boolean(task.completed)}
                     />
                     <span className="task-text">{task.text}</span>
-                    </label>
-                  ))}
-                </div>
-              </>
+                  </label>
+                ))}
+              </div>
             )}
           </div>
 

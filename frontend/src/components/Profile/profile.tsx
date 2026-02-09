@@ -8,7 +8,7 @@ type ProfileHeader = {
 }
 
 export default function Profile() {
-  const [header, setHeader] = useState<ProfileHeader>({ name: 'profile', email: '' })
+  const [header, setHeader] = useState<ProfileHeader>({ name: '', email: '' })
 
   useEffect(() => {
     const loadName = async () => {
@@ -21,13 +21,17 @@ export default function Profile() {
       const full = `${first} ${last}`.trim()
       const email = (user.email ?? '').trim()
       setHeader({
-        name: full || email || 'profile',
+        name: full || email || '',
         email,
       })
     }
 
     void loadName()
   }, [])
+
+  if (!header.name || !header.email) {
+    return <div className="profile-blank profile-loading">loading...</div>
+  }
 
   return (
     <div className="profile-blank">

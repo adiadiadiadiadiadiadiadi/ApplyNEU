@@ -174,12 +174,13 @@ export const toggleTask = async (task_id: string) => {
     return updated;
 }
 
-export const getTasks = async (user_id: string) => {
+export const getTasks = async (user_id: string, includeCompleted = false) => {
   const result = await pool.query(
       `
       SELECT text, task_id, application_id, completed
       FROM tasks
-      WHERE user_id = $1 AND completed = false
+      WHERE user_id = $1
+      ${includeCompleted ? '' : 'AND completed = false'}
       ORDER BY created_at ASC;
       `,
       [user_id]

@@ -95,6 +95,7 @@ const taskController = () => {
 
   const getTasksRoute = async (req: Request, res: Response) => {
     const { user_id } = req.params;
+    const includeCompleted = String(req.query?.includeCompleted ?? '').toLowerCase() === 'true';
 
     if (!user_id) {
       res.status(404).json({
@@ -104,7 +105,7 @@ const taskController = () => {
     }
 
     try {
-      const task = await getTasks(user_id);
+      const task = await getTasks(user_id, includeCompleted);
 
       if ('error' in task) {
         res.status(400).json({
