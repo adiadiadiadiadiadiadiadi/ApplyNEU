@@ -125,6 +125,11 @@
   gap: 1rem;
 }
 
+.tile--stats .tile-content,
+.tile--stats .stats-grid {
+  transform: translateY(-15px);
+}
+
 .stat-card {
   display: flex;
   flex-direction: column;

@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useEffect, useState } from 'react'
 
 type Task = { task_id: string; text: string; completed?: boolean; application_id?: string | null }
+type Stats = { today: number; week: number; month: number }
 
 export default function Home() {
   const [activeTasks, setActiveTasks] = useState<Task[]>([])
@@ -10,6 +11,8 @@ export default function Home() {
   const [loadingTasks, setLoadingTasks] = useState(false)
   const [toggling, setToggling] = useState<string | null>(null)
   const [showActive, setShowActive] = useState(true)
+  const [stats, setStats] = useState<Stats>({ today: 0, week: 0, month: 0 })
+  const [loadingStats, setLoadingStats] = useState(false)
 
   const sortTasks = (list: Task[]) => [...list]
 
@@ -46,8 +49,33 @@ export default function Home() {
     }
   }
 
+  const fetchStats = async () => {
+    setLoadingStats(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      setLoadingStats(false)
+      return
+    }
+    try {
+      const resp = await fetch(`http://localhost:8080/applications/${user.id}/stats`)
+      if (resp.ok) {
+        const data = await resp.json()
+        setStats({
+          today: Number(data?.today ?? 0),
+          week: Number(data?.week ?? 0),
+          month: Number(data?.month ?? 0),
+        })
+      }
+    } catch (err) {
+      // swallow errors for now
+    } finally {
+      setLoadingStats(false)
+    }
+  }
+
   useEffect(() => {
-    fetchTasks(true)
+    fetchTasks()
+    fetchStats()
   }, [])
 
   const handleToggle = async (taskId: string) => {
@@ -110,27 +138,29 @@ export default function Home() {
                 <span>{tasksTitle}</span>
                 <span className="arrow">→</span>
               </div>
-              <label className="archive-toggle" title="Show tasks needing attention">
-                <input
-                  type="checkbox"
-                  checked={showActive}
-                  onChange={handleArchiveToggle}
-                />
-                <span className="archive-visual" aria-hidden="true">
-                  {showActive ? (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="20 6 9 17 4 12"></polyline>
-                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                    </svg>
-                  ) : (
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M3 3h18v4H3z"></path>
-                      <path d="M5 7v14h14V7"></path>
-                      <path d="M10 11h4"></path>
-                    </svg>
-                  )}
-                </span>
-              </label>
+              {!loadingTasks && (
+                <label className="archive-toggle" title="Show tasks needing attention">
+                  <input
+                    type="checkbox"
+                    checked={showActive}
+                    onChange={handleArchiveToggle}
+                  />
+                  <span className="archive-visual" aria-hidden="true">
+                    {showActive ? (
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                      </svg>
+                    ) : (
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 3h18v4H3z"></path>
+                        <path d="M5 7v14h14V7"></path>
+                        <path d="M10 11h4"></path>
+                      </svg>
+                    )}
+                  </span>
+                </label>
+              )}
             </div>
             {loadingTasks ? (
               <div className="tile-loading-centered">
@@ -155,21 +185,21 @@ export default function Home() {
             )}
           </div>
 
-          <div className="tile tile--equal">
+          <div className="tile tile--equal tile--stats">
             <div className="tile-content">
               <span>your stats </span>
             </div>
             <div className="stats-grid">
               <div className="stat-card">
-                <span className="stat-value">3</span>
+                <span className="stat-value">{loadingStats ? '—' : stats.today}</span>
                 <span className="stat-label">today</span>
               </div>
               <div className="stat-card">
-                <span className="stat-value">12</span>
+                <span className="stat-value">{loadingStats ? '—' : stats.week}</span>
                 <span className="stat-label">this week</span>
               </div>
               <div className="stat-card">
-                <span className="stat-value">47</span>
+                <span className="stat-value">{loadingStats ? '—' : stats.month}</span>
                 <span className="stat-label">last month</span>
               </div>
             </div>

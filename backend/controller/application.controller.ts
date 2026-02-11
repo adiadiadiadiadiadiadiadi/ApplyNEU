@@ -1,5 +1,5 @@
 import express, { type Request, type Response } from 'express';
-import { addJobApplication } from '../services/application.service.ts';
+import { addJobApplication, getUserApplicationStats } from '../services/application.service.ts';
 
 /**
  * This controller handles job-related routes.
@@ -37,7 +37,34 @@ const applicationController = () => {
         }
     };
 
+    const getApplicationStatsRoute = async (req: Request, res: Response) => {
+        const { user_id } = req.params;
+
+        if (!user_id) {
+            res.status(404).json({
+                "message": "Required arguments not found to get stats."
+            });
+            return;
+        }
+
+        try {
+            const stats = await getUserApplicationStats(user_id);
+            if ('error' in stats) {
+                res.status(400).json({
+                    "message": "Unable to fetch job application stats."
+                });
+                return;
+            }
+            res.status(200).json(stats);
+        } catch (err: unknown) {
+            res.status(400).json({
+                "message": "Unable to fetch job application stats."
+            });
+        }
+    };
+
     router.post('/:user_id/new', addApplicationRoute);
+    router.get('/:user_id/stats', getApplicationStatsRoute);
 
     return router;
 };
