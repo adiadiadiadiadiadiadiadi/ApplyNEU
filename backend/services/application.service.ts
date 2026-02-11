@@ -46,3 +46,28 @@ export const addJobApplication = async (
     return { error: 'Error occurred while inserting into job applications.' };
   }
 }
+
+export const getUserApplicationStats = async (user_id: string) => {
+  try {
+    const result = await pool.query(
+      `
+        SELECT
+          COUNT(*) FILTER (WHERE applied_at >= date_trunc('day', NOW()))                 AS today_count,
+          COUNT(*) FILTER (WHERE applied_at >= date_trunc('week', NOW()))                AS week_count,
+          COUNT(*) FILTER (WHERE applied_at >= date_trunc('month', NOW()))               AS month_count
+        FROM job_applications
+        WHERE user_id = $1;
+      `,
+      [user_id]
+    );
+
+    const row = result.rows?.[0] ?? {};
+    return {
+      today: Number(row.today_count ?? 0),
+      week: Number(row.week_count ?? 0),
+      month: Number(row.month_count ?? 0)
+    };
+  } catch (error) {
+    return { error: 'Error fetching application stats.' };
+  }
+}
