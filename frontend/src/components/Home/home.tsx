@@ -80,16 +80,20 @@ export default function Home() {
 
   const handleToggle = async (taskId: string) => {
     setToggling(taskId)
-    let movedTask: Task | null = null
-    setActiveTasks(prev => {
-      const found = prev.find(t => t.task_id === taskId)
-      if (!found) return prev
-      movedTask = { ...found, completed: true }
-      return prev.filter(t => t.task_id !== taskId)
-    })
-    if (movedTask) {
-      setCompletedTasks(prev => sortTasks([movedTask!, ...prev]))
+
+    const activeMatch = activeTasks.find(t => t.task_id === taskId)
+    const completedMatch = completedTasks.find(t => t.task_id === taskId)
+
+    if (activeMatch) {
+      const moved = { ...activeMatch, completed: true }
+      setActiveTasks(prev => prev.filter(t => t.task_id !== taskId))
+      setCompletedTasks(prev => sortTasks([moved, ...prev]))
+    } else if (completedMatch) {
+      const moved = { ...completedMatch, completed: false }
+      setCompletedTasks(prev => prev.filter(t => t.task_id !== taskId))
+      setActiveTasks(prev => sortTasks([moved, ...prev]))
     }
+
     try {
       await fetch(`http://localhost:8080/tasks/${taskId}/complete`, { method: 'PUT' })
     } catch (err) {

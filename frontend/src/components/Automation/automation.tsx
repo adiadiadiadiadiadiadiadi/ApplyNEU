@@ -203,6 +203,23 @@ export default function Automation() {
     return false
   }
 
+  const waitForModalOpen = async (webview: any) => {
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+    for (let i = 0; i < 20; i++) { // ~3s max
+      const open = await webview.executeJavaScript(`
+        (() => {
+          const modal = document.querySelector('div.modal-content') || document.querySelector('div[role="dialog"]');
+          const how = document.querySelector('#how-to-apply') || document.querySelector('p#how-to-apply');
+          const visible = (el) => el && (el.offsetParent !== null || el.getClientRects().length > 0);
+          return !!(visible(modal) || visible(how));
+        })();
+      `)
+      if (open) return true
+      await sleep(150)
+    }
+    return false
+  }
+
   useEffect(() => {
     const fetchSearchTerms = async () => {
       try {
@@ -1735,12 +1752,15 @@ export default function Automation() {
                         continue
                       }
                     if (!documentsMissing && dividerExists) {
+                      await waitForModalOpen(webview)
+                      addLog('modal opened')
                       const howToApplyText = await webview.executeJavaScript(`
                         (() => {
                           const el = document.querySelector('p#how-to-apply');
                           return el ? (el.innerText || el.textContent || '').trim() : '';
                         })();
                       `)
+                      addLog(howToApplyText)
                       if (howToApplyText) {
                         try {
                           const resp = await fetch(`http://localhost:8080/tasks/${userId}/add-instructions`, {
@@ -1762,7 +1782,7 @@ export default function Automation() {
                       addLog('Waiting for user resume upload...')
                       playAlertSound()
                       setStatus('paused')
-                      return
+                      return  
                     }
                       await recordApplication(needsExternalAction ? 'external' : 'submitted')
                     }
