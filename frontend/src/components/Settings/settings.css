@@ -1,0 +1,59 @@
+.settings-blank {
+  min-height: 100vh;
+  background: #000;
+  position: relative;
+  padding-top: 6rem;
+}
+
+.welcome-message {
+  position: fixed;
+  top: 3rem;
+  left: calc(50% - 600px + 157px);
+  color: rgba(230, 230, 230, 0.9);
+  text-align: left;
+  z-index: 1000;
+  margin: 0;
+}
+
+.settings-actions {
+  margin-top: 4.5rem;
+  margin-left: calc(50% - 600px + 157px);
+  margin-right: 50px;
+  display: flex;
+  width: calc(100% - (50% - 600px + 157px) - 50px);
+}
+
+.settings-action-button {
+  padding: 0.75rem 1.25rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(240, 240, 240, 0.95);
+  text-transform: lowercase;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  width: 100%;
+  max-width: 100%;
+}
+
+.settings-action-button:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.settings-action-button__line {
+  line-height: 1.1;
+}
+
+.settings-action-button__line--primary {
+  font-weight: 700;
+  font-size: 1.35rem;
+}
+
+.settings-action-button__line--secondary {
+  font-weight: 400;
+  color: rgba(220, 220, 220, 0.8);
+}
