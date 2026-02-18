@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { useAppSelector } from '../../store'
 import './profile.css'
 
 type ProfileHeader = {
@@ -10,6 +11,7 @@ type ProfileHeader = {
 
 export default function ProfileSettings() {
   const navigate = useNavigate()
+  const cachedProfile = useAppSelector((state) => state.user.profile)
   const [header, setHeader] = useState<ProfileHeader>({ name: '', email: '' })
   const [userId, setUserId] = useState('')
   const [firstName, setFirstName] = useState('')
@@ -35,6 +37,25 @@ export default function ProfileSettings() {
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
   const [savingPassword, setSavingPassword] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  useEffect(() => {
+    if (cachedProfile) {
+      setUserId((prev) => prev || cachedProfile.id)
+      if (!firstName) setFirstName(cachedProfile.firstName)
+      if (!lastName) setLastName(cachedProfile.lastName)
+      if (!email) setEmail(cachedProfile.email)
+      if (!gradYear) setGradYear(cachedProfile.gradYear)
+      setSavedFirstName((prev) => prev || cachedProfile.firstName)
+      setSavedLastName((prev) => prev || cachedProfile.lastName)
+      setSavedEmail((prev) => prev || cachedProfile.email)
+      setSavedGradYear((prev) => prev || cachedProfile.gradYear)
+      setHeader((prev) => {
+        if (prev.name || prev.email) return prev
+        const full = `${cachedProfile.firstName} ${cachedProfile.lastName}`.trim()
+        return { name: full || cachedProfile.email, email: cachedProfile.email }
+      })
+    }
+  }, [cachedProfile, firstName, lastName, email, gradYear])
 
   useEffect(() => {
     const loadName = async () => {

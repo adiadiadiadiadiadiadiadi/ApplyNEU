@@ -1,5 +1,7 @@
 import { useNavigate } from 'react-router-dom'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useAppDispatch } from '../../store'
+import { fetchUserProfile } from '../../store/userSlice'
 import './settings.css'
 
 export default function Settings() {
@@ -8,6 +10,11 @@ export default function Settings() {
   const [repoToggle, setRepoToggle] = useState(false)
   const [jobMatchSensitivity, setJobMatchSensitivity] = useState<'L' | 'M' | 'H'>('M')
   const [branchPrefixToggle, setBranchPrefixToggle] = useState(false)
+  const dispatch = useAppDispatch()
+
+  useEffect(() => {
+    void dispatch(fetchUserProfile())
+  }, [dispatch])
 
   return (
     <div className="settings-blank">
