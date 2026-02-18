@@ -52,9 +52,9 @@ export const getUserApplicationStats = async (user_id: string) => {
     const result = await pool.query(
       `
         SELECT
-          COUNT(*) FILTER (WHERE applied_at >= date_trunc('day', NOW()))                 AS today_count,
-          COUNT(*) FILTER (WHERE applied_at >= date_trunc('week', NOW()))                AS week_count,
-          COUNT(*) FILTER (WHERE applied_at >= date_trunc('month', NOW()))               AS month_count
+          COUNT(*) FILTER (WHERE applied_at >= date_trunc('day', NOW()))   AS today_count,
+          COUNT(*) FILTER (WHERE applied_at >= date_trunc('week', NOW()))  AS week_count,
+          COUNT(*) FILTER (WHERE applied_at >= date_trunc('year', NOW()))  AS year_count
         FROM job_applications
         WHERE user_id = $1;
       `,
@@ -65,7 +65,7 @@ export const getUserApplicationStats = async (user_id: string) => {
     return {
       today: Number(row.today_count ?? 0),
       week: Number(row.week_count ?? 0),
-      month: Number(row.month_count ?? 0)
+      year: Number(row.year_count ?? 0)
     };
   } catch (error) {
     return { error: 'Error fetching application stats.' };

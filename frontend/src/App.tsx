@@ -8,6 +8,7 @@ import Onboarding from './components/Onboarding/onboarding'
 import './index.css'
 import Automation from './components/Automation/automation'
 import Profile from './components/Profile/profile'
+import ProfileSettings from './components/Profile/profileSettings'
 import Settings from './components/Settings/settings'
 
 function SideNav() {
@@ -91,6 +92,7 @@ function AppRoutes() {
         <Route path="/" element={<Home />} />
         <Route path="/automation" element={<Automation />} />
         <Route path="/profile" element={<Profile />} />
+        <Route path="/profile-settings" element={<ProfileSettings />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -2,6 +2,7 @@
   min-height: 100vh;
   background: #000;
   position: relative;
+  padding-bottom: 4rem;
 }
 
 .profile-loading {
@@ -12,13 +13,18 @@
   font-size: 1.4rem;
 }
 
+.profile-content {
+  padding-top: 3rem;
+  padding-left: calc(50% - 600px + 157px);
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  color: rgba(230, 230, 230, 0.9);
+}
+
 .welcome-message {
-  position: fixed;
-  top: 3rem;
-  left: calc(50% - 600px + 157px);
   color: rgba(230, 230, 230, 0.9);
   text-align: left;
-  z-index: 1000;
   margin: 0;
 }
 
@@ -27,4 +33,79 @@
   font-size: 0.9rem;
   color: rgba(200, 200, 200, 0.75);
   font-weight: 400;
+}
+
+.profile-forms-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.profile-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 260px;
+  align-items: flex-start;
+}
+
+.profile-field label {
+  color: rgba(220, 220, 220, 0.85);
+  font-size: 0.9rem;
+  text-transform: lowercase;
+  text-align: left;
+  width: 100%;
+}
+
+.profile-field input {
+  padding: 0.9rem 1rem;
+  font-size: 1rem;
+  border-radius: 0.9rem;
+  border: 1px solid #2f2f2f;
+  background: #0f0f10;
+  color: rgba(235, 235, 235, 0.95);
+  outline: none;
+}
+
+.profile-field input:focus {
+  border-color: #555;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.06);
+}
+
+.profile-input-row {
+  width: 100%;
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.profile-input-row input {
+  flex: 1;
+}
+
+.profile-check-button {
+  border: 1px solid #2f2f2f;
+  background: #1b1b1d;
+  color: rgba(235, 235, 235, 0.95);
+  border-radius: 0.9rem;
+  padding: 0 1rem;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+.profile-check-button:hover:not(:disabled) {
+  background: #262628;
+  border-color: #444;
+}
+
+.profile-check-button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.profile-check-button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
