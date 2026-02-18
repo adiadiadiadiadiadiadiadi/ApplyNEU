@@ -356,7 +356,19 @@ export default function ProfileSettings() {
   return (
     <div className="profile-blank">
       <div className="profile-content">
-        <h1 className="welcome-message">profile settings</h1>
+        <div className="profile-header-row">
+          <h1 className="welcome-message">
+            <button
+              type="button"
+              className="profile-header-back"
+              aria-label="Back to settings"
+              onClick={() => navigate('/settings')}
+            >
+              ←
+            </button>
+            profile settings
+          </h1>
+        </div>
         <div className="profile-forms-row">
           <form className="profile-field" onSubmit={(event) => event.preventDefault()}>
             <label htmlFor="profile-first-name">first name</label>

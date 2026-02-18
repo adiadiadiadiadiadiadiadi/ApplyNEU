@@ -18,16 +18,47 @@
 .profile-content {
   padding-top: 3rem;
   padding-left: calc(50% - 600px + 157px);
+  padding-right: 3rem;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
   color: rgba(230, 230, 230, 0.9);
+  max-width: 1200px;
+}
+
+.profile-header-subtext {
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 1.2rem;
+  margin-left: 0.4rem;
+  display: inline-block;
+}
+
+.profile-header-back {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+  margin-right: 0.4rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .welcome-message {
   color: rgba(230, 230, 230, 0.9);
   text-align: left;
   margin: 0;
+}
+
+.profile-header-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
 }
 
 .welcome-email {
@@ -43,6 +74,8 @@
   align-items: flex-start;
   gap: 0.875rem;
   margin-top: 2rem;
+  width: 100%;
+  max-width: 1100px;
 }
 
 .profile-field {
@@ -50,8 +83,8 @@
   flex-direction: column;
   gap: 0.3rem;
   width: 100%;
-  max-width: 560px;
-  min-width: 320px;
+  max-width: 920px;
+  min-width: 360px;
   align-items: flex-start;
 }
 
@@ -131,7 +164,7 @@
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  max-width: 700px;
+  max-width: 1000px;
 }
 
 .profile-resume-header h2 {

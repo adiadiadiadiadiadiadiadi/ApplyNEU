@@ -1228,11 +1228,6 @@ export default function Automation() {
                             }
                             transcriptChecked = true
                           }
-                        if (skipJob) {
-                          await recordApplication('draft')
-                          await closeModalIfPresent(webview)
-                          break
-                        }
                           if (found?.hasSelect) {
                             await webview.executeJavaScript(`
                               (() => {
@@ -1285,8 +1280,7 @@ export default function Automation() {
                                         await handleNoCoverLetter(clickJobResult.company, webview, userId, currentJobApplicationIdRef.current);
                                         coverLetterTaskAdded = true
                                       }
-                                      skipJob = true
-                                      break
+                                    skipJob = true
                                     }
                                   }
                                 }
@@ -1296,8 +1290,7 @@ export default function Automation() {
                                   await handleNoCoverLetter(clickJobResult.company, webview, userId, currentJobApplicationIdRef.current)
                                   coverLetterTaskAdded = true
                                 }
-                                skipJob = true
-                                break
+                              skipJob = true
                               }
                             }
 
@@ -1568,7 +1561,6 @@ export default function Automation() {
                                   })();
                                 `)
                                 skipJob = true
-                                break
                               }
                             }
 
