@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useEffect, useState } from 'react'
 
 type Task = { task_id: string; text: string; completed?: boolean; application_id?: string | null }
-type Stats = { today: number; week: number; month: number }
+type Stats = { today: number; week: number; year: number }
 
 export default function Home() {
   const [activeTasks, setActiveTasks] = useState<Task[]>([])
@@ -11,7 +11,7 @@ export default function Home() {
   const [loadingTasks, setLoadingTasks] = useState(false)
   const [toggling, setToggling] = useState<string | null>(null)
   const [showActive, setShowActive] = useState(true)
-  const [stats, setStats] = useState<Stats>({ today: 0, week: 0, month: 0 })
+  const [stats, setStats] = useState<Stats>({ today: 0, week: 0, year: 0 })
   const [loadingStats, setLoadingStats] = useState(false)
 
   const sortTasks = (list: Task[]) => [...list]
@@ -63,7 +63,7 @@ export default function Home() {
         setStats({
           today: Number(data?.today ?? 0),
           week: Number(data?.week ?? 0),
-          month: Number(data?.month ?? 0),
+          year: Number(data?.year ?? 0),
         })
       }
     } catch (err) {
@@ -203,8 +203,8 @@ export default function Home() {
                 <span className="stat-label">this week</span>
               </div>
               <div className="stat-card">
-                <span className="stat-value">{loadingStats ? '—' : stats.month}</span>
-                <span className="stat-label">last month</span>
+                <span className="stat-value">{loadingStats ? '—' : stats.year}</span>
+                <span className="stat-label">this year</span>
               </div>
             </div>
           </div>
