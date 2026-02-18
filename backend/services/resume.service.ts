@@ -163,3 +163,26 @@ export const getPossibleInterests = async (user_id: string) => {
         return { error: "Error extracting topics." }
     }
 }
+
+export const getLatestResume = async (user_id: string) => {
+    try {
+        const result = await pool.query(
+            `
+            SELECT resume_id, file_name, key, file_size_bytes, created_at
+            FROM resumes
+            WHERE user_id::text = $1
+            ORDER BY created_at DESC
+            LIMIT 1;
+            `,
+            [user_id]
+        )
+
+        if (result.rows.length === 0) {
+            return { error: 'Resume not found.' }
+        }
+
+        return result.rows[0]
+    } catch (error) {
+        return { error: 'Error fetching latest resume.' }
+    }
+}

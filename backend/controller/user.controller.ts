@@ -1,6 +1,6 @@
 import express, { type Request, type Response } from 'express';
 import type { PostUserRequest } from '../types/users.ts';
-import { addUser, cacheShortResume, getJobTypes, getSearchTerms, getUserInterests, updateJobType, updateSearchTerms, updateUserInterests } from '../services/user.service.ts';
+import { addUser, cacheShortResume, getJobTypes, getSearchTerms, getUser, getUserInterests, updateJobType, updateSearchTerms, updateUser, updateUserInterests } from '../services/user.service.ts';
 
 /**
  * This controller handles user-related routes.
@@ -33,6 +33,61 @@ const userController = () => {
     } catch (err: unknown) {
       res.status(400).json({
         "message": "Unable to post user."
+      });
+    }
+  };
+
+  const getUserRoute = async (req: Request, res: Response) => {
+    const { user_id } = req.params;
+
+    if (!user_id) {
+      res.status(404).json({
+        "message": "Required arguments not found to get user."
+      });
+      return;
+    }
+
+    try {
+      const user = await getUser(user_id);
+
+      if ('error' in user) {
+        res.status(404).json({
+          "message": "User not found."
+        });
+        return;
+      }
+      res.status(200).json(user);
+    } catch (err: unknown) {
+      res.status(400).json({
+        "message": "Unable to get user."
+      });
+    }
+  };
+
+  const updateUserRoute = async (req: Request, res: Response) => {
+    const { user_id } = req.params;
+    const { first_name, last_name, email, grad_year } = req.body;
+
+    if (!user_id || !first_name || !last_name || !email || !grad_year) {
+      res.status(404).json({
+        "message": "Required arguments not found to update user."
+      });
+      return;
+    }
+
+    try {
+      const user = await updateUser(user_id, first_name, last_name, email, grad_year);
+
+      if ('error' in user) {
+        res.status(400).json({
+          "message": "Unable to update user."
+        });
+        return;
+      }
+      res.status(200).json(user);
+    } catch (err: unknown) {
+      res.status(400).json({
+        "message": "Unable to update user."
       });
     }
   };
@@ -229,6 +284,8 @@ const userController = () => {
   }
 
   router.post('/new', addUserRoute);
+  router.get('/:user_id', getUserRoute);
+  router.put('/:user_id', updateUserRoute);
   router.get('/:user_id/interests', getUserInterestsRoute);
   router.put('/:user_id/interests', updateUserInterestsRoute);
   router.put('/:user_id/job-types', updateJobTypeRoute);

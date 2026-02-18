@@ -15,3 +15,7 @@ export interface PostUserRequest extends Request {
 }
 
 export type PostUserResponse = PostUserObject | { error: string }
+
+export type PutUserRequest = Request & {
+    body: PostUserObject;
+};

@@ -1,6 +1,6 @@
 import express, { type Request, type Response } from 'express';
 import type { ResumeMetadataRequest, ResumeSaveRequest, ResumeViewRequest } from '../types/resumes.ts';
-import { getUploadUrl, getViewUrl, saveResume, getPossibleInterests } from '../services/resume.service.ts';
+import { getUploadUrl, getViewUrl, saveResume, getPossibleInterests, getLatestResume } from '../services/resume.service.ts';
 
 /**
  * This controller handles user-related routes.
@@ -117,10 +117,38 @@ const resumeController = () => {
         }
     }
 
+    const getLatestResumeRoute = async (req: Request, res: Response) => {
+        const { user_id } = req.params;
+
+        if (!user_id) {
+            res.status(404).json({
+                "message": "Required arguments not found to get latest resume."
+            });
+            return;
+        }
+
+        try {
+            const result = await getLatestResume(user_id);
+
+            if ('error' in result) {
+                res.status(404).json({
+                    "message": "Unable to find resume."
+                });
+                return;
+            }
+            res.status(200).json(result);
+        } catch (err: unknown) {
+            res.status(400).json({
+                "message": "Unable to get latest resume."
+            });
+        }
+    }
+
     router.post('/upload-url', getUploadUrlRoute);
     router.post('/view-url', getViewUrlRoute);
     router.post('/save-resume', saveResumeDataRoute)
     router.get('/:user_id/possible-interests', getInterestsRoute)
+    router.get('/:user_id/latest', getLatestResumeRoute)
     return router;
 };
 
