@@ -17,6 +17,27 @@ export const addUser = async (user_id: string, first_name: string, last_name: st
     }
 };
 
+export const getUser = async (user_id: string) => {
+    try {
+        const result = await pool.query(
+            `
+            SELECT user_id, first_name, last_name, email, grad_year
+            FROM users
+            WHERE user_id = $1;
+            `,
+            [user_id]
+        )
+
+        if (result.rows.length === 0) {
+            return { error: 'User not found.' };
+        }
+
+        return result.rows[0];
+    } catch (error) {
+        return { error: 'Error getting user.' }
+    }
+};
+
 export const getJobType = async (user_id: string) => {
     try {
         const result = await pool.query(
@@ -205,6 +226,31 @@ export const updateJobType = async (user_id: string, job_types: string[]) => {
         return { error: 'Error updating job types.' }
     }
 }
+
+export const updateUser = async (user_id: string, first_name: string, last_name: string, email: string, grad_year: number) => {
+    try {
+        const result = await pool.query(
+            `
+            UPDATE users
+            SET first_name = $1,
+                last_name = $2,
+                email = $3,
+                grad_year = $4
+            WHERE user_id = $5
+            RETURNING user_id, first_name, last_name, email, grad_year;
+            `,
+            [first_name, last_name, email, grad_year, user_id]
+        )
+
+        if (result.rows.length === 0) {
+            return { error: 'User not found.' };
+        }
+
+        return result.rows[0];
+    } catch (error) {
+        return { error: 'Error updating user.' }
+    }
+};
 
 export const cacheShortResume = async (user_id: string) => {
     try {

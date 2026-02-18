@@ -9,6 +9,7 @@ import './index.css'
 import Automation from './components/Automation/automation'
 import Profile from './components/Profile/profile'
 import ProfileSettings from './components/Profile/profileSettings'
+import ProfileInterests from './components/Profile/profileInterests'
 import Settings from './components/Settings/settings'
 
 function SideNav() {
@@ -93,6 +94,7 @@ function AppRoutes() {
         <Route path="/automation" element={<Automation />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/profile-settings" element={<ProfileSettings />} />
+        <Route path="/profile-settings/interests" element={<ProfileInterests />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
