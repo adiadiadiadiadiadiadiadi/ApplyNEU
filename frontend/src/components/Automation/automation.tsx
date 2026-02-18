@@ -1075,6 +1075,81 @@ export default function Automation() {
                       let preferHeadlessClose = false
                       let docFieldFound = false
                       let needsExternalAction = false
+
+                      if (dividerExists) {
+                        await waitForModalOpen(webview)
+                        const { text } = await webview.executeJavaScript(`
+                          (() => {
+                            const modals = Array.from(document.querySelectorAll('div.modal-content, div[role="dialog"], .modal, .job-success-modal'));
+                            // Prefer a modal that has the how-to-apply node and is not the success modal
+                            const preferIndex = modals.findIndex(m =>
+                              !m.classList.contains('job-success-modal') &&
+                              m.querySelector('p#how-to-apply, #how-to-apply, .text-overflow.column, .p-group')
+                            );
+                            const modal = preferIndex >= 0
+                              ? modals[preferIndex]
+                              : (modals.find(m => !m.classList.contains('job-success-modal')) || modals[0] || null);
+                            const scope = modal || document;
+                            const lowerMatch = (id) => (id || '').toLowerCase().includes('how-to-apply');
+                            const el =
+                              scope.querySelector('p#how-to-apply') ||
+                              scope.querySelector('#how-to-apply') ||
+                              Array.from(scope.querySelectorAll('[id]')).find(node => lowerMatch(node.id)) ||
+                              Array.from(scope.querySelectorAll('p')).find(p => lowerMatch(p.id || ''));
+                            const container =
+                              el ||
+                              (el && el.parentElement) ||
+                              scope.querySelector('.text-overflow.column') ||
+                              scope.querySelector('.p-group') ||
+                              modal ||
+                              scope;
+
+                            const extractInstruction = (node) => {
+                              if (!node) return '';
+                              const anchors = Array.from(node.querySelectorAll('a')).map(a => {
+                                const t = (a.innerText || a.textContent || '').trim();
+                                const href = (a.getAttribute('href') || '').trim();
+                                return [t, href].filter(Boolean).join(' ').trim();
+                              }).filter(Boolean);
+
+                              const rawLines = (node.innerText || node.textContent || '')
+                                .split(/\\n+/)
+                                .map(s => s.trim())
+                                .filter(Boolean);
+                              const applyLines = rawLines.filter(s => s.toLowerCase().includes('apply'));
+
+                              const candidates = [...applyLines, ...anchors];
+                              const first = candidates.find(Boolean);
+                              if (first) return first;
+
+                              const combined = [...rawLines, ...anchors].filter(Boolean);
+                              return Array.from(new Set(combined)).join(' ').trim();
+                            };
+
+                            const txt = extractInstruction(container);
+                            return {
+                              text: txt,
+                              elHtml: el ? el.outerHTML : '',
+                              modalHtml: modal ? modal.innerHTML : '',
+                              appliedModalIndex: preferIndex >= 0 ? preferIndex : (modals.length ? 0 : -1)
+                            };
+                          })();
+                        `)
+
+                        if (text) {
+                          try {
+                            const resp = await fetch(`http://localhost:8080/tasks/${userId}/add-instructions`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                employer_instructions: text,
+                                application_id: currentJobApplicationIdRef.current ?? undefined
+                              })
+                            })
+                            if (!resp.ok) { /* ignore */ }
+                          } catch (err) { /* ignore */ }
+                        }
+                      }
                       for (let i = 0; i < 10; i++) { // faster resume/doc detection
                         const found = await webview.executeJavaScript(`
                           (() => {
@@ -1752,28 +1827,7 @@ export default function Automation() {
                         continue
                       }
                     if (!documentsMissing && dividerExists) {
-                      await waitForModalOpen(webview)
-                      addLog('modal opened')
-                      const howToApplyText = await webview.executeJavaScript(`
-                        (() => {
-                          const el = document.querySelector('p#how-to-apply');
-                          return el ? (el.innerText || el.textContent || '').trim() : '';
-                        })();
-                      `)
-                      addLog(howToApplyText)
-                      if (howToApplyText) {
-                        try {
-                          const resp = await fetch(`http://localhost:8080/tasks/${userId}/add-instructions`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              employer_instructions: howToApplyText,
-                              application_id: currentJobApplicationIdRef.current ?? undefined
-                            })
-                          })
-                          if (!resp.ok) { /* ignore */ }
-                        } catch (err) { /* ignore */ }
-                      }
+                      // instructions already collected pre-submit
                     }
                     if (!documentsMissing && instructions.length) {
                       await addEmployerTasks(instructions, userId as string, currentJobApplicationIdRef.current)
@@ -1815,6 +1869,8 @@ export default function Automation() {
             consecutiveDoNotApply = 0
             addLog(`Job card #${idx + 1} missing or not clickable.`)
           }
+
+          await sleep(2000)
         }
 
         const nextResult = await webview.executeJavaScript(`
