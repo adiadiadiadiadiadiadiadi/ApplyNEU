@@ -1830,7 +1830,7 @@ export default function Automation() {
                       setStatus('paused')
                       return  
                     }
-                      await recordApplication(needsExternalAction ? 'external' : 'submitted')
+                      await recordApplication((needsExternalAction || instructions.length > 0) ? 'external' : 'submitted')
                     }
                   } else if (data.decision === 'DO_NOT_APPLY') {
                     consecutiveDoNotApply += 1
