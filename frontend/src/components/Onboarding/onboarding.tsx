@@ -9,6 +9,7 @@ interface OnboardingProps {
 export default function Onboarding({ onComplete }: OnboardingProps) {
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
+  const [stepError, setStepError] = useState<string | null>(null)
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [interests, setInterests] = useState<string[]>([])
@@ -44,7 +45,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     )
   }
 
-  const saveInterests = async (userId: string) => {
+  const saveInterests = async (userId: string): Promise<boolean> => {
     try {
       const response = await fetch(`http://localhost:8080/users/${userId}/interests`, {
         method: 'PUT',
@@ -59,16 +60,18 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       if (response.ok) {
         
         // Update search terms after saving interests
-        await updateSearchTerms(userId)
+        return await updateSearchTerms(userId)
       }
+      return false
     } catch (error) {
       console.error('Error saving interests:', error)
+      return false
     }
   }
 
-  const updateJobTypes = async (userId: string) => {
+  const updateJobTypes = async (userId: string): Promise<boolean> => {
     try {
-      await fetch(`http://localhost:8080/users/${userId}/job-types`, {
+      const response = await fetch(`http://localhost:8080/users/${userId}/job-types`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -77,12 +80,14 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           job_types: selectedJobTypes
         })
       })
+      return response.ok
     } catch (error) {
       console.error('Error updating job types:', error)
+      return false
     }
   }
 
-  const updateSearchTerms = async (userId: string) => {
+  const updateSearchTerms = async (userId: string): Promise<boolean> => {
     try {
       const response = await fetch(`http://localhost:8080/users/${userId}/search-terms`, {
         method: 'PUT',
@@ -92,10 +97,12 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       })
       
       if (response.ok) {
-        console.log('Search terms updated successfully')
+        return true
       }
+      return false
     } catch (error) {
       console.error('Error updating search terms:', error)
+      return false
     }
   }
 
@@ -118,6 +125,8 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   }
 
   const nextStep = async () => {
+    setStepError(null)
+
     if (step === 1) {
       setStep(2)
       return
@@ -128,10 +137,15 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
         setLoading(false)
+        setStepError('unable to find your account session. please try again.')
         return
       }
-      await updateJobTypes(user.id)
+      const updated = await updateJobTypes(user.id)
       setLoading(false)
+      if (!updated) {
+        setStepError('could not save job types. please try again.')
+        return
+      }
       setStep(3)
       return
     }
@@ -192,14 +206,17 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
             }
           } else {
             setLoading(false)
+            setStepError('could not upload resume. please try again.')
             return
           }
         } else {
           setLoading(false)
+          setStepError('could not prepare resume upload. please try again.')
           return
         }
       } catch (error) {
         setLoading(false)
+        setStepError('could not upload resume. please try again.')
         return
       }
 
@@ -214,15 +231,26 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     }
 
     // step 4 -> complete
+    setLoading(true)
     const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      await saveInterests(user.id)
+    if (!user) {
+      setLoading(false)
+      setStepError('unable to find your account session. please try again.')
+      return
     }
+    const saved = await saveInterests(user.id)
+    if (!saved) {
+      setLoading(false)
+      setStepError('could not save interests/search terms. please try again.')
+      return
+    }
+    setLoading(false)
     handleComplete()
   }
 
   const prevStep = () => {
     if (step > 1) {
+      setStepError(null)
       setStep(step - 1)
     }
   }
@@ -412,6 +440,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
             {loading ? 'loading...' : step === 4 ? 'finish' : 'next'}
           </button>
         </div>
+        {stepError && <p className="onboarding-error">{stepError}</p>}
       </div>
     </div>
   )

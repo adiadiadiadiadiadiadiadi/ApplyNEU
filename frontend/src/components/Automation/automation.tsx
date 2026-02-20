@@ -1214,6 +1214,7 @@ export default function Automation() {
                                       })();
                                     `)
                                   } else {
+                                  documentsMissing = true
                                   await handleNoTranscript(clickJobResult.company, userId, currentJobApplicationIdRef.current)
                                   skipJob = true
                                   }
@@ -1222,6 +1223,7 @@ export default function Automation() {
                                 await sleep(50)
                               }
                               if (!transcriptHandled) {
+                              documentsMissing = true
                               await handleNoTranscript(clickJobResult.company, userId, currentJobApplicationIdRef.current)
                               skipJob = true
                               }
@@ -1376,6 +1378,7 @@ export default function Automation() {
                               `)
                             } else if (portfolioVisible && portfolioInfo?.hasButton) {
                               docFieldFound = true
+                              documentsMissing = true
                               await handleNoPortfolio(clickJobResult.company, userId, currentJobApplicationIdRef.current)
                               skipJob = true
                             }
@@ -1539,6 +1542,7 @@ export default function Automation() {
                               }
                               if (!coverLetterExists.hasSelect) {
                                 if (!coverLetterTaskAdded) {
+                                  documentsMissing = true
                                   await handleNoCoverLetter(clickJobResult.company, webview, userId, currentJobApplicationIdRef.current);
                                   coverLetterTaskAdded = true
                                 }
@@ -1605,10 +1609,12 @@ export default function Automation() {
                                 }
                                 workSampleChecked = true
                               } else if (workSampleInfo?.hasButton) {
+                                documentsMissing = true
                                 await handleNoWorkSample(clickJobResult.company, userId, currentJobApplicationIdRef.current)
                             skipJob = true
                                 workSampleChecked = true
                               } else {
+                                documentsMissing = true
                                 await handleNoWorkSample(clickJobResult.company, userId, currentJobApplicationIdRef.current)
                             skipJob = true
                                 workSampleChecked = true
@@ -1641,10 +1647,12 @@ export default function Automation() {
                                 `)
                                 portfolioChecked = true
                               } else if (portfolioInfo?.hasButton) {
+                                documentsMissing = true
                                 await handleNoPortfolio(clickJobResult.company, userId, currentJobApplicationIdRef.current)
                         skipJob = true
                                 portfolioChecked = true
                               } else {
+                                documentsMissing = true
                                 await handleNoPortfolio(clickJobResult.company, userId, currentJobApplicationIdRef.current)
                         skipJob = true
                                 portfolioChecked = true
