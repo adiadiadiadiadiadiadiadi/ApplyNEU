@@ -1,5 +1,5 @@
 import express, { type Request, type Response } from 'express';
-import { addJobApplication, getUserApplicationStats } from '../services/application.service.ts';
+import { addJobApplication, getUserApplicationStats, getUserApplications } from '../services/application.service.ts';
 
 /**
  * This controller handles job-related routes.
@@ -63,8 +63,29 @@ const applicationController = () => {
         }
     };
 
+    const getApplicationsRoute = async (req: Request, res: Response) => {
+        const { user_id } = req.params;
+
+        if (!user_id) {
+            res.status(404).json({ message: 'user_id required.' });
+            return;
+        }
+
+        try {
+            const result = await getUserApplications(user_id);
+            if ('error' in result) {
+                res.status(400).json({ message: 'Unable to fetch applications.' });
+                return;
+            }
+            res.status(200).json(result);
+        } catch {
+            res.status(400).json({ message: 'Unable to fetch applications.' });
+        }
+    };
+
     router.post('/:user_id/new', addApplicationRoute);
     router.get('/:user_id/stats', getApplicationStatsRoute);
+    router.get('/:user_id', getApplicationsRoute);
 
     return router;
 };
