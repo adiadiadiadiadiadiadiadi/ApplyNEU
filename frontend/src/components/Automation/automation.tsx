@@ -1382,7 +1382,7 @@ export default function Automation() {
                             portfolioChecked = true
                             }
                             if (skipJob) {
-                              await recordApplication('draft')
+                              await recordApplication(documentsMissing ? 'external' : 'draft')
                               await closeModalIfPresent(webview)
                               break
                             }
@@ -1443,7 +1443,7 @@ export default function Automation() {
                             setStatus('running')
                             await waitForDividerSubmissionAndClose(webview)
                             if (skipJob) {
-                              await recordApplication('draft')
+                              await recordApplication(documentsMissing ? 'external' : 'draft')
                               await closeModalIfPresent(webview, preferHeadlessClose)
                               break
                             }
@@ -1651,7 +1651,7 @@ export default function Automation() {
                               }
                             }
                     if (skipJob) {
-                      await recordApplication('draft')
+                      await recordApplication(documentsMissing ? 'external' : 'draft')
                       await closeModalIfPresent(webview)
                       break
                     }
@@ -1717,7 +1717,7 @@ export default function Automation() {
                             }
                             await waitForDividerSubmissionAndClose(webview)
                           if (skipJob) {
-                            await recordApplication('draft')
+                            await recordApplication(documentsMissing ? 'external' : 'draft')
                             await closeModalIfPresent(webview, preferHeadlessClose)
                             break
                           }
@@ -1725,14 +1725,14 @@ export default function Automation() {
                           break
                         }
                          if (skipJob) {
-                           await recordApplication('draft')
+                           await recordApplication(documentsMissing ? 'external' : 'draft')
                            await closeModalIfPresent(webview, preferHeadlessClose)
                            break
                          }
                           await sleep(50)
                       }
                       if (skipJob) {
-                        await recordApplication('draft')
+                        await recordApplication(documentsMissing ? 'external' : 'draft')
                         await closeModalIfPresent(webview, preferHeadlessClose)
                         continue
                       }
@@ -1862,7 +1862,6 @@ export default function Automation() {
             addLog(`Job card #${idx + 1} missing or not clickable.`)
           }
 
-          await sleep(2000)
         }
 
         const nextResult = await webview.executeJavaScript(`
