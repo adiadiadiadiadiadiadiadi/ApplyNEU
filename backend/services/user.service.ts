@@ -137,6 +137,9 @@ export const updateUserInterests = async (user_id: string, interests: string[]) 
 export const updateSearchTerms = async (user_id: string) => {
 
     const search_terms = await generateSearchTerms(user_id);
+    if ('error' in search_terms) {
+        return search_terms;
+    }
 
     try {
         const result = await pool.query(
@@ -160,11 +163,29 @@ export const updateSearchTerms = async (user_id: string) => {
 const generateSearchTerms = async (user_id: string) => {
     try {
         const result = await pool.query(
-            `SELECT * FROM resumes WHERE user_id::text = $1 ORDER BY created_at DESC LIMIT 1;`,
+            `
+            SELECT
+                r.resume_text,
+                COALESCE(u.interests, '{}'::text[]) AS interests
+            FROM resumes r
+            JOIN users u ON u.user_id::text = r.user_id::text
+            WHERE r.user_id::text = $1
+            ORDER BY r.created_at DESC
+            LIMIT 1;
+            `,
             [user_id]
         )
-        const resumeText = result.rows[0].resume_text
-        const interests = result.rows[0].interests
+
+        if (!result.rows.length) {
+            return { error: 'Resume not found.' };
+        }
+
+        const resumeText = String(result.rows[0].resume_text ?? '').trim()
+        const interests = Array.isArray(result.rows[0].interests) ? result.rows[0].interests : []
+        if (!resumeText) {
+            return { error: 'Resume text not found.' };
+        }
+
         const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
         const message = await anthropic.messages.create({
@@ -180,7 +201,7 @@ const generateSearchTerms = async (user_id: string) => {
                 ${resumeText}
 
                 Interests:
-                ${interests}
+                ${interests.join(', ')}
                 
                 Extract and return ONLY a JSON array of 10 relevant search terms:
                 The topics should be general, commonly used job title or role keywords, suitable for searching on college job boards like NUworks.
@@ -199,7 +220,32 @@ const generateSearchTerms = async (user_id: string) => {
             return { error: "Error with API." };
         }
 
-        const search_terms = JSON.parse(message.content[0].text);
+        const raw = message.content[0].text
+            .replace(/```json/gi, '')
+            .replace(/```/g, '')
+            .replace(/`/g, '')
+            .trim();
+
+        let parsed: any;
+        try {
+            parsed = JSON.parse(raw);
+        } catch (err) {
+            return { error: "Error extracting topics." };
+        }
+
+        if (!Array.isArray(parsed)) {
+            return { error: "Error extracting topics." };
+        }
+
+        const search_terms = parsed
+            .map((term: any) => String(term ?? '').trim())
+            .filter((term: string) => term.length > 0)
+            .slice(0, 10);
+
+        if (!search_terms.length) {
+            return { error: "Error extracting topics." };
+        }
+
         return search_terms;
 
     } catch (error) {

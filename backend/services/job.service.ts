@@ -3,6 +3,30 @@ import Anthropic from '@anthropic-ai/sdk';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+type EmployerInstruction = { instruction: string; description: string };
+
+const NON_REQUIRED_TASK_PATTERN =
+  /\b(ad[\s-]?block(?:er)?|pop[\s-]?up(?: blocker)?|clear (?:your )?cache|cookies?|switch (?:to )?(?:another|different) browser|disable (?:browser )?extensions?|enable javascript|incognito|private mode|vpn|proxy|firewall|antivirus|troubleshoot|workaround|tip|optional|recommended|preference)\b/i;
+
+const normalizeEmployerInstructions = (input: any): EmployerInstruction[] => {
+  if (!Array.isArray(input)) return [];
+
+  const dedup = new Set<string>();
+  return input
+    .map((item: any) => {
+      if (!item || typeof item !== 'object') return null;
+      const instruction = String(item.instruction ?? '').trim();
+      const description = String(item.description ?? '').trim();
+      if (!instruction || !description) return null;
+      if (NON_REQUIRED_TASK_PATTERN.test(`${instruction} ${description}`)) return null;
+      const key = `${instruction.toLowerCase()}::${description.toLowerCase()}`;
+      if (dedup.has(key)) return null;
+      dedup.add(key);
+      return { instruction, description };
+    })
+    .filter((v: EmployerInstruction | null): v is EmployerInstruction => !!v);
+};
+
 export const sendJobDescription = async (user_id: string, job_description: string) => {
   try {
     const result = await pool.query(
@@ -33,30 +57,30 @@ export const sendJobDescription = async (user_id: string, job_description: strin
           - Only return DO_NOT_APPLY when clearly unqualified.
           
           EMPLOYER INSTRUCTIONS:
-          Extract ONLY additional steps required OUTSIDE the NUWorks application system.
+          Extract tasks that are REQUIRED to complete the application, especially actions outside NUWorks.
+          Include only explicit must-do actions from the posting.
           
-          NEVER include instructions about:
-          - Resume (uploading, submitting, attaching)
-          - Cover letter (uploading, writing, submitting, attaching)
-          - Transcript (uploading, submitting)
-          - Portfolio (uploading, submitting, linking)
-          - References (providing, listing)
-          - Any document upload mentioned in the job description
+          NEVER include:
+          - Resume / cover letter / transcript / portfolio / references upload instructions
+          - Generic advice (research company, tailor resume, follow up, networking, etc.)
+          - Optional/preferred/recommended tips
+          - Browser/device troubleshooting or settings steps
+            (ad blocker/pop-up blocker, clear cache/cookies, switch browsers, disable extensions,
+             incognito/private mode, VPN/proxy, firewall/antivirus, javascript settings)
           
-          ONLY include if the job explicitly requires you to:
-          - Apply on a separate company website/portal (with URL)
-          - Email someone directly (with email address)
-          - Complete an external assessment/form (with URL)
-          - Take action on a platform OTHER than NUWorks
+          ONLY include required actions such as:
+          - Apply through a separate company portal/site
+          - Complete a required external assessment or questionnaire
+          - Email required information/materials to a specific address
+          - Register/schedule/confirm a required step on another platform
           
-          If the instruction mentions "upload", "submit a document", "attach", or "provide" - IGNORE IT.
-          If the instruction is about standard application materials - IGNORE IT.
+          If no required extra steps exist beyond NUWorks, return an empty array.
           
           FORMAT REQUIREMENTS:
           - "instruction" field: Brief action in imperative form (e.g., "Apply through company portal")
-          - "description" field: MUST include the full URL or email address
+          - "description" field: Include the exact URL/email/platform destination when provided; otherwise include concise required details from the posting
           - Keep instructions short and action-oriented
-          - Always use format: "Action through/at [platform]" for instruction, full link in description
+          - Prefer format: "Action through/at [platform]" for instruction
           - Make sure the instruction is accurate to the link (e.g. https://ats.rippling.com/tive-careers is for Tive, not Rippling).
           
           Examples:
@@ -107,8 +131,15 @@ export const sendJobDescription = async (user_id: string, job_description: strin
       .replace(/```/g, '')
       .replace(/`/g, '')
       .trim();
-    const topics = JSON.parse(raw);
-    return topics;
+    const parsed = JSON.parse(raw);
+    const normalizedInstructions = normalizeEmployerInstructions(parsed?.employer_instructions);
+    if (!parsed || typeof parsed !== 'object') {
+      return { decision: 'DO_NOT_APPLY', employer_instructions: normalizedInstructions };
+    }
+    return {
+      ...parsed,
+      employer_instructions: normalizedInstructions
+    };
 
   } catch (error) {
     return { error: "Error extracting topics." }

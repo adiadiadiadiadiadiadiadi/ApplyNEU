@@ -1,6 +1,11 @@
 import { pool } from '../db/index.ts';
 import Anthropic from '@anthropic-ai/sdk';
 
+type EmployerInstruction = { instruction: string; description: string };
+
+const NON_REQUIRED_TASK_PATTERN =
+    /\b(ad[\s-]?block(?:er)?|pop[\s-]?up(?: blocker)?|clear (?:your )?cache|cookies?|switch (?:to )?(?:another|different) browser|disable (?:browser )?extensions?|enable javascript|incognito|private mode|vpn|proxy|firewall|antivirus|troubleshoot|workaround|tip|optional|recommended|preference)\b/i;
+
 export const addTask = async (user_id: string, text: string, description: string, application_id?: string) => {
     try {
         const columns = ['user_id', 'text', 'description'];
@@ -37,14 +42,25 @@ export const addInstructions = async (user_id: string, employer_instructions: st
             messages: [{
                 role: 'user',
                 content: `
-          Your task: format job instructions to display to users.
+          Your task: extract REQUIRED application-completion tasks from the provided instructions.
           
           Provided Instructions:
           ${employer_instructions}
+
+          INCLUDE ONLY:
+          - Required actions needed to complete the application process
+          - External steps such as separate portal apply links, required assessments/forms, or required email follow-ups
+
+          NEVER INCLUDE:
+          - Optional/recommended advice
+          - Generic job-search tips
+          - Browser/device settings or troubleshooting instructions
+            (ad blocker/pop-up blocker, cache/cookies, switch browser, disable extensions, VPN, incognito, javascript settings)
+          - Standard document upload guidance (resume, cover letter, transcript, portfolio, references)
           
           FORMAT REQUIREMENTS:
           - "instruction" field: Brief action in imperative form (e.g., "Apply through company portal")
-          - "description" field: MUST include the full URL or email address
+          - "description" field: Include URL/email/platform destination when provided; otherwise include concise required details from the instruction text
           - Keep instructions short and action-oriented
           - Always use format: "Action through/at [company]" for instruction, full link in description.
           - Avoid mentioning the actual site the link is on (for example, mention the specific company name 
@@ -100,17 +116,22 @@ export const addInstructions = async (user_id: string, employer_instructions: st
         }
 
         const list = Array.isArray(parsed?.employer_instructions) ? parsed.employer_instructions : [];
+        const dedup = new Set<string>();
         const normalized = list
             .map((item: any) => {
                 if (item && typeof item === 'object') {
                     const instruction = String(item.instruction ?? '').trim();
                     const description = String(item.description ?? '').trim();
                     if (!instruction || !description) return null;
+                    if (NON_REQUIRED_TASK_PATTERN.test(`${instruction} ${description}`)) return null;
+                    const key = `${instruction.toLowerCase()}::${description.toLowerCase()}`;
+                    if (dedup.has(key)) return null;
+                    dedup.add(key);
                     return { instruction, description };
                 }
                 return null;
             })
-            .filter((v: any) => !!v);
+            .filter((v: EmployerInstruction | null): v is EmployerInstruction => !!v);
 
         const inserted: any[] = [];
         for (const item of normalized) {

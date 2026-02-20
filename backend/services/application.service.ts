@@ -32,10 +32,32 @@ export const addJobApplication = async (
 
     const result = await pool.query(
       `
-        INSERT INTO job_applications (job_id, user_id)
-        VALUES ($1, $2)
+        INSERT INTO job_applications (job_id, user_id, status)
+        VALUES ($1, $2, $3)
         ON CONFLICT (job_id, user_id)
-        DO UPDATE SET applied_at = NOW(), status = $3
+        DO UPDATE SET
+          applied_at = NOW(),
+          status = CASE
+            -- Preserve downstream/manual pipeline states.
+            WHEN LOWER(COALESCE(job_applications.status, '')) IN ('interview', 'offer', 'rejected') THEN job_applications.status
+            -- For automation-managed statuses, only move status forward.
+            WHEN (
+              CASE
+                WHEN LOWER(COALESCE(EXCLUDED.status, '')) IN ('submitted', 'applied') THEN 3
+                WHEN LOWER(COALESCE(EXCLUDED.status, '')) IN ('external', 'external action needed') THEN 2
+                WHEN LOWER(COALESCE(EXCLUDED.status, '')) IN ('draft', 'pending') THEN 1
+                ELSE 0
+              END
+            ) >= (
+              CASE
+                WHEN LOWER(COALESCE(job_applications.status, '')) IN ('submitted', 'applied') THEN 3
+                WHEN LOWER(COALESCE(job_applications.status, '')) IN ('external', 'external action needed') THEN 2
+                WHEN LOWER(COALESCE(job_applications.status, '')) IN ('draft', 'pending') THEN 1
+                ELSE 0
+              END
+            ) THEN EXCLUDED.status
+            ELSE job_applications.status
+          END
         RETURNING *;
       `,
       [job_id, user_id, status]
