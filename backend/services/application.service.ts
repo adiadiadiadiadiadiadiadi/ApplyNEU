@@ -5,8 +5,9 @@ export const addJobApplication = async (
   ) => {
   try {
 
+    // Try to find an existing job case-insensitively to avoid duplicate rows when casing/spacing differs.
     const job = await pool.query(
-      `SELECT * FROM jobs WHERE title = $1 AND company = $2 LIMIT 1;`,
+      `SELECT * FROM jobs WHERE lower(title) = lower($1) AND lower(company) = lower($2) LIMIT 1;`,
       [title, company]
     );
 
@@ -40,6 +41,9 @@ export const addJobApplication = async (
           status = CASE
             -- Preserve downstream/manual pipeline states.
             WHEN LOWER(COALESCE(job_applications.status, '')) IN ('interview', 'offer', 'rejected') THEN job_applications.status
+            -- Allow correcting an external -> draft/pending downgrade when submit was not actually completed.
+            WHEN LOWER(COALESCE(job_applications.status, '')) IN ('external', 'external action needed')
+                 AND LOWER(COALESCE(EXCLUDED.status, '')) IN ('draft', 'pending') THEN EXCLUDED.status
             -- For automation-managed statuses, only move status forward.
             WHEN (
               CASE

@@ -985,6 +985,9 @@ export default function Automation() {
                 if (resp.ok) {
                   const data = await resp.json()
                   const instructions = normalizeEmployerInstructions(data?.employer_instructions)
+                  if (instructions.length) {
+                    addLog(`How to apply (JD): ${instructions.map(i => i.text).join(' | ')}`)
+                  }
                   void instructions
                   if (data.decision === 'APPLY') {
                     consecutiveDoNotApply = 0
@@ -1075,6 +1078,7 @@ export default function Automation() {
                       let preferHeadlessClose = false
                       let docFieldFound = false
                       let needsExternalAction = false
+                      let submitClickedForApplication = false
 
                       if (dividerExists) {
                         await waitForModalOpen(webview)
@@ -1385,7 +1389,7 @@ export default function Automation() {
                             portfolioChecked = true
                             }
                             if (skipJob) {
-                              await recordApplication(documentsMissing ? 'external' : 'draft')
+                              await recordApplication('draft')
                               await closeModalIfPresent(webview)
                               break
                             }
@@ -1411,6 +1415,7 @@ export default function Automation() {
                               `)
                               if (redNow?.clicked) {
                                 submitClicked = true
+                                submitClickedForApplication = true
                                 preferHeadlessClose = !!redNow?.hasDivider
                                 break
                               }
@@ -1446,7 +1451,7 @@ export default function Automation() {
                             setStatus('running')
                             await waitForDividerSubmissionAndClose(webview)
                             if (skipJob) {
-                              await recordApplication(documentsMissing ? 'external' : 'draft')
+                              await recordApplication('draft')
                               await closeModalIfPresent(webview, preferHeadlessClose)
                               break
                             }
@@ -1659,7 +1664,7 @@ export default function Automation() {
                               }
                             }
                     if (skipJob) {
-                      await recordApplication(documentsMissing ? 'external' : 'draft')
+                      await recordApplication('draft')
                       await closeModalIfPresent(webview)
                       break
                     }
@@ -1687,6 +1692,7 @@ export default function Automation() {
                               `)
                               if (redNow?.clicked) {
                                 submitClicked = true
+                                submitClickedForApplication = true
                                 preferHeadlessClose = !!redNow?.hasDivider
                                 break
                               }
@@ -1725,7 +1731,7 @@ export default function Automation() {
                             }
                             await waitForDividerSubmissionAndClose(webview)
                           if (skipJob) {
-                            await recordApplication(documentsMissing ? 'external' : 'draft')
+                            await recordApplication('draft')
                             await closeModalIfPresent(webview, preferHeadlessClose)
                             break
                           }
@@ -1733,14 +1739,14 @@ export default function Automation() {
                           break
                         }
                          if (skipJob) {
-                           await recordApplication(documentsMissing ? 'external' : 'draft')
+                           await recordApplication('draft')
                            await closeModalIfPresent(webview, preferHeadlessClose)
                            break
                          }
                           await sleep(50)
                       }
                       if (skipJob) {
-                        await recordApplication(documentsMissing ? 'external' : 'draft')
+                        await recordApplication('draft')
                         await closeModalIfPresent(webview, preferHeadlessClose)
                         continue
                       }
@@ -1758,6 +1764,7 @@ export default function Automation() {
                           const userId = await getUserId()
                           if (instructionsText && userId) {
                             needsExternalAction = true
+                            addLog(`How to apply (modal): ${instructionsText.slice(0, 240)}${instructionsText.length > 240 ? '…' : ''}`)
                             await fetch(`http://localhost:8080/tasks/${userId}/add-instructions`, {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
@@ -1768,7 +1775,7 @@ export default function Automation() {
                             })
                           }
                         } catch (err) {}
-                        await recordApplication(needsExternalAction ? 'external' : 'draft')
+                        await recordApplication(submitClickedForApplication && needsExternalAction ? 'external' : 'draft')
                         await closeModalIfPresent(webview, preferHeadlessClose)
                         // Wait for the "One more thing..." modal to appear, click through, then continue.
                         for (let m = 0; m < 20; m++) {
@@ -1838,7 +1845,12 @@ export default function Automation() {
                       setStatus('paused')
                       return  
                     }
-                      await recordApplication((needsExternalAction || instructions.length > 0) ? 'external' : 'submitted')
+                      const hasExternalTasks = (needsExternalAction || instructions.length > 0)
+                      await recordApplication(
+                        !submitClickedForApplication
+                          ? 'draft'
+                          : (hasExternalTasks ? 'external' : 'submitted')
+                      )
                     }
                   } else if (data.decision === 'DO_NOT_APPLY') {
                     consecutiveDoNotApply += 1
@@ -1869,6 +1881,9 @@ export default function Automation() {
             consecutiveDoNotApply = 0
             addLog(`Job card #${idx + 1} missing or not clickable.`)
           }
+
+        // Pause between applications to avoid rapid submissions
+        await sleep(2000)
 
         }
 
