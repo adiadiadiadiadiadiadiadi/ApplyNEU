@@ -2,7 +2,7 @@ import './home.css'
 import { supabase } from '../../lib/supabase'
 import React, { useEffect, useState } from 'react'
 
-type Task = { task_id: string; text: string; completed?: boolean; application_id?: string | null }
+type Task = { task_id: string; text: string; description?: string; completed?: boolean; application_id?: string | null }
 
 type Stats = {
   total: number; today: number; week: number; year: number;
@@ -83,6 +83,32 @@ function formatDate(dateStr: string) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
+function renderDescription(desc: string) {
+  const urlRegex = /(https?:\/\/[^\s]+)/g
+  const matches = Array.from(desc.matchAll(urlRegex)).map(m => m[0])
+  if (!matches.length) return desc
+
+  // Preserve first occurrence order but avoid duplicates.
+  const uniqueLinks: string[] = []
+  for (const link of matches) {
+    if (!uniqueLinks.includes(link)) uniqueLinks.push(link)
+  }
+
+  const remainingText = desc.replace(urlRegex, '').trim()
+  const parts: Array<string | JSX.Element> = []
+  if (remainingText) parts.push(remainingText)
+  uniqueLinks.forEach((link, idx) => {
+    if (parts.length) parts.push(' ')
+    parts.push(
+      <a key={`${link}-${idx}`} href={link} target="_blank" rel="noreferrer noopener" className="task-desc-link">
+        {link}
+      </a>
+    )
+  })
+
+  return parts
+}
+
 export default function Home() {
   const [activeTasks, setActiveTasks] = useState<Task[]>([])
   const [completedTasks, setCompletedTasks] = useState<Task[]>([])
@@ -108,6 +134,7 @@ export default function Home() {
           ? data.map((t: any) => ({
               task_id: String(t?.task_id ?? ''),
               text: String(t?.text ?? ''),
+              description: t?.description ? String(t.description) : '',
               application_id: t?.application_id ?? null,
               completed: Boolean(t?.completed),
             })).filter(t => t.task_id && t.text)
@@ -301,24 +328,34 @@ export default function Home() {
                 <div className="tasks-scroll">
                   <p className="tasks-remaining">{remaining} remaining</p>
                   <div className="tasks-list-new">
-                    {displayedTasks.map(task => (
-                      <div key={task.task_id} className="task-item-new">
-                        <button
-                          className={`task-checkbox${task.completed ? ' task-checkbox--done' : ''}`}
-                          onClick={() => handleToggle(task.task_id)}
-                          disabled={toggling === task.task_id}
-                        >
-                          {task.completed && (
-                            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="20 6 9 17 4 12"></polyline>
-                            </svg>
+                    {displayedTasks.map(task => {
+                      const hasDescription = !!task.description
+                      return (
+                        <div key={task.task_id} className="task-item-new">
+                          <div className="task-main-row">
+                            <button
+                              className={`task-checkbox${task.completed ? ' task-checkbox--done' : ''}`}
+                              onClick={() => handleToggle(task.task_id)}
+                              disabled={toggling === task.task_id}
+                            >
+                              {task.completed && (
+                                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="20 6 9 17 4 12"></polyline>
+                                </svg>
+                              )}
+                            </button>
+                            <span className={`task-label-new${task.completed ? ' task-label-new--done' : ''}`}>
+                              {task.text}
+                            </span>
+                          </div>
+                          {hasDescription && (
+                            <div className="task-desc">
+                              {renderDescription(task.description ?? '')}
+                            </div>
                           )}
-                        </button>
-                        <span className={`task-label-new${task.completed ? ' task-label-new--done' : ''}`}>
-                          {task.text}
-                        </span>
-                      </div>
-                    ))}
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               )}
