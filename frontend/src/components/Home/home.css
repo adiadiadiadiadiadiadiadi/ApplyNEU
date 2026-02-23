@@ -70,7 +70,7 @@
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
   gap: 0.65rem;
 }
 
@@ -260,12 +260,20 @@
 
 .task-item-new {
   display: flex;
-  align-items: center;
-  gap: 0.75rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
   padding: 0.55rem 0.6rem;
   border-radius: 0.4rem;
   transition: background 0.15s;
   cursor: default;
+}
+
+.task-main-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
 }
 
 .task-item-new:hover {
@@ -313,6 +321,32 @@
   text-decoration: line-through;
   text-decoration-color: rgba(255, 255, 255, 0.35);
   color: rgba(255, 255, 255, 0.35);
+}
+
+.task-desc {
+  width: 100%;
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.65);
+  line-height: 1.35;
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  padding-left: 0.6rem;
+  max-height: 0;
+  opacity: 0;
+  margin-top: 0;
+  overflow: hidden;
+  transition: max-height 0.25s ease, opacity 0.2s ease, margin-top 0.2s ease;
+}
+
+.task-item-new:hover .task-desc {
+  max-height: 120px;
+  opacity: 1;
+  margin-top: 0.15rem;
+}
+
+.task-desc-link {
+  color: #93c5fd;
+  text-decoration: underline;
+  word-break: break-word;
 }
 
 /* =========================================================
