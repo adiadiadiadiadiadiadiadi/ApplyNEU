@@ -27,7 +27,7 @@ const normalizeEmployerInstructions = (input: any): EmployerInstruction[] => {
     .filter((v: EmployerInstruction | null): v is EmployerInstruction => !!v);
 };
 
-export const sendJobDescription = async (user_id: string, job_description: string) => {
+export const sendJobDescription = async (user_id: string, job_description: string, company?: string, title?: string) => {
   try {
     const result = await pool.query(
       `SELECT * FROM resumes WHERE user_id::text = $1 ORDER BY created_at DESC LIMIT 1;`,
@@ -51,6 +51,9 @@ export const sendJobDescription = async (user_id: string, job_description: strin
         content: `
           You are a job application filter. Your task: Decide whether the USER should apply to the JOB.
           
+          COMPANY: ${company || 'company unknown'}
+          TITLE: ${title || 'title unknown'}
+
           Rules:
           - Be practical and lean toward APPLY when the user meets a good amount of requirements.
           - If the user reasonably fits the role, return APPLY.
@@ -59,6 +62,7 @@ export const sendJobDescription = async (user_id: string, job_description: strin
           EMPLOYER INSTRUCTIONS:
           Extract tasks that are REQUIRED to complete the application, especially actions outside NUWorks.
           Include only explicit must-do actions from the posting.
+          Always include the company name ("${company || 'company unknown'}") in the instruction text when present.
           
           NEVER include:
           - Resume / cover letter / transcript / portfolio / references upload instructions

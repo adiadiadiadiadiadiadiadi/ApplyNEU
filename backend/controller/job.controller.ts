@@ -11,7 +11,7 @@ const jobController = () => {
 
     const sendJobDescriptionRoute = async (req: Request, res: Response) => {
         const { user_id } = req.params;
-        const { job_description } = req.body;
+        const { job_description, company, title } = req.body;
 
         if (!user_id || !job_description) {
             res.status(404).json({
@@ -21,7 +21,7 @@ const jobController = () => {
         }
 
         try {
-            const result = await sendJobDescription(user_id, job_description);
+            const result = await sendJobDescription(user_id, job_description, company, title);
             if ('error' in result) {
                 res.status(400).json({
                     "message": "Unable to send job description."

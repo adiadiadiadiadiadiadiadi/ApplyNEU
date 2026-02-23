@@ -10,7 +10,9 @@ export interface PostTaskRequest extends Request {
 
 export interface PostInstructionsRequest extends Request {
     body: {
-    employer_instructions: string
-    application_id?: string
+        employer_instructions: string
+        application_id?: string
+        company?: string
+        title?: string
     };
 }

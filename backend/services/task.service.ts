@@ -33,7 +33,7 @@ export const addTask = async (user_id: string, text: string, description: string
     }
 }
 
-export const addInstructions = async (user_id: string, employer_instructions: string, application_id?: string) => {
+export const addInstructions = async (user_id: string, employer_instructions: string, application_id?: string, company?: string, title?: string) => {
     try {
         const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
         const message = await anthropic.messages.create({
@@ -46,6 +46,9 @@ export const addInstructions = async (user_id: string, employer_instructions: st
           
           Provided Instructions:
           ${employer_instructions}
+
+          Company: ${company || 'company unknown'}
+          Title: ${title || 'title unknown'}
 
           INCLUDE ONLY:
           - Required actions needed to complete the application process
@@ -62,6 +65,7 @@ export const addInstructions = async (user_id: string, employer_instructions: st
           - "instruction" field: Brief action in imperative form (e.g., "Apply through company portal")
           - "description" field: Include URL/email/platform destination when provided; otherwise include concise required details from the instruction text
           - Keep instructions short and action-oriented
+          - Include the company name ("${company || 'company unknown'}") in the instruction text when it is known.
           - Always use format: "Action through/at [company]" for instruction, full link in description.
           - Avoid mentioning the actual site the link is on (for example, mention the specific company name 
             not generic "company" instead of Workday).

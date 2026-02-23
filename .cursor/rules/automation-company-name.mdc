@@ -1,0 +1,11 @@
+---
+description: Include the current job's company name in automation tasks
+globs: frontend/src/components/Automation/**
+alwaysApply: false
+---
+
+# Automation Company Specificity
+
+- When creating tasks or instructions (e.g., to Claude/backend), explicitly include the current job's company name pulled from automation context (the scraped `company` value).
+- Phrase tasks with the company title, not generic placeholders. Example: "Upload resume for Acme Corp" instead of "Upload resume for the company."
+- If the company name is missing, state that clearly (e.g., "company unknown") rather than omitting it.

@@ -980,7 +980,11 @@ export default function Automation() {
                 const resp = await fetch(`http://localhost:8080/jobs/${userId}/send-job`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ job_description: descResult || '' })
+                  body: JSON.stringify({
+                    job_description: descResult || '',
+                    company: companyName,
+                    title: jobTitle
+                  })
                 })
                 if (resp.ok) {
                   const data = await resp.json()
@@ -1147,7 +1151,9 @@ export default function Automation() {
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({
                                 employer_instructions: text,
-                                application_id: currentJobApplicationIdRef.current ?? undefined
+                                application_id: currentJobApplicationIdRef.current ?? undefined,
+                                company: (clickJobResult.company || '').trim() || 'company unknown',
+                                title: (titleStr || '').trim() || 'title unknown'
                               })
                             })
                             if (!resp.ok) { /* ignore */ }
@@ -1770,7 +1776,9 @@ export default function Automation() {
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({
                                 employer_instructions: instructionsText,
-                                application_id: currentJobApplicationIdRef.current ?? undefined
+                                application_id: currentJobApplicationIdRef.current ?? undefined,
+                                company: (clickJobResult.company || '').trim() || 'company unknown',
+                                title: (titleStr || '').trim() || 'title unknown'
                               })
                             })
                           }
