@@ -40,7 +40,7 @@ const taskController = () => {
 
   const addInstructionsRoute = async (req: PostInstructionsRequest, res: Response) => {
     const { user_id } = req.params;
-    const { employer_instructions, application_id } = req.body;
+    const { employer_instructions, application_id, company, title } = req.body;
 
     if (!user_id || !employer_instructions) {
       res.status(404).json({
@@ -50,7 +50,7 @@ const taskController = () => {
     }
 
     try {
-      const task = await addInstructions(user_id, employer_instructions, application_id);
+      const task = await addInstructions(user_id, employer_instructions, application_id, company, title);
 
       if ('error' in task) {
         res.status(400).json({
