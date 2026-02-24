@@ -239,7 +239,7 @@ export default function Home() {
     { key: 'interview', label: 'Interview', dot: PIPELINE_DOTS.interview, count: stats.interviews },
     { key: 'applied',   label: 'Applied',   dot: PIPELINE_DOTS.applied,   count: stats.applied },
     { key: 'external',  label: 'Ext. Action', dot: PIPELINE_DOTS.external, count: stats.external },
-    { key: 'pending',   label: 'Pending',   dot: PIPELINE_DOTS.pending,   count: stats.pending },
+    { key: 'pending',   label: 'Draft',     dot: PIPELINE_DOTS.pending,   count: stats.pending },
     { key: 'rejected',  label: 'Rejected',  dot: PIPELINE_DOTS.rejected,  count: stats.rejected },
   ]
 
