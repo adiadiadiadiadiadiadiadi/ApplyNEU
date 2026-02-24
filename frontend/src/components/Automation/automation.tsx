@@ -1799,11 +1799,24 @@ export default function Automation() {
                         try {
                           const instructionsText = await webview.executeJavaScript(`
                             (() => {
+                              const collectAnchors = (scope) =>
+                                Array.from((scope && scope.querySelectorAll) ? scope.querySelectorAll('a') : []).map(a => {
+                                  const label = (a.innerText || a.textContent || '').trim();
+                                  const href = (a.getAttribute && a.getAttribute('href')) ? a.getAttribute('href').trim() : '';
+                                  if (label && href) return label + ' ' + href;
+                                  return href || label;
+                                }).filter(Boolean);
                               const el = document.querySelector('#how-to-apply') || document.querySelector('p#how-to-apply');
-                              const text = el ? (el.innerText || el.textContent || '').trim() : '';
-                              if (text) return text;
-                              const paragraphs = Array.from(document.querySelectorAll('p')).map(p => (p.innerText || p.textContent || '').trim()).filter(Boolean);
-                              return paragraphs.join('\\n').trim();
+                              const primary = el ? (el.innerText || el.textContent || '').trim() : '';
+                              const anchorBits = collectAnchors(el || document);
+                              if (primary || anchorBits.length) {
+                                return [primary, ...anchorBits].filter(Boolean).join('\\n').trim();
+                              }
+                              const paragraphs = Array.from(document.querySelectorAll('p'))
+                                .map(p => (p.innerText || p.textContent || '').trim())
+                                .filter(Boolean);
+                              const moreAnchors = collectAnchors(document);
+                              return [...paragraphs, ...moreAnchors].filter(Boolean).join('\\n').trim();
                             })();
                           `)
                           const userId = await getUserId()
