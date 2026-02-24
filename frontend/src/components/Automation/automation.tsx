@@ -16,14 +16,33 @@ export default function Automation() {
   const currentJobApplicationIdRef = useRef<string | null>(null)
   const clearedTasksForApplicationRef = useRef<boolean>(false)
 
-  async function handleNoCoverLetter(companyName: string, webview: any, userId: string | undefined, applicationId?: string | null) {
+  const cleanTitle = (title: string | undefined) => {
+    if (!title) return ''
+    const atSplit = title.split(' @ ')[0] || title
+    return atSplit.trim()
+  }
+  const withTitleSuffix = (title: string | undefined, text: string) => {
+    const cleaned = cleanTitle(title)
+    return cleaned ? `${text} (${cleaned})` : text
+  }
+
+  async function handleNoCoverLetter(
+    companyName: string,
+    webview: any,
+    userId: string | undefined,
+    applicationId?: string | null,
+    jobTitle?: string
+  ) {
     addLog(`No cover letter found for ${companyName}.`)
     if (!userId) {
       addLog(`Error occured.`)
       return
     }
     const text = `Upload ${companyName} cover letter`
-    const description = `Upload your ${companyName} cover letter in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}.'`
+    const description = withTitleSuffix(
+      jobTitle,
+      `Upload your ${companyName} cover letter in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}.'`
+    )
     const key = buildTaskKey(text, applicationId)
     if (!existingTasksRef.current.has(key)) {
       const resp = await fetch(`http://localhost:8080/tasks/${userId}/new`, {
@@ -57,14 +76,22 @@ export default function Automation() {
     `)
   }
 
-  async function handleNoWorkSample(companyName: string, userId: string | undefined, applicationId?: string | null) {
+  async function handleNoWorkSample(
+    companyName: string,
+    userId: string | undefined,
+    applicationId?: string | null,
+    jobTitle?: string
+  ) {
     addLog(`No work sample found for ${companyName}.`)
     if (!userId) {
       addLog(`Error occured.`)
       return
     }
     const text = `Upload ${companyName} work sample`
-    const description = `Upload a work sample for ${companyName} in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
+    const description = withTitleSuffix(
+      jobTitle,
+      `Upload a work sample for ${companyName} in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
+    )
     const key = buildTaskKey(text, applicationId)
     if (existingTasksRef.current.has(key)) {
       return
@@ -81,14 +108,22 @@ export default function Automation() {
     existingTasksRef.current.add(key)
   }
 
-  async function handleNoPortfolio(companyName: string, userId: string | undefined, applicationId?: string | null) {
+  async function handleNoPortfolio(
+    companyName: string,
+    userId: string | undefined,
+    applicationId?: string | null,
+    jobTitle?: string
+  ) {
     addLog(`No portfolio found for ${companyName}.`)
     if (!userId) {
       addLog(`Error occured.`)
       return
     }
     const text = `Upload ${companyName} portfolio`
-    const description = `Upload a portfolio for ${companyName} in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
+    const description = withTitleSuffix(
+      jobTitle,
+      `Upload a portfolio for ${companyName} in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
+    )
     const key = buildTaskKey(text, applicationId)
     if (existingTasksRef.current.has(key)) {
       return
@@ -105,14 +140,22 @@ export default function Automation() {
     existingTasksRef.current.add(key)
   }
 
-  async function handleNoTranscript(companyName: string, userId: string | undefined, applicationId?: string | null) {
+  async function handleNoTranscript(
+    companyName: string,
+    userId: string | undefined,
+    applicationId?: string | null,
+    jobTitle?: string
+  ) {
     addLog(`No transcript found for ${companyName}.`)
     if (!userId) {
       addLog(`Error occured.`)
       return
     }
     const text = `Upload ${companyName} transcript`
-    const description = `Upload a transcript for ${companyName} in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
+    const description = withTitleSuffix(
+      jobTitle,
+      `Upload a transcript for ${companyName} in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
+    )
     const key = buildTaskKey(text, applicationId)
     if (existingTasksRef.current.has(key)) {
       return
@@ -323,7 +366,12 @@ export default function Automation() {
       .filter((v: EmployerInstruction | null): v is EmployerInstruction => !!v)
   }
 
-  const addEmployerTasks = async (instructions: EmployerInstruction[], userId: string, applicationId?: string | null) => {
+  const addEmployerTasks = async (
+    instructions: EmployerInstruction[],
+    userId: string,
+    applicationId?: string | null,
+    jobTitle?: string
+  ) => {
     const tasks = instructions.filter(inst => inst.text && inst.description)
     if (!tasks.length) return
     try {
@@ -335,7 +383,11 @@ export default function Automation() {
           const resp = await fetch(`http://localhost:8080/tasks/${userId}/new`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text, description, application_id: applicationId ?? undefined })
+            body: JSON.stringify({
+              text,
+              description: withTitleSuffix(jobTitle, description || text),
+              application_id: applicationId ?? undefined
+            })
           })
           if (!resp.ok) {
             const msg = await resp.text().catch(() => '')
@@ -993,6 +1045,7 @@ export default function Automation() {
                     consecutiveDoNotApply = 0
                     addLog(`Decision: apply.`)
                     let applicationRecordedStatus: 'draft' | 'applied' | 'external' | null = null
+                let pendingModalInstructionText: string | null = null
                     const recordApplication = async (status: 'draft' | 'applied' | 'external') => {
                       const userIdForApplication = await getUserId()
                       if (!userIdForApplication) return currentJobApplicationIdRef.current
@@ -1143,20 +1196,7 @@ export default function Automation() {
                         `)
 
                         if (text) {
-                          try {
-                            needsExternalAction = true
-                            const resp = await fetch(`http://localhost:8080/tasks/${userId}/add-instructions`, {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                employer_instructions: text,
-                                application_id: currentJobApplicationIdRef.current ?? undefined,
-                                company: (clickJobResult.company || '').trim() || 'company unknown',
-                                title: (titleStr || '').trim() || 'title unknown'
-                              })
-                            })
-                            if (!resp.ok) { /* ignore */ }
-                          } catch (err) { /* ignore */ }
+                          pendingModalInstructionText = text
                         }
                       }
                       for (let i = 0; i < 10; i++) { // faster resume/doc detection
@@ -1224,7 +1264,7 @@ export default function Automation() {
                                     `)
                                   } else {
                                   documentsMissing = true
-                                  await handleNoTranscript(clickJobResult.company, userId, currentJobApplicationIdRef.current)
+                                await handleNoTranscript(clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr)
                                   skipJob = true
                                   }
                                   break
@@ -1233,7 +1273,7 @@ export default function Automation() {
                               }
                               if (!transcriptHandled) {
                               documentsMissing = true
-                              await handleNoTranscript(clickJobResult.company, userId, currentJobApplicationIdRef.current)
+                              await handleNoTranscript(clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr)
                               skipJob = true
                               }
                             }
@@ -1288,7 +1328,7 @@ export default function Automation() {
                                     if (!hasCompany) {
                                       if (!coverLetterTaskAdded) {
                                         documentsMissing = true
-                                        await handleNoCoverLetter(clickJobResult.company, webview, userId, currentJobApplicationIdRef.current);
+                                await handleNoCoverLetter(clickJobResult.company, webview, userId, currentJobApplicationIdRef.current, titleStr);
                                         coverLetterTaskAdded = true
                                       }
                                     skipJob = true
@@ -1298,7 +1338,7 @@ export default function Automation() {
                               } else {
                                 if (!coverLetterTaskAdded) {
                                   documentsMissing = true
-                                  await handleNoCoverLetter(clickJobResult.company, webview, userId, currentJobApplicationIdRef.current)
+                              await handleNoCoverLetter(clickJobResult.company, webview, userId, currentJobApplicationIdRef.current, titleStr)
                                   coverLetterTaskAdded = true
                                 }
                               skipJob = true
@@ -1347,13 +1387,13 @@ export default function Automation() {
                                   `)
                                 } else {
                                   documentsMissing = true
-                                  await handleNoWorkSample(clickJobResult.company, userId, currentJobApplicationIdRef.current)
+                                  await handleNoWorkSample(clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr)
                                   skipJob = true
                                 }
                               } else if (workSampleVisible && workSampleInfo?.hasButton) {
                                 docFieldFound = true
                                 documentsMissing = true
-                                await handleNoWorkSample(clickJobResult.company, userId, currentJobApplicationIdRef.current)
+                                await handleNoWorkSample(clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr)
                                 skipJob = true
                               }
                               workSampleChecked = true
@@ -1388,7 +1428,7 @@ export default function Automation() {
                             } else if (portfolioVisible && portfolioInfo?.hasButton) {
                               docFieldFound = true
                               documentsMissing = true
-                              await handleNoPortfolio(clickJobResult.company, userId, currentJobApplicationIdRef.current)
+                              await handleNoPortfolio(clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr)
                               skipJob = true
                             }
                             portfolioChecked = true
@@ -1553,7 +1593,7 @@ export default function Automation() {
                               if (!coverLetterExists.hasSelect) {
                                 if (!coverLetterTaskAdded) {
                                   documentsMissing = true
-                                  await handleNoCoverLetter(clickJobResult.company, webview, userId, currentJobApplicationIdRef.current);
+                                await handleNoCoverLetter(clickJobResult.company, webview, userId, currentJobApplicationIdRef.current, titleStr);
                                   coverLetterTaskAdded = true
                                 }
                                 await webview.executeJavaScript(`
@@ -1620,12 +1660,12 @@ export default function Automation() {
                                 workSampleChecked = true
                               } else if (workSampleInfo?.hasButton) {
                                 documentsMissing = true
-                                await handleNoWorkSample(clickJobResult.company, userId, currentJobApplicationIdRef.current)
+                                await handleNoWorkSample(clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr)
                             skipJob = true
                                 workSampleChecked = true
                               } else {
                                 documentsMissing = true
-                                await handleNoWorkSample(clickJobResult.company, userId, currentJobApplicationIdRef.current)
+                                await handleNoWorkSample(clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr)
                             skipJob = true
                                 workSampleChecked = true
                               }
@@ -1658,12 +1698,12 @@ export default function Automation() {
                                 portfolioChecked = true
                               } else if (portfolioInfo?.hasButton) {
                                 documentsMissing = true
-                                await handleNoPortfolio(clickJobResult.company, userId, currentJobApplicationIdRef.current)
+                                await handleNoPortfolio(clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr)
                         skipJob = true
                                 portfolioChecked = true
                               } else {
                                 documentsMissing = true
-                                await handleNoPortfolio(clickJobResult.company, userId, currentJobApplicationIdRef.current)
+                                await handleNoPortfolio(clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr)
                         skipJob = true
                                 portfolioChecked = true
                               }
@@ -1842,8 +1882,23 @@ export default function Automation() {
                     if (!documentsMissing && dividerExists) {
                       // instructions already collected pre-submit
                     }
+                  if (!documentsMissing && pendingModalInstructionText && userId) {
+                    try {
+                      needsExternalAction = true
+                      await fetch(`http://localhost:8080/tasks/${userId}/add-instructions`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          employer_instructions: pendingModalInstructionText,
+                          application_id: currentJobApplicationIdRef.current ?? undefined,
+                          company: (clickJobResult.company || '').trim() || 'company unknown',
+                          title: (titleStr || '').trim() || 'title unknown'
+                        })
+                      })
+                    } catch (err) { /* ignore */ }
+                  }
                     if (!documentsMissing && instructions.length) {
-                      await addEmployerTasks(instructions, userId as string, currentJobApplicationIdRef.current)
+                      await addEmployerTasks(instructions, userId as string, currentJobApplicationIdRef.current, titleStr)
                     }
                     if (!seenResume) {
                       addLog('Waiting for user resume upload...')
