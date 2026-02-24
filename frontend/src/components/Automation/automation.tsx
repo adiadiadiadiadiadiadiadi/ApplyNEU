@@ -23,7 +23,7 @@ export default function Automation() {
       return
     }
     const text = `Upload ${companyName} cover letter`
-    const description = `Upload your ${companyName} cover letter in the 'My Documents' tab in NUWorks. Make sure the document's name includes '${companyName}'`
+    const description = `Upload your ${companyName} cover letter in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}.'`
     const key = buildTaskKey(text, applicationId)
     if (!existingTasksRef.current.has(key)) {
       const resp = await fetch(`http://localhost:8080/tasks/${userId}/new`, {
@@ -446,7 +446,6 @@ export default function Automation() {
       await sleep(100)
     }
   }
-
 
   const handlePlayClick = async () => {
     setStatus('running')
@@ -989,20 +988,19 @@ export default function Automation() {
                 if (resp.ok) {
                   const data = await resp.json()
                   const instructions = normalizeEmployerInstructions(data?.employer_instructions)
-                  if (instructions.length) {
-                    addLog(`How to apply (JD): ${instructions.map(i => i.text).join(' | ')}`)
-                  }
                   void instructions
                   if (data.decision === 'APPLY') {
                     consecutiveDoNotApply = 0
                     addLog(`Decision: apply.`)
-                    let applicationRecordedStatus: 'draft' | 'submitted' | 'external' | null = null
-                    const recordApplication = async (status: 'draft' | 'submitted' | 'external') => {
+                    let applicationRecordedStatus: 'draft' | 'applied' | 'external' | null = null
+                    const recordApplication = async (status: 'draft' | 'applied' | 'external') => {
                       const userIdForApplication = await getUserId()
                       if (!userIdForApplication) return currentJobApplicationIdRef.current
                       if (applicationRecordedStatus === status && currentJobApplicationIdRef.current) {
                         return currentJobApplicationIdRef.current
                       }
+                      addLog(clickJobResult.company)
+                      addLog(titleStr)
                       const applicationPayload = {
                         company: (clickJobResult.company || '').trim() || 'Unknown company',
                         title: (titleStr || '').trim() || 'Untitled job',
@@ -1146,6 +1144,7 @@ export default function Automation() {
 
                         if (text) {
                           try {
+                            needsExternalAction = true
                             const resp = await fetch(`http://localhost:8080/tasks/${userId}/add-instructions`, {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
@@ -1770,7 +1769,6 @@ export default function Automation() {
                           const userId = await getUserId()
                           if (instructionsText && userId) {
                             needsExternalAction = true
-                            addLog(`How to apply (modal): ${instructionsText.slice(0, 240)}${instructionsText.length > 240 ? '…' : ''}`)
                             await fetch(`http://localhost:8080/tasks/${userId}/add-instructions`, {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
@@ -1854,11 +1852,14 @@ export default function Automation() {
                       return  
                     }
                       const hasExternalTasks = (needsExternalAction || instructions.length > 0)
-                      await recordApplication(
+                      for (let i = 0; i < instructions.length; i++) {
+                        addLog(instructions[i].text)
+                      }
+                      const statusToRecord =
                         !submitClickedForApplication
                           ? 'draft'
-                          : (hasExternalTasks ? 'external' : 'submitted')
-                      )
+                          : (hasExternalTasks ? 'external' : 'applied')
+                      await recordApplication(statusToRecord)
                     }
                   } else if (data.decision === 'DO_NOT_APPLY') {
                     consecutiveDoNotApply += 1
@@ -1889,10 +1890,6 @@ export default function Automation() {
             consecutiveDoNotApply = 0
             addLog(`Job card #${idx + 1} missing or not clickable.`)
           }
-
-        // Pause between applications to avoid rapid submissions
-        await sleep(2000)
-
         }
 
         const nextResult = await webview.executeJavaScript(`
