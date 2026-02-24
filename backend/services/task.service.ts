@@ -50,6 +50,8 @@ export const addInstructions = async (user_id: string, employer_instructions: st
           Company: ${company || 'company unknown'}
           Title: ${title || 'title unknown'}
 
+          IF TWO TASKS HAVE THE SAME PURPOSE, COMBINE THE DESCRIPTIONS INTO ONE TASK.
+
           INCLUDE ONLY:
           - Required actions needed to complete the application process
           - External steps such as separate portal apply links, required assessments/forms, or required email follow-ups
