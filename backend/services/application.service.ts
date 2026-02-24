@@ -4,6 +4,12 @@ export const addJobApplication = async (
   user_id: string, company: string, title: string, description: string, status: string
   ) => {
   try {
+    const normalizedStatus = (() => {
+      const trimmed = (status ?? '').trim();
+      if (!trimmed) return trimmed;
+      const lower = trimmed.toLowerCase();
+      return lower === 'submitted' ? 'applied' : lower;
+    })();
 
     // Try to find an existing job case-insensitively to avoid duplicate rows when casing/spacing differs.
     const job = await pool.query(
@@ -64,7 +70,7 @@ export const addJobApplication = async (
           END
         RETURNING *;
       `,
-      [job_id, user_id, status]
+      [job_id, user_id, normalizedStatus]
     );
 
     return result.rows[0] ?? { error: 'Application already exists for this job/user.' };

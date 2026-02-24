@@ -62,7 +62,7 @@ const AlertIcon = ({ cls }: { cls: string }) => (
 
 const STATUS_CONFIG: Record<string, StatusCfg> = {
   applied:                  { label: 'Applied',   colorClass: 'status--applied',   icon: <SendIcon cls="app-icon status--applied" /> },
-  submitted:                { label: 'Submitted', colorClass: 'status--applied',   icon: <SendIcon cls="app-icon status--applied" /> },
+  submitted:                { label: 'Applied',   colorClass: 'status--applied',   icon: <SendIcon cls="app-icon status--applied" /> },
   pending:                  { label: 'Pending',   colorClass: 'status--pending',   icon: <ClockIcon cls="app-icon status--pending" /> },
   draft:                    { label: 'Draft',     colorClass: 'status--pending',   icon: <ClockIcon cls="app-icon status--pending" /> },
   interview:                { label: 'Interview', colorClass: 'status--interview', icon: <EyeIcon cls="app-icon status--interview" /> },
@@ -100,7 +100,22 @@ function renderDescription(desc: string) {
   uniqueLinks.forEach((link, idx) => {
     if (parts.length) parts.push(' ')
     parts.push(
-      <a key={`${link}-${idx}`} href={link} target="_blank" rel="noreferrer noopener" className="task-desc-link">
+      <a
+        key={`${link}-${idx}`}
+        href={link}
+        target="_blank"
+        rel="noreferrer noopener"
+        className="task-desc-link"
+        onClick={e => {
+          e.preventDefault()
+          try {
+            window.open(link, '_blank', 'noopener,noreferrer')
+          } catch {
+            // fall back to default navigation if blocked
+            window.location.assign(link)
+          }
+        }}
+      >
         {link}
       </a>
     )

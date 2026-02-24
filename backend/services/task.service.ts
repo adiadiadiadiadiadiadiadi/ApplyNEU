@@ -184,9 +184,9 @@ export const toggleTask = async (task_id: string) => {
             if (remainingCount === 0) {
                 await pool.query(
                     `
-                    UPDATE job_applications
-                    SET status = 'submitted'
-                    WHERE application_id = $1 AND user_id = $2 AND status = 'external';
+                UPDATE job_applications
+                SET status = 'applied'
+                WHERE application_id = $1 AND user_id = $2 AND status = 'external';
                     `,
                     [updated.application_id, updated.user_id]
                 );
