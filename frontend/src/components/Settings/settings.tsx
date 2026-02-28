@@ -1,90 +1,94 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useEffect, useState } from 'react'
-import { useAppDispatch } from '../../store'
-import { fetchUserProfile } from '../../store/userSlice'
 import './settings.css'
 
 export default function Settings() {
   const navigate = useNavigate()
   const [waitForApproval, setWaitForApproval] = useState(false)
-  const [repoToggle, setRepoToggle] = useState(false)
-  const [jobMatchSensitivity, setJobMatchSensitivity] = useState<'L' | 'M' | 'H'>('M')
-  const [branchPrefixToggle, setBranchPrefixToggle] = useState(false)
-  const dispatch = useAppDispatch()
+  const [recentJobs, setRecentJobs] = useState(false)
+  const [branchPrefix, setBranchPrefix] = useState(false)
+  const [sensitivity, setSensitivity] = useState<'L' | 'M' | 'H'>('M')
 
-  useEffect(() => {
-    void dispatch(fetchUserProfile())
-  }, [dispatch])
+  const toggleClass = (isOn: boolean) => (isOn ? 'toggle toggle--on' : 'toggle')
+
+  const renderToggle = (value: boolean, onToggle: () => void, label: string) => (
+    <button
+      type="button"
+      aria-pressed={value}
+      aria-label={label}
+      className={toggleClass(value)}
+      onClick={onToggle}
+    >
+      <span className="toggle__thumb" />
+    </button>
+  )
 
   return (
-    <div className="settings-blank">
-      <h1 className="welcome-message">settings</h1>
-      <div className="settings-actions">
-        <button className="settings-action-button" onClick={() => navigate('/profile-settings')}>
-          <span className="settings-action-button__line settings-action-button__line--primary">profile settings</span>
-          <span className="settings-action-button__line settings-action-button__line--secondary">view and edit account details</span>
-          <span className="settings-action-button__arrow">→</span>
-        </button>
-        <div className="settings-panel">
-          <div className="settings-panel__header settings-panel__header--left">Preferences</div>
-          <div className="settings-panel__rows">
-            <div className="settings-panel__row">
-              <div>
-                <div className="settings-panel__title">wait for approval</div>
-                <div className="settings-panel__subtitle">wait for user approval before applying to a job</div>
-              </div>
-              <button
-                className={`settings-switch ${waitForApproval ? 'settings-switch--on' : ''}`}
-                onClick={() => setWaitForApproval((prev) => !prev)}
-              >
-                <span className="settings-switch__thumb" />
-              </button>
+    <div className="settings-page">
+      <div className="settings-inner">
+        <h1 className="settings-title">settings</h1>
+
+        <div
+          className="settings-card profile-card"
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate('/profile-settings')}
+          onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && navigate('/profile-settings')}
+        >
+          <div>
+            <p className="profile-title">profile settings</p>
+            <p className="profile-subtitle">view and edit account details</p>
+          </div>
+          <span className="profile-arrow" aria-hidden="true">
+            →
+          </span>
+        </div>
+
+        <div className="settings-card prefs-card">
+          <p className="prefs-heading">Preferences</p>
+
+          <div className="prefs-row">
+            <div>
+              <p className="prefs-label">wait for approval</p>
+              <p className="prefs-subtitle">wait for user approval before applying to a job</p>
             </div>
-            <div className="settings-panel__row">
-              <div>
-                <div className="settings-panel__title">recent jobs</div>
-                <div className="settings-panel__subtitle">apply only to jobs posted in the last week</div>
-              </div>
-              <button
-                className={`settings-switch ${repoToggle ? 'settings-switch--on' : ''}`}
-                onClick={() => setRepoToggle((prev) => !prev)}
-              >
-                <span className="settings-switch__thumb" />
-              </button>
+            {renderToggle(waitForApproval, () => setWaitForApproval(prev => !prev), 'wait for approval')}
+          </div>
+
+          <div className="prefs-row">
+            <div>
+              <p className="prefs-label">recent jobs</p>
+              <p className="prefs-subtitle">apply only to jobs posted in the last week</p>
             </div>
-            <div className="settings-panel__row">
-              <div>
-                <div className="settings-panel__title">job match sensitivity</div>
-                <div className="settings-panel__subtitle">how strict LLMs are when matching you to jobs</div>
-              </div>
-              <div className="settings-triple-toggle">
-                {(['L', 'M', 'H'] as const).map((level) => (
-                  <button
-                    key={level}
-                    type="button"
-                    className={`settings-triple-toggle__option ${
-                      jobMatchSensitivity === level ? 'settings-triple-toggle__option--active' : ''
-                    }`}
-                    onClick={() => setJobMatchSensitivity(level)}
-                    aria-pressed={jobMatchSensitivity === level}
-                  >
-                    {level}
-                  </button>
-                ))}
-              </div>
+            {renderToggle(recentJobs, () => setRecentJobs(prev => !prev), 'recent jobs')}
+          </div>
+
+          <div className="prefs-row">
+            <div>
+              <p className="prefs-label">job match sensitivity</p>
+              <p className="prefs-subtitle">how strict LLMs are when matching you to jobs</p>
             </div>
-            <div className="settings-panel__row">
-              <div>
-                <div className="settings-panel__title">branch prefix</div>
-                <div className="settings-panel__subtitle">toggle branch prefix usage</div>
-              </div>
-              <button
-                className={`settings-switch ${branchPrefixToggle ? 'settings-switch--on' : ''}`}
-                onClick={() => setBranchPrefixToggle((prev) => !prev)}
-              >
-                <span className="settings-switch__thumb" />
-              </button>
+            <div className="sensitivity-group" role="group" aria-label="job match sensitivity">
+              {(['L', 'M', 'H'] as const).map(level => (
+                <button
+                  key={level}
+                  type="button"
+                  className={`sensitivity-btn ${sensitivity === level ? 'sensitivity-btn--active' : ''}`}
+                  onClick={() => setSensitivity(level)}
+                  aria-pressed={sensitivity === level}
+                >
+                  {level}
+                </button>
+              ))}
             </div>
+          </div>
+
+          <div className="prefs-row">
+            <div>
+              <p className="prefs-label">branch prefix</p>
+              <p className="prefs-subtitle">toggle branch prefix usage</p>
+            </div>
+            {renderToggle(branchPrefix, () => setBranchPrefix(prev => !prev), 'branch prefix')}
           </div>
         </div>
       </div>
