@@ -1,6 +1,7 @@
 import './home.css'
 import { supabase } from '../../lib/supabase'
 import React, { useEffect, useState } from 'react'
+import ComponentLoader from '../common/ComponentLoader'
 
 type Task = { task_id: string; text: string; description?: string; completed?: boolean; application_id?: string | null }
 
@@ -283,7 +284,9 @@ export default function Home() {
             <div className="dashboard-panel pipeline-panel">
               <p className="panel-label">Pipeline</p>
               {loadingStats ? (
-                <div className="panel-loading">loading...</div>
+                <div className="panel-loading">
+                  <ComponentLoader label="loading stats" />
+                </div>
               ) : (
                 <>
                   <div className="pipeline-bar-wrap">
@@ -336,7 +339,9 @@ export default function Home() {
                 </label>
               </div>
               {loadingTasks ? (
-                <div className="panel-loading">loading...</div>
+                <div className="panel-loading">
+                  <ComponentLoader label="loading tasks" />
+                </div>
               ) : displayedTasks.length === 0 ? (
                 <div className="panel-empty">{showActive ? 'no tasks yet...' : 'no completed tasks'}</div>
               ) : (
@@ -385,7 +390,9 @@ export default function Home() {
                 <span className="panel-count">{applications.length} total</span>
               </div>
               {loadingApps ? (
-                <div className="panel-loading">loading...</div>
+                <div className="panel-loading">
+                  <ComponentLoader label="loading applications" />
+                </div>
               ) : applications.length === 0 ? (
                 <div className="panel-empty">no applications yet...</div>
               ) : (

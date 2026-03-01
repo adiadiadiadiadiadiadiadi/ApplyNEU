@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppDispatch, useAppSelector } from '../../store'
 import { fetchUserProfile, saveUserPreferences, setPreferences } from '../../store/userSlice'
+import ComponentLoader from '../common/ComponentLoader'
 import './settings.css'
 
 export default function Settings() {
@@ -46,7 +47,7 @@ export default function Settings() {
       {status === 'loading' || !profile ? (
         <div className="settings-inner">
           <h1 className="settings-title">settings</h1>
-          <p>Loading your preferences…</p>
+          <ComponentLoader label="loading preferences" />
         </div>
       ) : (
       <div className="settings-inner">

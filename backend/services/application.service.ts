@@ -143,3 +143,9 @@ export const getUserApplications = async (user_id: string) => {
     return { error: 'Error fetching applications.' };
   }
 }
+
+// export const updateApplicationStatus = async (
+//   user_id: string, company: string, title: string, description: string, status: string
+//   ) {
+
+//   }

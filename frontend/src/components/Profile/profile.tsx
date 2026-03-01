@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import ComponentLoader from '../common/ComponentLoader'
 import './profile.css'
 
 type ProfileHeader = {
@@ -30,7 +31,11 @@ export default function Profile() {
   }, [])
 
   if (!header.name || !header.email) {
-    return <div className="profile-blank profile-loading">loading...</div>
+    return (
+      <div className="profile-blank profile-loading">
+        <ComponentLoader label="loading profile" />
+      </div>
+    )
   }
 
   return (
