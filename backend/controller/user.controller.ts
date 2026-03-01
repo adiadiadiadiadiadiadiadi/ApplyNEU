@@ -1,6 +1,6 @@
 import express, { type Request, type Response } from 'express';
 import type { PostUserRequest } from '../types/users.ts';
-import { addUser, cacheShortResume, getJobTypes, getSearchTerms, getUser, getUserInterests, updateJobType, updateSearchTerms, updateUser, updateUserInterests } from '../services/user.service.ts';
+import { addUser, cacheShortResume, getJobTypes, getSearchTerms, getUser, getUserInterests, getUserPreferences, updateJobType, updateSearchTerms, updateUser, updateUserInterests, updateUserPreferences } from '../services/user.service.ts';
 
 /**
  * This controller handles user-related routes.
@@ -88,6 +88,66 @@ const userController = () => {
     } catch (err: unknown) {
       res.status(400).json({
         "message": "Unable to update user."
+      });
+    }
+  };
+
+  const getPreferencesRoute = async (req: Request, res: Response) => {
+    const { user_id } = req.params;
+
+    if (!user_id) {
+      res.status(404).json({
+        "message": "Required arguments not found to get preferences."
+      });
+      return;
+    }
+
+    try {
+      const prefs = await getUserPreferences(user_id);
+
+      if ('error' in prefs) {
+        res.status(404).json({
+          "message": "Preferences not found."
+        });
+        return;
+      }
+      res.status(200).json(prefs);
+    } catch (err: unknown) {
+      res.status(400).json({
+        "message": "Unable to get preferences."
+      });
+    }
+  };
+
+  const updatePreferencesRoute = async (req: Request, res: Response) => {
+    const { user_id } = req.params;
+    const { wait_for_approval, recent_jobs, job_match } = req.body;
+
+    if (!user_id) {
+      res.status(404).json({
+        "message": "Required arguments not found to update preferences."
+      });
+      return;
+    }
+
+    try {
+      const prefs = await updateUserPreferences(
+        user_id,
+        wait_for_approval,
+        recent_jobs,
+        job_match
+      );
+
+      if ('error' in prefs) {
+        res.status(400).json({
+          "message": "Unable to update preferences."
+        });
+        return;
+      }
+      res.status(200).json(prefs);
+    } catch (err: unknown) {
+      res.status(400).json({
+        "message": "Unable to update preferences."
       });
     }
   };
@@ -286,6 +346,8 @@ const userController = () => {
   router.post('/new', addUserRoute);
   router.get('/:user_id', getUserRoute);
   router.put('/:user_id', updateUserRoute);
+  router.get('/:user_id/preferences', getPreferencesRoute);
+  router.put('/:user_id/preferences', updatePreferencesRoute);
   router.get('/:user_id/interests', getUserInterestsRoute);
   router.put('/:user_id/interests', updateUserInterestsRoute);
   router.put('/:user_id/job-types', updateJobTypeRoute);

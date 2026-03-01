@@ -1,13 +1,31 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAppDispatch, useAppSelector } from '../../store'
+import { fetchUserProfile, saveUserPreferences, setPreferences } from '../../store/userSlice'
 import './settings.css'
 
 export default function Settings() {
   const navigate = useNavigate()
-  const [waitForApproval, setWaitForApproval] = useState(false)
-  const [recentJobs, setRecentJobs] = useState(false)
+  const dispatch = useAppDispatch()
+  const profile = useAppSelector((state) => state.user.profile)
+  const status = useAppSelector((state) => state.user.status)
+
   const [branchPrefix, setBranchPrefix] = useState(false)
-  const [sensitivity, setSensitivity] = useState<'L' | 'M' | 'H'>('M')
+  const waitForApproval = profile?.waitForApproval ?? false
+  const recentJobs = profile?.recent_jobs ?? false
+  const sensitivity: 'L' | 'M' | 'H' =
+    profile?.job_match === 'high' ? 'H' : profile?.job_match === 'low' ? 'L' : 'M'
+
+  useEffect(() => {
+    if (!profile && status === 'idle') {
+      void dispatch(fetchUserProfile())
+    }
+  }, [dispatch, profile, status])
+
+  const updatePrefs = (prefs: Partial<{ waitForApproval: boolean; recent_jobs: boolean; job_match: 'low' | 'medium' | 'high' }>) => {
+    dispatch(setPreferences(prefs))
+    void dispatch(saveUserPreferences(prefs))
+  }
 
   const toggleClass = (isOn: boolean) => (isOn ? 'toggle toggle--on' : 'toggle')
 
@@ -25,6 +43,12 @@ export default function Settings() {
 
   return (
     <div className="settings-page">
+      {status === 'loading' || !profile ? (
+        <div className="settings-inner">
+          <h1 className="settings-title">settings</h1>
+          <p>Loading your preferences…</p>
+        </div>
+      ) : (
       <div className="settings-inner">
         <h1 className="settings-title">settings</h1>
 
@@ -52,7 +76,13 @@ export default function Settings() {
               <p className="prefs-label">wait for approval</p>
               <p className="prefs-subtitle">wait for user approval before applying to a job</p>
             </div>
-            {renderToggle(waitForApproval, () => setWaitForApproval(prev => !prev), 'wait for approval')}
+            {renderToggle(
+              waitForApproval,
+              () => {
+                updatePrefs({ waitForApproval: !waitForApproval })
+              },
+              'wait for approval'
+            )}
           </div>
 
           <div className="prefs-row">
@@ -60,7 +90,13 @@ export default function Settings() {
               <p className="prefs-label">recent jobs</p>
               <p className="prefs-subtitle">apply only to jobs posted in the last week</p>
             </div>
-            {renderToggle(recentJobs, () => setRecentJobs(prev => !prev), 'recent jobs')}
+            {renderToggle(
+              recentJobs,
+              () => {
+                updatePrefs({ recent_jobs: !recentJobs })
+              },
+              'recent jobs'
+            )}
           </div>
 
           <div className="prefs-row">
@@ -74,7 +110,11 @@ export default function Settings() {
                   key={level}
                   type="button"
                   className={`sensitivity-btn ${sensitivity === level ? 'sensitivity-btn--active' : ''}`}
-                  onClick={() => setSensitivity(level)}
+                  onClick={() => {
+                    updatePrefs({
+                      job_match: level === 'H' ? 'high' : level === 'L' ? 'low' : 'medium',
+                    })
+                  }}
                   aria-pressed={sensitivity === level}
                 >
                   {level}
@@ -92,6 +132,7 @@ export default function Settings() {
           </div>
         </div>
       </div>
+      )}
     </div>
   )
 }

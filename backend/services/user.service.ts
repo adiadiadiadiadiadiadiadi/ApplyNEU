@@ -21,7 +21,7 @@ export const getUser = async (user_id: string) => {
     try {
         const result = await pool.query(
             `
-            SELECT user_id, first_name, last_name, email, grad_year
+            SELECT user_id, first_name, last_name, email, grad_year, wait_for_approval, recent_jobs, job_match
             FROM users
             WHERE user_id = $1;
             `,
@@ -35,6 +35,27 @@ export const getUser = async (user_id: string) => {
         return result.rows[0];
     } catch (error) {
         return { error: 'Error getting user.' }
+    }
+};
+
+export const getUserPreferences = async (user_id: string) => {
+    try {
+        const result = await pool.query(
+            `
+            SELECT wait_for_approval, recent_jobs, job_match
+            FROM users
+            WHERE user_id = $1;
+            `,
+            [user_id]
+        )
+
+        if (result.rows.length === 0) {
+            return { error: 'User not found.' };
+        }
+
+        return result.rows[0];
+    } catch (error) {
+        return { error: 'Error getting preferences.' }
     }
 };
 
@@ -295,6 +316,36 @@ export const updateUser = async (user_id: string, first_name: string, last_name:
         return result.rows[0];
     } catch (error) {
         return { error: 'Error updating user.' }
+    }
+};
+
+export const updateUserPreferences = async (
+    user_id: string,
+    wait_for_approval?: boolean,
+    recent_jobs?: boolean,
+    job_match?: string
+) => {
+    try {
+        const result = await pool.query(
+            `
+            UPDATE users
+            SET
+                wait_for_approval = COALESCE($1, wait_for_approval),
+                recent_jobs = COALESCE($2, recent_jobs),
+                job_match = COALESCE($3, job_match)
+            WHERE user_id = $4
+            RETURNING wait_for_approval, recent_jobs, job_match;
+            `,
+            [wait_for_approval, recent_jobs, job_match, user_id]
+        )
+
+        if (result.rows.length === 0) {
+            return { error: 'User not found.' };
+        }
+
+        return result.rows[0];
+    } catch (error) {
+        return { error: 'Error updating preferences.' }
     }
 };
 
