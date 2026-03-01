@@ -1,0 +1,216 @@
+/* Shared loader styling */
+.component-loader {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 1rem 0;
+  color: rgba(235, 243, 255, 0.85);
+}
+
+.component-loader__spinner {
+  position: relative;
+  width: 36px;
+  height: 36px;
+}
+
+.component-loader__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+}
+
+.component-loader__ring--accent {
+  border-color: transparent;
+  border-top-color: #12f4d4;
+  animation: loader-spin 0.9s linear infinite;
+}
+
+.component-loader__core {
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: rgba(18, 244, 212, 0.12);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05);
+  animation: loader-pulse 1.4s ease-in-out infinite;
+}
+
+.component-loader__label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+@keyframes loader-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes loader-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Full-screen loading experience */
+.loading-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.85rem;
+  background: #050608;
+  color: #e8edf7;
+  overflow: hidden;
+  transition: opacity 0.45s ease;
+}
+
+.loading-screen[data-hide='true'] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.loading-screen__glow {
+  position: absolute;
+  width: 620px;
+  height: 620px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(18, 244, 212, 0.14) 0%, transparent 60%);
+  filter: blur(8px);
+  opacity: 0.7;
+  transition: transform 0.9s ease, opacity 0.9s ease;
+}
+
+.loading-screen__glow[data-phase='0'] {
+  transform: scale(0.75);
+  opacity: 0.35;
+}
+
+.loading-screen__glow[data-phase='1'] {
+  transform: scale(0.95);
+  opacity: 0.55;
+}
+
+.loading-screen__glow[data-phase='2'] {
+  transform: scale(1);
+  opacity: 0.7;
+}
+
+.loading-screen__glow[data-phase='3'] {
+  transform: scale(1.05);
+  opacity: 0.8;
+}
+
+.loading-screen__grid {
+  position: absolute;
+  inset: -40px;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 70px 70px;
+  opacity: 0.08;
+  transform: rotate(0.5deg);
+}
+
+.loading-screen__title {
+  position: relative;
+  font-size: 2.4rem;
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: -0.04em;
+  display: flex;
+  gap: 0.25rem;
+  color: #e8edf7;
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+.loading-screen__brand--accent {
+  color: #12f4d4;
+}
+
+.loading-screen__subtitle {
+  margin: 0.2rem 0 0.8rem;
+  font-size: 0.9rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(232, 237, 247, 0.7);
+  font-family: 'JetBrains Mono', monospace;
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+.loading-screen__progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 220px;
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+.loading-screen__bar {
+  width: 100%;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.loading-screen__bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(18, 244, 212, 0.35), #12f4d4);
+  transition: width 120ms linear;
+  box-shadow: 0 0 12px rgba(18, 244, 212, 0.4);
+}
+
+.loading-screen__percent {
+  margin: 0;
+  text-align: center;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  color: rgba(232, 237, 247, 0.72);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.loading-screen__dots {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.25rem;
+}
+
+.loading-screen__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #12f4d4;
+  animation: loading-dot 1.2s ease-in-out infinite;
+  opacity: 0.8;
+}
+
+@keyframes loading-dot {
+  0% {
+    transform: translateY(0);
+    opacity: 0.6;
+  }
+  50% {
+    transform: translateY(-6px);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 0.6;
+  }
+}
