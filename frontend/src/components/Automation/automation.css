@@ -459,9 +459,96 @@
 .interaction-blocker {
   position: absolute;
   inset: 0;
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.28);
   pointer-events: auto;
   z-index: 5;
+}
+
+.interaction-blocker--transparent {
+  background: transparent;
+}
+
+.approval-banner {
+  position: fixed;
+  top: 0.625rem;
+  right: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  background: rgba(10, 10, 10, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.9rem;
+  padding: 0.85rem 1rem;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+  z-index: 1102;
+}
+
+.approval-text {
+  min-width: 200px;
+}
+
+.approval-label {
+  margin: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.approval-job {
+  margin: 0.15rem 0 0;
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.95);
+  font-weight: 600;
+}
+
+.approval-company {
+  margin: 0;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.approval-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.approval-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.approval-btn:hover {
+  transform: scale(1.04);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.approval-btn--yes {
+  border-color: rgba(39, 201, 63, 0.6);
+  color: rgba(39, 201, 63, 0.9);
+}
+
+.approval-btn--yes:hover {
+  background: rgba(39, 201, 63, 0.12);
+}
+
+.approval-btn--no {
+  border-color: rgba(255, 95, 86, 0.6);
+  color: rgba(255, 95, 86, 0.9);
+}
+
+.approval-btn--no:hover {
+  background: rgba(255, 95, 86, 0.12);
 }
 
 @media (max-width: 1200px) {
