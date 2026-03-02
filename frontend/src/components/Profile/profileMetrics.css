@@ -1,0 +1,266 @@
+.metrics-page {
+  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
+  background: radial-gradient(circle at 20% 20%, rgba(0, 255, 200, 0.04), transparent 35%),
+    radial-gradient(circle at 80% 0%, rgba(255, 200, 0, 0.05), transparent 35%),
+    #030303;
+  color: rgba(235, 235, 235, 0.94);
+  padding: 0.1rem 0.45rem 0.1rem;
+}
+
+.metrics-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.metrics-content {
+  max-width: 880px;
+  margin: 60px auto 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem; /* vertical spacing between rows */
+  height: 82vh;
+  overflow: hidden;
+}
+
+.metrics-user-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: rgba(235, 235, 235, 0.95);
+}
+
+.metrics-user-name {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.metrics-user-email-inline {
+  font-size: 1.05rem;
+  color: rgba(200, 200, 200, 0.8);
+}
+
+.metrics-top {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  column-gap: 0.18rem;
+  row-gap: 0.25rem;
+  width: 100%;
+}
+
+.metrics-card {
+  border: 1px solid #111;
+  background: rgba(12, 12, 12, 0.92);
+  border-radius: 1rem;
+  padding: 0.35rem 0.6rem;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.02);
+  max-width: none;
+  height: 100%;
+}
+
+.metrics-profile {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.metrics-avatar {
+  height: 44px;
+  width: 44px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 255, 200, 0.08);
+  border: 1px solid rgba(0, 255, 200, 0.25);
+}
+
+.metrics-avatar-icon {
+  height: 22px;
+  width: 22px;
+  color: #00e3c1;
+}
+
+.metrics-profile-text h2 {
+  margin: 0;
+  font-size: 1rem;
+  color: rgba(240, 240, 240, 0.95);
+}
+
+.metrics-email {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: rgba(200, 200, 200, 0.8);
+  font-size: 0.85rem;
+}
+
+.metrics-email-icon {
+  height: 14px;
+  width: 14px;
+}
+
+.metrics-stat {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.metrics-stat-icon {
+  height: 18px;
+  width: 18px;
+  color: #00e3c1;
+}
+
+.metrics-stat-label {
+  margin: 0;
+  color: rgba(180, 180, 180, 0.85);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.metrics-stat-value {
+  margin: 0;
+  color: rgba(240, 240, 240, 0.96);
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.metrics-stat-value--accent {
+  color: #00e3c1;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 0.18rem;
+  row-gap: 1.2rem;
+  min-height: 0;
+  margin-top: 0.6rem;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  height: calc(82vh - 70px);
+}
+
+@media (max-width: 960px) {
+  .metrics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.metrics-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-height: 60px;
+  height: 100%;
+}
+
+.funnel-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  justify-content: center;
+  height: 100%;
+}
+
+.funnel-step {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.funnel-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: rgba(220, 220, 220, 0.9);
+}
+
+.funnel-label {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 0.78rem;
+  color: rgba(190, 190, 190, 0.9);
+}
+
+.funnel-value {
+  font-weight: 700;
+  color: #00e3c1;
+}
+
+.funnel-bar {
+  height: 8px;
+  width: 100%;
+  border-radius: 999px;
+  background: #0d0d0f;
+  border: 1px solid #111;
+  overflow: hidden;
+}
+
+.funnel-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(0, 255, 200, 0.8), rgba(0, 255, 200, 0.35));
+  transition: width 0.35s ease;
+}
+
+.metrics-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.metrics-card-header h3 {
+  margin: 0;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  color: rgba(200, 200, 200, 0.9);
+  text-transform: uppercase;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+}
+
+.metrics-card-icon {
+  height: 16px;
+  width: 16px;
+  color: rgba(200, 200, 200, 0.8);
+}
+
+.metrics-chart-body {
+  flex: 1;
+  min-height: 40px;
+}
+
+.metrics-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.metrics-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: rgba(190, 190, 190, 0.85);
+  font-size: 0.8rem;
+}
+
+.metrics-legend-dot {
+  height: 10px;
+  width: 10px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.metrics-error {
+  color: #ff7b7b;
+  font-size: 0.9rem;
+  margin: 0.25rem 0 0;
+}
