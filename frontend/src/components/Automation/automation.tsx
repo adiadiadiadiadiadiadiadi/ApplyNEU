@@ -9,12 +9,16 @@ export default function Automation() {
   const [isPanelOpen, setIsPanelOpen] = useState(false)
   const [searchTerms, setSearchTerms] = useState<string[]>([])
   const [awaitingInput, setAwaitingInput] = useState(false)
+  const [approvalPrompt, setApprovalPrompt] = useState<{ jobTitle: string; company: string } | null>(null)
   const logsEndRef = useRef<HTMLDivElement>(null)
   const initializedRef = useRef(false)
   const existingTasksRef = useRef<Set<string>>(new Set())
   const searchTermsRef = useRef<Set<string>>(new Set())
   const currentJobApplicationIdRef = useRef<string | null>(null)
   const clearedTasksForApplicationRef = useRef<boolean>(false)
+  const approvalResolverRef = useRef<((approved: boolean) => void) | null>(null)
+  const waitForApprovalRef = useRef<boolean>(false)
+  const preferencesLoadedRef = useRef<boolean>(false)
 
   const cleanTitle = (title: string | undefined) => {
     if (!title) return ''
@@ -24,6 +28,49 @@ export default function Automation() {
   const withTitleSuffix = (title: string | undefined, text: string) => {
     const cleaned = cleanTitle(title)
     return cleaned ? `${text} (${cleaned})` : text
+  }
+
+  const toBool = (value: unknown, fallback = true) =>
+    value === undefined || value === null ? fallback : value === true || value === 'true'
+
+  async function loadUserPreferences() {
+    if (preferencesLoadedRef.current) return waitForApprovalRef.current
+    const userId = await getUserId()
+    if (!userId) return waitForApprovalRef.current
+    try {
+      const resp = await fetch(`http://localhost:8080/users/${userId}`)
+      if (resp.ok) {
+        const data = await resp.json().catch(() => ({}))
+        waitForApprovalRef.current = toBool(data.wait_for_approval ?? data.waitForApproval, true)
+      }
+    } catch (err) {
+      // ignore preference fetch errors
+    } finally {
+      preferencesLoadedRef.current = true
+    }
+    return waitForApprovalRef.current
+  }
+
+  const requestApprovalForJob = (jobTitle: string, company: string) => {
+    playAlertSound()
+    return new Promise<boolean>((resolve) => {
+      setApprovalPrompt({ jobTitle, company })
+      setAwaitingInput(true)
+      setStatus('paused')
+      approvalResolverRef.current = (approved: boolean) => {
+        setApprovalPrompt(null)
+        setAwaitingInput(false)
+        setStatus('running')
+        approvalResolverRef.current = null
+        resolve(approved)
+      }
+    })
+  }
+
+  const handleApprovalChoice = (approved: boolean) => {
+    if (approvalResolverRef.current) {
+      approvalResolverRef.current(approved)
+    }
   }
 
   async function handleNoCoverLetter(
@@ -306,6 +353,7 @@ export default function Automation() {
     }
 
     fetchSearchTerms()
+    loadUserPreferences().catch(() => {})
 
     if (!initializedRef.current) {
       initializedRef.current = true
@@ -1086,6 +1134,16 @@ export default function Automation() {
                       return currentJobApplicationIdRef.current
                     }
                     await recordApplication('draft')
+                    const waitForApproval = await loadUserPreferences()
+                    if (waitForApproval) {
+                      addLog(`Waiting for approval before applying to ${titleStr}...`)
+                      const approved = await requestApprovalForJob(titleStr, companyName || 'Unknown company')
+                      if (!approved) {
+                        addLog('Skipped applying (user declined).')
+                        continue
+                      }
+                      addLog('User approved. Applying now...')
+                    }
                     let documentsMissing = false
                     const applyClicked = await webview.executeJavaScript(`
                       (() => {
@@ -2042,6 +2100,58 @@ export default function Automation() {
           </button>
         </div>
       </div>
+      {approvalPrompt && (
+        <div className="approval-banner" role="alert" aria-live="assertive">
+          <div className="approval-text">
+            <p className="approval-label">approval needed</p>
+            <p className="approval-job">{approvalPrompt.jobTitle || 'Untitled job'}</p>
+            <p className="approval-company">{approvalPrompt.company || 'Unknown company'}</p>
+          </div>
+          <div className="approval-actions">
+            <button
+              type="button"
+              className="approval-btn approval-btn--yes"
+              onClick={() => handleApprovalChoice(true)}
+              aria-label="Approve applying to this job"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            </button>
+            <button
+              type="button"
+              className="approval-btn approval-btn--no"
+              onClick={() => handleApprovalChoice(false)}
+              aria-label="Skip this job"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
       <div className="automation-content">
         <div className="browser-display">
           <div className="browser-content">
@@ -2052,7 +2162,9 @@ export default function Automation() {
               allowpopups="true"
             ></webview>
           </div>
-          {!awaitingInput && <div className="interaction-blocker" />}
+          {(!awaitingInput || approvalPrompt) && (
+            <div className={`interaction-blocker${approvalPrompt ? ' interaction-blocker--transparent' : ''}`} />
+          )}
         </div>
       </div>
       <div className={`right-panel ${isPanelOpen ? 'open' : ''}`}>
