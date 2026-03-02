@@ -18,6 +18,7 @@ export default function Automation() {
   const clearedTasksForApplicationRef = useRef<boolean>(false)
   const approvalResolverRef = useRef<((approved: boolean) => void) | null>(null)
   const waitForApprovalRef = useRef<boolean>(false)
+  const recentJobsRef = useRef<boolean>(true)
   const preferencesLoadedRef = useRef<boolean>(false)
 
   const cleanTitle = (title: string | undefined) => {
@@ -42,6 +43,7 @@ export default function Automation() {
       if (resp.ok) {
         const data = await resp.json().catch(() => ({}))
         waitForApprovalRef.current = toBool(data.wait_for_approval ?? data.waitForApproval, true)
+        recentJobsRef.current = toBool(data.recent_jobs ?? data.recentJobs, true)
       }
     } catch (err) {
       // ignore preference fetch errors
@@ -700,6 +702,9 @@ export default function Automation() {
       }
     })()
 
+    // Ensure preferences (e.g., recent jobs) are loaded before filters.
+    await loadUserPreferences().catch(() => {})
+
     // Click "More Filters", then click "Exclude jobs I've applied for", then click Apply.
     const moreFiltersClicked = await webview.executeJavaScript(`
       (() => {
@@ -754,6 +759,49 @@ export default function Automation() {
           break
         }
         await new Promise(res => setTimeout(res, 100))
+      }
+      // If user prefers recent jobs, select the "last 7 days" post date filter before applying.
+      if (recentJobsRef.current) {
+        for (let j = 0; j < 60; j++) {
+          const radioResult = await webview.executeJavaScript(`
+            (() => {
+              const radios = Array.from(document.querySelectorAll('input[type="radio"][name="postdate"]'));
+              const target =
+                radios.find(r => (r.getAttribute('value') || '').trim() === '7') ||
+                radios.find(r => (r.getAttribute('ng-reflect-value') || '').trim() === '7') ||
+                radios.find(r => {
+                  const id = (r.id || '').toLowerCase();
+                  const val = (r.getAttribute('value') || '').trim();
+                  const ngVal = (r.getAttribute('ng-reflect-value') || '').trim();
+                  return id.includes('postdate') && (val === '7' || ngVal === '7');
+                }) ||
+                radios.find(r => {
+                  const labelText = (r.closest('label')?.innerText || '').toLowerCase();
+                  return labelText.includes('7') || labelText.includes('last 7') || labelText.includes('week');
+                });
+              if (!target) return { found: false, clicked: false, already: false };
+              const already = !!target.checked;
+              if (!target.checked) {
+                if (typeof target.click === 'function') target.click();
+                else target.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                return { found: true, clicked: true, already };
+              }
+              return { found: true, clicked: false, already };
+            })();
+          `)
+          if (radioResult?.found) {
+            if (radioResult.clicked) {
+              addLog('Selected recent jobs filter (last 7 days).')
+            } else if (radioResult.already) {
+              addLog('Recent jobs filter already selected.')
+            }
+            break
+          }
+          if (j === 59) {
+            addLog('Recent jobs filter not found; continuing without it.')
+          }
+          await sleep(100)
+        }
       }
       for (let k = 0; k < 120; k++) {
         const applied = await webview.executeJavaScript(`
@@ -1100,8 +1148,6 @@ export default function Automation() {
                       if (applicationRecordedStatus === status && currentJobApplicationIdRef.current) {
                         return currentJobApplicationIdRef.current
                       }
-                      addLog(clickJobResult.company)
-                      addLog(titleStr)
                       const applicationPayload = {
                         company: (clickJobResult.company || '').trim() || 'Unknown company',
                         title: (titleStr || '').trim() || 'Untitled job',
