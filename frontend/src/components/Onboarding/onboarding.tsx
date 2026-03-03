@@ -293,8 +293,8 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   }
 
   return (
-    <div className="onboarding-container">
-      <div className="onboarding-content">
+    <div className="onboarding-container page-stagger">
+      <div className="onboarding-content stagger-children">
         <div className="onboarding-progress">
           <div className="progress-bar">
             <div

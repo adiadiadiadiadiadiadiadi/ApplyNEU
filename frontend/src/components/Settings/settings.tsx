@@ -10,6 +10,7 @@ export default function Settings() {
   const dispatch = useAppDispatch()
   const profile = useAppSelector((state) => state.user.profile)
   const status = useAppSelector((state) => state.user.status)
+  const loadError = useAppSelector((state) => state.user.error)
 
   const waitForApproval = profile?.waitForApproval ?? false
   const recentJobs = profile?.recent_jobs ?? false
@@ -41,15 +42,44 @@ export default function Settings() {
     </button>
   )
 
+  const renderError = () => (
+    <div className="settings-inner stagger-children">
+      <h1 className="settings-title">settings</h1>
+      <p className="prefs-subtitle" style={{ color: '#f87171', marginTop: '0.5rem' }}>
+        {loadError || 'Failed to load preferences.'}
+      </p>
+      <button
+        type="button"
+        className="settings-retry-btn"
+        onClick={() => void dispatch(fetchUserProfile())}
+      >
+        retry
+      </button>
+    </div>
+  )
+
+  const renderLoading = () => (
+    <div className="settings-inner stagger-children">
+      <h1 className="settings-title">settings</h1>
+      <ComponentLoader label="loading preferences" />
+    </div>
+  )
+
+  if (status === 'loading') {
+    return <div className="settings-page page-stagger">{renderLoading()}</div>
+  }
+
+  if (status === 'failed') {
+    return <div className="settings-page page-stagger">{renderError()}</div>
+  }
+
+  if (!profile) {
+    return <div className="settings-page page-stagger">{renderLoading()}</div>
+  }
+
   return (
-    <div className="settings-page">
-      {status === 'loading' || !profile ? (
-        <div className="settings-inner">
-          <h1 className="settings-title">settings</h1>
-          <ComponentLoader label="loading preferences" />
-        </div>
-      ) : (
-      <div className="settings-inner">
+    <div className="settings-page page-stagger">
+      <div className="settings-inner stagger-children">
         <h1 className="settings-title">settings</h1>
 
         <div
@@ -125,7 +155,6 @@ export default function Settings() {
 
         </div>
       </div>
-      )}
     </div>
   )
 }

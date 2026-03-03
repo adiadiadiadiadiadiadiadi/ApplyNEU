@@ -249,20 +249,20 @@ export default function Profile() {
 
   if (!header.name || !header.email) {
     return (
-      <div className="metrics-page metrics-loading">
+      <div className="metrics-page metrics-loading page-stagger">
         <ComponentLoader label="loading profile" />
       </div>
     )
   }
 
   return (
-    <div className="metrics-page">
-      <div className="metrics-content">
+    <div className="metrics-page page-stagger">
+      <div className="metrics-content stagger-children">
         <div className="metrics-user-inline">
           <span className="metrics-user-name">{header.name}</span>
           <span className="metrics-user-email-inline">{header.email}</span>
         </div>
-        <div className="metrics-top">
+        <div className="metrics-top stagger-children">
           {quickStats.map((s) => (
             <div key={s.label} className="metrics-card metrics-stat">
               <s.icon className="metrics-stat-icon" />
@@ -274,7 +274,7 @@ export default function Profile() {
           ))}
         </div>
 
-        <div className="metrics-grid">
+        <div className="metrics-grid stagger-children">
           <div className="metrics-card metrics-chart">
             <div className="metrics-card-header">
               <PieIcon className="metrics-card-icon" />

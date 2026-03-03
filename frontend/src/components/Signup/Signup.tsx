@@ -138,8 +138,8 @@ export default function Signup({ onNavigateToLogin }: SignupProps) {
 
     if (step === 'verify') {
         return (
-            <div className="signup-container">
-                <div className="signup-content">
+            <div className="signup-container page-stagger">
+                <div className="signup-content stagger-children">
                     <h1 className="signup-title">enter verification code</h1>
                     <p className="signup-success-text">
                         we've sent an 8-digit code to {email}
@@ -185,8 +185,8 @@ export default function Signup({ onNavigateToLogin }: SignupProps) {
     }
 
     return (
-        <div className="signup-container">
-            <div className="signup-content">
+        <div className="signup-container page-stagger">
+            <div className="signup-content stagger-children">
                 <h1 className="signup-title">create your account</h1>
 
                 <form onSubmit={handleSignup} className="signup-form">
