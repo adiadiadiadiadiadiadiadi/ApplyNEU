@@ -536,19 +536,21 @@
 .approval-btn--yes {
   border-color: rgba(39, 201, 63, 0.6);
   color: rgba(39, 201, 63, 0.9);
+  background: rgba(39, 201, 63, 0.16);
 }
 
 .approval-btn--yes:hover {
-  background: rgba(39, 201, 63, 0.12);
+  background: rgba(39, 201, 63, 0.24);
 }
 
 .approval-btn--no {
   border-color: rgba(255, 95, 86, 0.6);
   color: rgba(255, 95, 86, 0.9);
+  background: rgba(255, 95, 86, 0.16);
 }
 
 .approval-btn--no:hover {
-  background: rgba(255, 95, 86, 0.12);
+  background: rgba(255, 95, 86, 0.24);
 }
 
 @media (max-width: 1200px) {

@@ -1,5 +1,5 @@
 import express, { type Request, type Response } from 'express';
-import { addJobApplication, getUserApplicationStats, getUserApplications } from '../services/application.service.ts';
+import { addJobApplication, getUserApplicationStats, getUserApplications, updateApplicationStatus } from '../services/application.service.ts';
 
 /**
  * This controller handles job-related routes.
@@ -63,6 +63,27 @@ const applicationController = () => {
         }
     };
 
+    const updateApplicationStatusRoute = async (req: Request, res: Response) => {
+        const { user_id, application_id } = req.params;
+        const { status } = req.body ?? {};
+
+        if (!user_id || !application_id || !status) {
+            res.status(404).json({ message: 'user_id, application_id, and status are required.' });
+            return;
+        }
+
+        try {
+            const result = await updateApplicationStatus(user_id, application_id, status);
+            if ('error' in result) {
+                res.status(400).json({ message: result.error });
+                return;
+            }
+            res.status(200).json(result);
+        } catch (err: unknown) {
+            res.status(400).json({ message: 'Unable to update application status.' });
+        }
+    };
+
     const getApplicationsRoute = async (req: Request, res: Response) => {
         const { user_id } = req.params;
 
@@ -86,6 +107,7 @@ const applicationController = () => {
     router.post('/:user_id/new', addApplicationRoute);
     router.get('/:user_id/stats', getApplicationStatsRoute);
     router.get('/:user_id', getApplicationsRoute);
+    router.put('/:user_id/:application_id/status', updateApplicationStatusRoute);
 
     return router;
 };
