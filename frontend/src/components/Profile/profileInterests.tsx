@@ -77,8 +77,8 @@ export default function ProfileInterests() {
   }
 
   return (
-    <div className="onboarding-container">
-      <div className="onboarding-content">
+    <div className="onboarding-container page-stagger">
+      <div className="onboarding-content stagger-children">
         <div className="onboarding-step">
           <h1 className="onboarding-title">select your interests</h1>
           <p className="onboarding-description">we'll use these to refresh your search terms.</p>

@@ -353,9 +353,9 @@ export default function Home() {
         </svg>
       </button>
 
-      <div className="home-dashboard">
+      <div className="home-dashboard stagger-children">
         {/* Stats row */}
-        <div className="stats-row">
+        <div className="stats-row stagger-children">
           {statsRow.map(s => (
             <div key={s.label} className={`stat-pill${s.accent ? ' stat-pill--accent' : ''}`}>
               <span className="stat-pill-label">{s.label}</span>
@@ -365,10 +365,10 @@ export default function Home() {
         </div>
 
         {/* Main grid */}
-        <div className="dashboard-grid">
+        <div className="dashboard-grid stagger-children">
 
           {/* Left column */}
-          <div className="col-left">
+          <div className="col-left stagger-children">
 
             {/* Pipeline panel */}
             <div className="dashboard-panel pipeline-panel">
@@ -473,7 +473,7 @@ export default function Home() {
           </div>
 
           {/* Right column — Applications */}
-          <div className="col-right">
+          <div className="col-right stagger-children">
             <div className="dashboard-panel apps-panel">
               <div className="panel-header">
                 <p className="panel-label">Applications</p>
