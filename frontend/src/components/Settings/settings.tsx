@@ -11,7 +11,6 @@ export default function Settings() {
   const profile = useAppSelector((state) => state.user.profile)
   const status = useAppSelector((state) => state.user.status)
 
-  const [branchPrefix, setBranchPrefix] = useState(false)
   const waitForApproval = profile?.waitForApproval ?? false
   const recentJobs = profile?.recent_jobs ?? false
   const sensitivity: 'L' | 'M' | 'H' =
@@ -124,13 +123,6 @@ export default function Settings() {
             </div>
           </div>
 
-          <div className="prefs-row">
-            <div>
-              <p className="prefs-label">branch prefix</p>
-              <p className="prefs-subtitle">toggle branch prefix usage</p>
-            </div>
-            {renderToggle(branchPrefix, () => setBranchPrefix(prev => !prev), 'branch prefix')}
-          </div>
         </div>
       </div>
       )}

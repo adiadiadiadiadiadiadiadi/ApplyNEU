@@ -43,6 +43,14 @@ export const sendJobDescription = async (user_id: string, job_description: strin
       return { error: 'Short resume not cached.' };
     }
 
+    const prefs = await pool.query(
+      `SELECT job_match FROM users WHERE user_id::text = $1 LIMIT 1;`,
+      [user_id]
+    );
+    const jobMatchRaw = (prefs.rows[0]?.job_match ?? 'medium').toString().toLowerCase();
+    const jobMatchSensitivity: 'low' | 'medium' | 'high' =
+      jobMatchRaw === 'high' ? 'high' : jobMatchRaw === 'low' ? 'low' : 'medium';
+
     const message = await anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 1024,
@@ -54,10 +62,18 @@ export const sendJobDescription = async (user_id: string, job_description: strin
           COMPANY: ${company || 'company unknown'}
           TITLE: ${title || 'title unknown'}
 
+          MATCH SENSITIVITY: ${jobMatchSensitivity.toUpperCase()}
+          - LOW (not strict): Be lenient and favor APPLY if the resume plausibly covers several required skills/responsibilities; only DO_NOT_APPLY for clear mismatches.
+          - MEDIUM (pretty strict): Balanced judgment (default). Apply when the user meets a good amount of requirements; DO_NOT_APPLY when clearly unqualified.
+          - HIGH (VERY STRICT): Require strong alignment to required skills, tech stack, responsibilities, domain, and experience level. If missing key required skills/years/domain fit, choose DO_NOT_APPLY.
+          Apply the ${jobMatchSensitivity.toUpperCase()} rules above when making the decision.
+
           Rules:
-          - Be practical and lean toward APPLY when the user meets a good amount of requirements.
-          - If the user reasonably fits the role, return APPLY.
-          - Only return DO_NOT_APPLY when clearly unqualified.
+          - Extract the job description's explicit requirements: skills, tools/tech stack, responsibilities, and required years/level.
+          - Compare those requirements to the user's resume. Focus on REQUIRED skills/tech/tools and must-have experience.
+          - Be practical and lean toward APPLY when the user meets a good amount of required skills/responsibilities (use sensitivity rules above).
+          - If the user reasonably fits the required skills/responsibilities, return APPLY.
+          - When the resume misses key REQUIRED skills/tech/experience from the job description, choose DO_NOT_APPLY (stricter if sensitivity is HIGH).
           
           EMPLOYER INSTRUCTIONS:
           Extract tasks that are REQUIRED to complete the application, especially actions outside NUWorks.
