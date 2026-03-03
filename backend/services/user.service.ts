@@ -320,33 +320,33 @@ export const updateUser = async (user_id: string, first_name: string, last_name:
 };
 
 export const updateUserPreferences = async (
-    user_id: string,
-    wait_for_approval?: boolean,
-    recent_jobs?: boolean,
-    job_match?: string
+  user_id: string,
+  wait_for_approval?: boolean,
+  recent_jobs?: boolean,
+  job_match?: string
 ) => {
-    try {
-        const result = await pool.query(
-            `
-            UPDATE users
-            SET
-                wait_for_approval = COALESCE($1, wait_for_approval),
-                recent_jobs = COALESCE($2, recent_jobs),
-                job_match = COALESCE($3, job_match)
-            WHERE user_id = $4
-            RETURNING wait_for_approval, recent_jobs, job_match;
-            `,
-            [wait_for_approval, recent_jobs, job_match, user_id]
-        )
+  try {
+    const result = await pool.query(
+      `
+        UPDATE users
+        SET
+          wait_for_approval   = COALESCE($1, wait_for_approval),
+          recent_jobs         = COALESCE($2, recent_jobs),
+          job_match           = COALESCE($3, job_match)
+        WHERE user_id = $4
+        RETURNING wait_for_approval, recent_jobs, job_match;
+      `,
+      [wait_for_approval, recent_jobs, job_match, user_id]
+    )
 
-        if (result.rows.length === 0) {
-            return { error: 'User not found.' };
-        }
-
-        return result.rows[0];
-    } catch (error) {
-        return { error: 'Error updating preferences.' }
+    if (result.rows.length === 0) {
+      return { error: 'User not found.' }
     }
+
+    return result.rows[0]
+  } catch (error) {
+    return { error: 'Error updating preferences.' }
+  }
 };
 
 export const cacheShortResume = async (user_id: string) => {
