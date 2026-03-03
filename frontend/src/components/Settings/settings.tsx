@@ -14,6 +14,8 @@ export default function Settings() {
 
   const waitForApproval = profile?.waitForApproval ?? false
   const recentJobs = profile?.recent_jobs ?? false
+  const unpaidRoles = profile?.unpaid_roles ?? false
+  const emailNotifications = profile?.email_notifications ?? true
   const sensitivity: 'L' | 'M' | 'H' =
     profile?.job_match === 'high' ? 'H' : profile?.job_match === 'low' ? 'L' : 'M'
 
@@ -23,7 +25,7 @@ export default function Settings() {
     }
   }, [dispatch, profile, status])
 
-  const updatePrefs = (prefs: Partial<{ waitForApproval: boolean; recent_jobs: boolean; job_match: 'low' | 'medium' | 'high' }>) => {
+  const updatePrefs = (prefs: Partial<{ waitForApproval: boolean; recent_jobs: boolean; job_match: 'low' | 'medium' | 'high'; unpaid_roles: boolean; email_notifications: boolean }>) => {
     dispatch(setPreferences(prefs))
     void dispatch(saveUserPreferences(prefs))
   }
@@ -46,15 +48,11 @@ export default function Settings() {
     <div className="settings-inner stagger-children">
       <h1 className="settings-title">settings</h1>
       <p className="prefs-subtitle" style={{ color: '#f87171', marginTop: '0.5rem' }}>
-        {loadError || 'Failed to load preferences.'}
+        {loadError || 'Failed to load preferences.'}{' '}
+        <a className="settings-retry-btn" onClick={() => void dispatch(fetchUserProfile())}>
+          retry
+        </a>
       </p>
-      <button
-        type="button"
-        className="settings-retry-btn"
-        onClick={() => void dispatch(fetchUserProfile())}
-      >
-        retry
-      </button>
     </div>
   )
 
@@ -126,6 +124,34 @@ export default function Settings() {
                 updatePrefs({ recent_jobs: !recentJobs })
               },
               'recent jobs'
+            )}
+          </div>
+
+          <div className="prefs-row">
+            <div>
+              <p className="prefs-label">unpaid roles</p>
+              <p className="prefs-subtitle">allow applying to unpaid or volunteer positions</p>
+            </div>
+            {renderToggle(
+              unpaidRoles,
+              () => {
+                updatePrefs({ unpaid_roles: !unpaidRoles })
+              },
+              'unpaid roles'
+            )}
+          </div>
+
+          <div className="prefs-row">
+            <div>
+              <p className="prefs-label">email notifications</p>
+              <p className="prefs-subtitle">receive status updates and alerts via email</p>
+            </div>
+            {renderToggle(
+              emailNotifications,
+              () => {
+                updatePrefs({ email_notifications: !emailNotifications })
+              },
+              'email notifications'
             )}
           </div>
 

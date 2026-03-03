@@ -52,14 +52,14 @@ const userController = () => {
 
       if ('error' in user) {
         res.status(404).json({
-          "message": "User not found."
+          "message": `User not found for id ${user_id}.`
         });
         return;
       }
       res.status(200).json(user);
     } catch (err: unknown) {
       res.status(400).json({
-        "message": "Unable to get user."
+        "message": `Unable to get user ${user_id}.`
       });
     }
   };
@@ -121,7 +121,7 @@ const userController = () => {
 
   const updatePreferencesRoute = async (req: Request, res: Response) => {
     const { user_id } = req.params;
-    const { wait_for_approval, recent_jobs, job_match } = req.body;
+    const { wait_for_approval, recent_jobs, job_match, unpaid_roles, email_notifications } = req.body;
 
     if (!user_id) {
       res.status(404).json({
@@ -135,7 +135,9 @@ const userController = () => {
         user_id,
         wait_for_approval,
         recent_jobs,
-        job_match
+        job_match,
+        unpaid_roles,
+        email_notifications
       );
 
       if ('error' in prefs) {
