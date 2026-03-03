@@ -1,5 +1,11 @@
-import express, { type Request, type Response } from 'express';
-import type { PostTaskRequest, PostInstructionsRequest } from '../types/tasks.ts';
+import express, { type Response } from 'express';
+import type {
+  PostTaskRequest,
+  PostInstructionsRequest,
+  ToggleTaskRequest,
+  GetTasksRequest,
+  ClearTasksRequest,
+} from '../types/tasks.ts';
 import { addInstructions, addTask, toggleTask, getTasks, deleteTasksForApplication } from '../services/task.service.ts';
 
 /**
@@ -10,6 +16,10 @@ import { addInstructions, addTask, toggleTask, getTasks, deleteTasksForApplicati
 const taskController = () => {
   const router = express.Router();
 
+  /**
+   * Create a task for a user.
+   * @param req params.user_id, body text/description/application_id
+   */
   const addTaskRoute = async (req: PostTaskRequest, res: Response) => {
     const { user_id } = req.params;
     const { text, description, application_id } = req.body;
@@ -38,6 +48,10 @@ const taskController = () => {
     }
   };
 
+  /**
+   * Create tasks from employer instructions payload.
+   * @param req params.user_id, body employer_instructions + optional metadata
+   */
   const addInstructionsRoute = async (req: PostInstructionsRequest, res: Response) => {
     const { user_id } = req.params;
     const { employer_instructions, application_id, company, title } = req.body;
@@ -66,7 +80,11 @@ const taskController = () => {
     }
   };
 
-  const toggleTaskRoute = async (req: Request, res: Response) => {
+  /**
+   * Toggle completion status of a task.
+   * @param req params.task_id
+   */
+  const toggleTaskRoute = async (req: ToggleTaskRequest, res: Response) => {
     const { task_id } = req.params;
 
     if (!task_id) {
@@ -93,7 +111,11 @@ const taskController = () => {
     }
   };
 
-  const getTasksRoute = async (req: Request, res: Response) => {
+  /**
+   * List tasks for a user.
+   * @param req params.user_id, query includeCompleted=true to include done tasks
+   */
+  const getTasksRoute = async (req: GetTasksRequest, res: Response) => {
     const { user_id } = req.params;
     const includeCompleted = String(req.query?.includeCompleted ?? '').toLowerCase() === 'true';
 
@@ -121,7 +143,11 @@ const taskController = () => {
     }
   };
 
-  const clearTasksForApplicationRoute = async (req: Request, res: Response) => {
+  /**
+   * Delete tasks linked to an application for a user.
+   * @param req params.user_id, params.application_id
+   */
+  const clearTasksForApplicationRoute = async (req: ClearTasksRequest, res: Response) => {
     const { user_id, application_id } = req.params;
 
     if (!user_id || !application_id) {

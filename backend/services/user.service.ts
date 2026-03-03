@@ -1,6 +1,16 @@
 import { pool } from '../db/index.ts';
 import Anthropic from '@anthropic-ai/sdk';
 
+/**
+ * Inserts a new user record.
+ *
+ * @param user_id Unique identifier for the user.
+ * @param first_name User first name.
+ * @param last_name User last name.
+ * @param email User email address.
+ * @param grad_year Graduation year.
+ * @returns Newly inserted user row or an error object.
+ */
 export const addUser = async (user_id: string, first_name: string, last_name: string, email: string, grad_year: number) => {
     try {
         const result = await pool.query(
@@ -17,6 +27,12 @@ export const addUser = async (user_id: string, first_name: string, last_name: st
     }
 };
 
+/**
+ * Retrieves a user profile by id.
+ *
+ * @param user_id Unique identifier for the user.
+ * @returns User row with preferences or an error object.
+ */
 export const getUser = async (user_id: string) => {
     try {
         const result = await pool.query(
@@ -48,6 +64,12 @@ export const getUser = async (user_id: string) => {
     }
 };
 
+/**
+ * Fetches preference-related fields for a user.
+ *
+ * @param user_id Unique identifier for the user.
+ * @returns Preference fields or an error object.
+ */
 export const getUserPreferences = async (user_id: string) => {
     try {
         const result = await pool.query(
@@ -69,6 +91,12 @@ export const getUserPreferences = async (user_id: string) => {
     }
 };
 
+/**
+ * Gets the legacy job_types field for a user.
+ *
+ * @param user_id Unique identifier for the user.
+ * @returns Job types array or an error object.
+ */
 export const getJobType = async (user_id: string) => {
     try {
         const result = await pool.query(
@@ -88,6 +116,12 @@ export const getJobType = async (user_id: string) => {
     }
 };
 
+/**
+ * Retrieves saved interests for a user.
+ *
+ * @param user_id Unique identifier for the user.
+ * @returns Interests array or an error object.
+ */
 export const getUserInterests = async (user_id: string) => {
     try {
         const result = await pool.query(
@@ -107,6 +141,12 @@ export const getUserInterests = async (user_id: string) => {
     }
 };
 
+/**
+ * Fetches cached search terms for a user.
+ *
+ * @param user_id Unique identifier for the user.
+ * @returns Search terms array or an error object.
+ */
 export const getSearchTerms = async (user_id: string) => {
     try {
         const result = await pool.query(
@@ -126,6 +166,12 @@ export const getSearchTerms = async (user_id: string) => {
     }
 };
 
+/**
+ * Retrieves job_types for a user.
+ *
+ * @param user_id Unique identifier for the user.
+ * @returns Job types array or an error object.
+ */
 export const getJobTypes = async (user_id: string) => {
     try {
         const result = await pool.query(
@@ -145,6 +191,13 @@ export const getJobTypes = async (user_id: string) => {
     }
 };
 
+/**
+ * Updates a user's interests.
+ *
+ * @param user_id Unique identifier for the user.
+ * @param interests Array of interests to persist.
+ * @returns Updated user row or an error object.
+ */
 export const updateUserInterests = async (user_id: string, interests: string[]) => {
     try {
         const result = await pool.query(
@@ -165,6 +218,12 @@ export const updateUserInterests = async (user_id: string, interests: string[]) 
     }
 };
 
+/**
+ * Regenerates and stores search terms for a user based on resume and interests.
+ *
+ * @param user_id Unique identifier for the user.
+ * @returns Updated user row with search_terms or an error object.
+ */
 export const updateSearchTerms = async (user_id: string) => {
 
     const search_terms = await generateSearchTerms(user_id);
@@ -191,6 +250,12 @@ export const updateSearchTerms = async (user_id: string) => {
     }
 };
 
+/**
+ * Internal helper to derive search terms from resume text and interests.
+ *
+ * @param user_id Unique identifier for the user.
+ * @returns Array of search terms or an error object.
+ */
 const generateSearchTerms = async (user_id: string) => {
     try {
         const result = await pool.query(
@@ -284,6 +349,13 @@ const generateSearchTerms = async (user_id: string) => {
     }
 }
 
+/**
+ * Updates the job_types field for a user.
+ *
+ * @param user_id Unique identifier for the user.
+ * @param job_types Array of job type strings.
+ * @returns Updated user row or an error object.
+ */
 export const updateJobType = async (user_id: string, job_types: string[]) => {
     try {
         const result = await pool.query(
@@ -304,6 +376,16 @@ export const updateJobType = async (user_id: string, job_types: string[]) => {
     }
 }
 
+/**
+ * Updates core profile fields for a user.
+ *
+ * @param user_id Unique identifier for the user.
+ * @param first_name Updated first name.
+ * @param last_name Updated last name.
+ * @param email Updated email address.
+ * @param grad_year Updated graduation year.
+ * @returns Updated user row or an error object.
+ */
 export const updateUser = async (user_id: string, first_name: string, last_name: string, email: string, grad_year: number) => {
     try {
         const result = await pool.query(
@@ -329,10 +411,21 @@ export const updateUser = async (user_id: string, first_name: string, last_name:
     }
 };
 
+/**
+ * Partially updates user preference flags.
+ *
+ * @param user_id Unique identifier for the user.
+ * @param wait_for_approval Optional preference toggle.
+ * @param recent_jobs Optional recent jobs limit/flag.
+ * @param job_match Optional job match sensitivity string.
+ * @param unpaid_roles Optional unpaid roles preference.
+ * @param email_notifications Optional email notifications flag.
+ * @returns Updated preference fields or an error object.
+ */
 export const updateUserPreferences = async (
   user_id: string,
   wait_for_approval?: boolean,
-  recent_jobs?: boolean,
+  recent_jobs?: number | boolean,
   job_match?: string,
   unpaid_roles?: boolean,
   email_notifications?: boolean
@@ -363,6 +456,12 @@ export const updateUserPreferences = async (
   }
 };
 
+/**
+ * Generates and caches a condensed resume JSON for faster matching.
+ *
+ * @param user_id Unique identifier for the user.
+ * @returns Updated resume row with short_resume or an error object.
+ */
 export const cacheShortResume = async (user_id: string) => {
     try {
         const result = await pool.query(

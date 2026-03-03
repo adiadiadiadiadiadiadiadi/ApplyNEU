@@ -14,6 +14,14 @@ const s3Client = new S3Client({
     },
 });
 
+/**
+ * Generates a presigned S3 upload URL for a PDF resume.
+ *
+ * @param file_name Original filename provided by the client.
+ * @param file_type MIME type of the file; must be application/pdf.
+ * @param file_size Size of the file in bytes; capped at 10 MB.
+ * @returns Upload URL payload with key metadata or an error object.
+ */
 export const getUploadUrl = async (file_name: string, file_type: string, file_size: number) => {
     const DESIRED_FILE_TYPE = 'application/pdf'
     const MAX_FILE_SIZE = 10 * 1024 * 1024
@@ -47,6 +55,12 @@ export const getUploadUrl = async (file_name: string, file_type: string, file_si
     }
 };
 
+/**
+ * Generates a time-limited S3 view URL for a stored resume.
+ *
+ * @param key S3 object key for the resume.
+ * @returns Object containing the view URL and expiry seconds or an error.
+ */
 export const getViewUrl = async (key: string) => {
     try {
         const command = new GetObjectCommand({
@@ -97,6 +111,16 @@ const extractTextFromPDF = async (key: string): Promise<string> => {
     }
 };
 
+/**
+ * Persists resume metadata and extracted text to the database.
+ *
+ * @param resume_id UUID for the resume record.
+ * @param key S3 object key where the resume is stored.
+ * @param user_id Owner of the resume.
+ * @param file_name Original filename.
+ * @param file_size_bytes File size in bytes.
+ * @returns Inserted resume row or an error object.
+ */
 export const saveResume = async (resume_id: string, key: string, user_id: string, file_name: string, file_size_bytes: number) => {
     try {
         const resume_text = await extractTextFromPDF(key);
@@ -115,6 +139,12 @@ export const saveResume = async (resume_id: string, key: string, user_id: string
     }
 };
 
+/**
+ * Derives possible interests from the user's most recent resume via LLM.
+ *
+ * @param user_id User identifier whose resume text is analyzed.
+ * @returns Array of topics or an error object.
+ */
 export const getPossibleInterests = async (user_id: string) => {
     try {
         const result = await pool.query(
@@ -164,6 +194,12 @@ export const getPossibleInterests = async (user_id: string) => {
     }
 }
 
+/**
+ * Fetches the most recent resume metadata for a user.
+ *
+ * @param user_id User identifier to filter by.
+ * @returns Latest resume row or an error object when absent/failing.
+ */
 export const getLatestResume = async (user_id: string) => {
     try {
         const result = await pool.query(

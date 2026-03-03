@@ -1,6 +1,7 @@
 import './home.css'
 import { supabase } from '../../lib/supabase'
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import ComponentLoader from '../common/ComponentLoader'
 
 type Task = { task_id: string; text: string; description?: string; completed?: boolean; application_id?: string | null }
@@ -111,11 +112,10 @@ function formatDate(dateStr: string) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-function renderDescription(desc: string) {
+function renderDescription(desc: string, title?: string | null) {
   const urlRegex = /(https?:\/\/[^\s]+)/g
   const matches = Array.from(desc.matchAll(urlRegex)).map(m => m[0])
-  if (!matches.length) return desc
-
+  const coreTitle = title ? (title.split('@')[0] || title).trim() : ''
   // Preserve first occurrence order but avoid duplicates.
   const uniqueLinks: string[] = []
   for (const link of matches) {
@@ -149,7 +149,15 @@ function renderDescription(desc: string) {
     )
   })
 
-  return parts
+  if (coreTitle) {
+    const lowerDesc = remainingText.toLowerCase()
+    if (!lowerDesc.includes(coreTitle.toLowerCase())) {
+      if (parts.length) parts.push(' ')
+      parts.push(`(${coreTitle})`)
+    }
+  }
+
+  return parts.length ? parts : (coreTitle ? `(${coreTitle})` : '')
 }
 
 export default function Home() {
@@ -282,7 +290,8 @@ export default function Home() {
     const handleClickAway = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null
       const withinControl = target?.closest?.('.app-status-control')
-      if (!withinControl && openStatusId) {
+      const withinMenu = target?.closest?.('.app-status-menu')
+      if (!withinControl && !withinMenu && openStatusId) {
         setOpenStatusId(null)
         setStatusMenuPos(null)
       }
@@ -320,6 +329,14 @@ export default function Home() {
 
   const displayedTasks = showActive ? activeTasks : completedTasks
   const remaining = displayedTasks.filter(t => !t.completed).length
+
+  const applicationTitleById = useMemo(() => {
+    const map: Record<string, string> = {}
+    applications.forEach(app => {
+      if (app.application_id && app.title) map[app.application_id] = app.title
+    })
+    return map
+  }, [applications])
 
   const responseRate = stats.total > 0
     ? Math.round(((stats.interviews + stats.offers + stats.rejected) / stats.total) * 100)
@@ -440,6 +457,8 @@ export default function Home() {
                   <div className="tasks-list-new">
                     {displayedTasks.map(task => {
                       const hasDescription = !!task.description
+                      const taskTitle = task.application_id ? applicationTitleById[task.application_id] : undefined
+                      const showDesc = hasDescription || !!taskTitle
                       return (
                         <div key={task.task_id} className="task-item-new">
                           <div className="task-main-row">
@@ -458,9 +477,9 @@ export default function Home() {
                               {task.text}
                             </span>
                           </div>
-                          {hasDescription && (
+                          {showDesc && (
                             <div className="task-desc">
-                              {renderDescription(task.description ?? '')}
+                              {renderDescription(task.description ?? '', taskTitle)}
                             </div>
                           )}
                         </div>
@@ -520,7 +539,6 @@ export default function Home() {
                                     const menuHeight = 260
                                     const menuWidth = 180
                                     const margin = 8
-                                    const spaceBelow = viewportH - rect.bottom
                                     const above = rect.bottom + menuHeight + margin > viewportH
                                     const top = above ? rect.top - menuHeight - margin : rect.bottom + margin
                                     setStatusMenuPos({
@@ -541,20 +559,17 @@ export default function Home() {
                               <polyline points="6 9 12 15 18 9"></polyline>
                             </svg>
                           </button>
-                          {openStatusId === key && (
-                                <div
-                                  className="app-status-menu"
-                                  style={
-                                    statusMenuPos?.id === key
-                                      ? {
-                                          position: 'fixed',
-                                          left: `${statusMenuPos.left}px`,
-                                          top: `${statusMenuPos.top}px`,
-                                          transform: 'translateX(0)',
-                                        }
-                                      : undefined
-                                  }
-                                >
+                          {openStatusId === key && statusMenuPos?.id === key && createPortal(
+                            <div
+                              className="app-status-menu"
+                              style={{
+                                position: 'fixed',
+                                left: `${statusMenuPos.left}px`,
+                                top: `${statusMenuPos.top}px`,
+                                transform: 'translateX(0)',
+                                zIndex: 2000, // lift above transformed containers
+                              }}
+                            >
                               {STATUS_OPTIONS.map(opt => {
                                 const active = (app.status ?? '').toLowerCase() === opt.value
                                 return (
@@ -569,7 +584,8 @@ export default function Home() {
                                   </button>
                                 )
                               })}
-                            </div>
+                            </div>,
+                            document.body
                           )}
                         </div>
                             <span className="app-date">{formatDate(app.applied_at)}</span>

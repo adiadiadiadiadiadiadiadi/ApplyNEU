@@ -6,6 +6,15 @@ type EmployerInstruction = { instruction: string; description: string };
 const NON_REQUIRED_TASK_PATTERN =
     /\b(ad[\s-]?block(?:er)?|pop[\s-]?up(?: blocker)?|clear (?:your )?cache|cookies?|switch (?:to )?(?:another|different) browser|disable (?:browser )?extensions?|enable javascript|incognito|private mode|vpn|proxy|firewall|antivirus|troubleshoot|workaround|tip|optional|recommended|preference)\b/i;
 
+/**
+ * Creates a single task for a user, optionally linked to an application.
+ *
+ * @param user_id Owner of the task.
+ * @param text Short task text.
+ * @param description Additional task context or link.
+ * @param application_id Optional related application id.
+ * @returns Inserted task row or an error object.
+ */
 export const addTask = async (user_id: string, text: string, description: string, application_id?: string) => {
     try {
         const columns = ['user_id', 'text', 'description'];
@@ -33,6 +42,16 @@ export const addTask = async (user_id: string, text: string, description: string
     }
 }
 
+/**
+ * Extracts required employer instructions via LLM and stores them as tasks.
+ *
+ * @param user_id Owner of the resulting tasks.
+ * @param employer_instructions Raw instruction text from the job posting.
+ * @param application_id Optional related application id.
+ * @param company Optional company name for prompting/context.
+ * @param title Optional job title for prompting/context.
+ * @returns Normalized instructions and inserted tasks or an error object.
+ */
 export const addInstructions = async (user_id: string, employer_instructions: string, application_id?: string, company?: string, title?: string) => {
     try {
         const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -154,6 +173,12 @@ export const addInstructions = async (user_id: string, employer_instructions: st
     }
 }
 
+/**
+ * Toggles completion state of a task and advances application status if appropriate.
+ *
+ * @param task_id Identifier of the task to toggle.
+ * @returns Updated task row or an error object when missing.
+ */
 export const toggleTask = async (task_id: string) => {
     const result = await pool.query(
         `
@@ -201,6 +226,13 @@ export const toggleTask = async (task_id: string) => {
     return updated;
 }
 
+/**
+ * Lists tasks for a user, optionally including completed ones.
+ *
+ * @param user_id Owner whose tasks are fetched.
+ * @param includeCompleted When true, returns all tasks; otherwise only open ones.
+ * @returns Array of task rows.
+ */
 export const getTasks = async (user_id: string, includeCompleted = false) => {
   const result = await pool.query(
       `
@@ -216,6 +248,12 @@ export const getTasks = async (user_id: string, includeCompleted = false) => {
   return result.rows;
 }
 
+/**
+ * Lists incomplete tasks for a user grouped by application.
+ *
+ * @param user_id Owner whose tasks are fetched.
+ * @returns Array of task rows filtered to incomplete tasks.
+ */
 export const getCompletedTasksForApplication = async (user_id: string) => {
     const result = await pool.query(
         `
@@ -228,6 +266,13 @@ export const getCompletedTasksForApplication = async (user_id: string) => {
     return result.rows;
   }
 
+/**
+ * Deletes all tasks tied to a specific application for a user.
+ *
+ * @param user_id Owner of the tasks.
+ * @param application_id Application whose tasks should be removed.
+ * @returns Success flag or an error object.
+ */
 export const deleteTasksForApplication = async (user_id: string, application_id: string) => {
     try {
         await pool.query(
