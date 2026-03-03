@@ -79,6 +79,33 @@ const PIPELINE_DOTS: Record<string, string> = {
   rejected: '#f87171', external: '#fb923c',
 }
 
+const normalizeStatusKey = (value: string) => {
+  const lower = (value ?? '').trim().toLowerCase()
+  if (lower === 'submitted') return 'applied'
+  if (lower === 'external action needed' || lower === 'ext' || lower === 'ext. action') return 'external'
+  return lower
+}
+
+const statusToStatKey = (value: string): keyof Stats | null => {
+  const key = normalizeStatusKey(value)
+  if (key === 'applied') return 'applied'
+  if (key === 'interview') return 'interviews'
+  if (key === 'offer') return 'offers'
+  if (key === 'rejected') return 'rejected'
+  if (key === 'pending' || key === 'draft') return 'pending'
+  if (key === 'external') return 'external'
+  return null
+}
+
+const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'applied',   label: 'Applied' },
+  { value: 'interview', label: 'Interview' },
+  { value: 'offer',     label: 'Offer' },
+  { value: 'rejected',  label: 'Rejected' },
+  { value: 'draft',     label: 'Draft' },
+  { value: 'external',  label: 'External' },
+]
+
 function formatDate(dateStr: string) {
   const d = new Date(dateStr)
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
@@ -138,6 +165,18 @@ export default function Home() {
   const [loadingStats, setLoadingStats] = useState(false)
   const [applications, setApplications] = useState<Application[]>([])
   const [loadingApps, setLoadingApps] = useState(false)
+  const [openStatusId, setOpenStatusId] = useState<string | null>(null)
+  const [updatingStatusId, setUpdatingStatusId] = useState<string | null>(null)
+  const [statusMenuPos, setStatusMenuPos] = useState<
+    | {
+        id: string
+        above: boolean
+        left: number
+        top: number
+        width: number
+      }
+    | null
+  >(null)
   const fetchTasks = async () => {
     setLoadingTasks(true)
     const { data: { user } } = await supabase.auth.getUser()
@@ -200,6 +239,57 @@ export default function Home() {
     } catch { /* swallow */ }
     finally { setLoadingApps(false) }
   }
+
+  const updateApplicationStatus = async (applicationId: string, nextStatus: string) => {
+    const current = applications.find(app => app.application_id === applicationId)
+    const prevStatKey = current ? statusToStatKey(current.status) : null
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    setUpdatingStatusId(applicationId)
+    try {
+      const resp = await fetch(`http://localhost:8080/applications/${user.id}/${applicationId}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus }),
+      })
+      if (resp.ok) {
+        const updated = await resp.json().catch(() => ({}))
+        const newStatus = (updated?.status ?? nextStatus) as string
+        const newStatKey = statusToStatKey(newStatus)
+        setApplications(prev =>
+          prev.map(app => (app.application_id === applicationId ? { ...app, status: newStatus } : app))
+        )
+        setStats(prev => {
+          const next = { ...prev }
+          if (prevStatKey && typeof next[prevStatKey] === 'number') {
+            next[prevStatKey] = Math.max(0, (next[prevStatKey] as number) - 1)
+          }
+          if (newStatKey && typeof next[newStatKey] === 'number') {
+            next[newStatKey] = (next[newStatKey] as number) + 1
+          }
+          return next
+        })
+      }
+    } catch { /* swallow */ }
+    finally {
+      setUpdatingStatusId(null)
+      setOpenStatusId(null)
+      setStatusMenuPos(null)
+    }
+  }
+
+  useEffect(() => {
+    const handleClickAway = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null
+      const withinControl = target?.closest?.('.app-status-control')
+      if (!withinControl && openStatusId) {
+        setOpenStatusId(null)
+        setStatusMenuPos(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClickAway)
+    return () => document.removeEventListener('mousedown', handleClickAway)
+  }, [openStatusId])
 
   useEffect(() => {
     fetchTasks()
@@ -416,7 +506,72 @@ export default function Home() {
                             </div>
                           </div>
                           <div className="app-right">
-                            <span className={`app-status ${cfg.colorClass}`}>{cfg.label}</span>
+                        <div className="app-status-control">
+                          <button
+                                id={`status-btn-${key}`}
+                            className={`app-status-btn ${cfg.colorClass}`}
+                            type="button"
+                                onClick={() => {
+                                  setOpenStatusId(prev => (prev === key ? null : key))
+                                  const btn = document.getElementById(`status-btn-${key}`)
+                                  if (btn) {
+                                    const rect = btn.getBoundingClientRect()
+                                    const viewportH = window.innerHeight
+                                    const menuHeight = 260
+                                    const menuWidth = 180
+                                    const margin = 8
+                                    const spaceBelow = viewportH - rect.bottom
+                                    const above = rect.bottom + menuHeight + margin > viewportH
+                                    const top = above ? rect.top - menuHeight - margin : rect.bottom + margin
+                                    setStatusMenuPos({
+                                      id: key,
+                                      above,
+                                      left: Math.min(Math.max(rect.right - menuWidth, margin), window.innerWidth - menuWidth - margin),
+                                      top,
+                                      width: rect.width,
+                                    })
+                                  } else {
+                                    setStatusMenuPos(null)
+                                  }
+                                }}
+                            disabled={updatingStatusId === key}
+                          >
+                            {cfg.label}
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="app-status-caret">
+                              <polyline points="6 9 12 15 18 9"></polyline>
+                            </svg>
+                          </button>
+                          {openStatusId === key && (
+                                <div
+                                  className="app-status-menu"
+                                  style={
+                                    statusMenuPos?.id === key
+                                      ? {
+                                          position: 'fixed',
+                                          left: `${statusMenuPos.left}px`,
+                                          top: `${statusMenuPos.top}px`,
+                                          transform: 'translateX(0)',
+                                        }
+                                      : undefined
+                                  }
+                                >
+                              {STATUS_OPTIONS.map(opt => {
+                                const active = (app.status ?? '').toLowerCase() === opt.value
+                                return (
+                                  <button
+                                    key={opt.value}
+                                    type="button"
+                                    className={`app-status-option${active ? ' is-active' : ''}`}
+                                    onClick={() => updateApplicationStatus(app.application_id, opt.value)}
+                                    disabled={updatingStatusId === key}
+                                  >
+                                    {opt.label}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
                             <span className="app-date">{formatDate(app.applied_at)}</span>
                           </div>
                         </div>

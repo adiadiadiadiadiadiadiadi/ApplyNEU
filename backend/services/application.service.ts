@@ -144,8 +144,51 @@ export const getUserApplications = async (user_id: string) => {
   }
 }
 
-// export const updateApplicationStatus = async (
-//   user_id: string, company: string, title: string, description: string, status: string
-//   ) {
+export const updateApplicationStatus = async (
+  user_id: string,
+  application_id: string,
+  status: string
+) => {
+  try {
+    const normalizedStatus = (() => {
+      const trimmed = (status ?? '').trim()
+      if (!trimmed) return trimmed
+      const lower = trimmed.toLowerCase()
+      if (lower === 'submitted') return 'applied'
+      if (lower === 'ext' || lower === 'ext. action') return 'external'
+      return lower
+    })()
 
-//   }
+    const allowed = new Set([
+      'pending',
+      'draft',
+      'applied',
+      'interview',
+      'offer',
+      'rejected',
+      'external',
+      'external action needed'
+    ])
+    if (!normalizedStatus || !allowed.has(normalizedStatus)) {
+      return { error: 'Invalid status.' }
+    }
+
+    const result = await pool.query(
+      `
+        UPDATE job_applications
+        SET status = $3
+        WHERE application_id = $2 AND user_id = $1
+        RETURNING application_id, job_id, status, applied_at;
+      `,
+      [user_id, application_id, normalizedStatus]
+    )
+
+    if (!result.rowCount) {
+      return { error: 'Application not found for user.' }
+    }
+
+    return result.rows[0]
+  } catch (error) {
+    return { error: 'Error updating application status.' }
+  }
+}

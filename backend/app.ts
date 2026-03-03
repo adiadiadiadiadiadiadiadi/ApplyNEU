@@ -9,6 +9,7 @@ import resumeController from './controller/resume.controller.ts';
 import jobController from './controller/job.controller.ts';
 import taskController from './controller/task.controller.ts';
 import applicationController from './controller/application.controller.ts';
+import './scheduler';
 
 const PORT = 8080;
 
