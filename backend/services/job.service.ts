@@ -27,6 +27,15 @@ const normalizeEmployerInstructions = (input: any): EmployerInstruction[] => {
     .filter((v: EmployerInstruction | null): v is EmployerInstruction => !!v);
 };
 
+/**
+ * Evaluates a job description against a user's resume and extracts required employer actions.
+ *
+ * @param user_id User whose resume is referenced.
+ * @param job_description Raw job description text.
+ * @param company Optional company name for prompt context.
+ * @param title Optional job title for prompt context.
+ * @returns Decision payload with normalized instructions or an error object.
+ */
 export const sendJobDescription = async (user_id: string, job_description: string, company?: string, title?: string) => {
   try {
     const result = await pool.query(
@@ -167,12 +176,12 @@ export const sendJobDescription = async (user_id: string, job_description: strin
 }
 
 /**
- * Adds job to database and avoids existing jobs.
- * 
- * @param company 
- * @param title 
- * @param description 
- * @returns job in database
+ * Inserts a job if missing or returns the existing row for the company/title pair.
+ *
+ * @param company Company name.
+ * @param title Job title.
+ * @param description Job description body to store.
+ * @returns Inserted or existing job row, or an error object.
  */
 export const addJob = async (company: string, title: string, description: string) => {
   try {

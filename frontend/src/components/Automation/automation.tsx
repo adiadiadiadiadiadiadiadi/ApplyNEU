@@ -1301,7 +1301,11 @@ export default function Automation() {
                               const anchors = Array.from(node.querySelectorAll('a')).map(a => {
                                 const t = (a.innerText || a.textContent || '').trim();
                                 const href = (a.getAttribute('href') || '').trim();
-                                return [t, href].filter(Boolean).join(' ').trim();
+                                if (href && t) {
+                                  // Prefer the href to avoid UI-truncated anchor text; include text when distinct.
+                                  return href.includes(t) ? href : (t + ' ' + href).trim();
+                                }
+                                return href || t;
                               }).filter(Boolean);
 
                               const rawLines = (node.innerText || node.textContent || '')
@@ -1310,7 +1314,7 @@ export default function Automation() {
                                 .filter(Boolean);
                               const applyLines = rawLines.filter(s => s.toLowerCase().includes('apply'));
 
-                              const candidates = [...applyLines, ...anchors];
+                              const candidates = [...anchors, ...applyLines];
                               const first = candidates.find(Boolean);
                               if (first) return first;
 

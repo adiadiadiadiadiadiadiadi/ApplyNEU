@@ -1,5 +1,15 @@
 import { pool } from '../db/index.ts';
 
+/**
+ * Creates or updates a job application for a user, deduplicating jobs by company/title.
+ *
+ * @param user_id Applicant identifier.
+ * @param company Company name from the posting.
+ * @param title Job title from the posting.
+ * @param description Job description body to store on the job.
+ * @param status Application status (normalized internally).
+ * @returns Upserted application row or an error object.
+ */
 export const addJobApplication = async (
   user_id: string, company: string, title: string, description: string, status: string
   ) => {
@@ -79,6 +89,12 @@ export const addJobApplication = async (
   }
 }
 
+/**
+ * Aggregates application counts for a user across common status buckets.
+ *
+ * @param user_id Applicant identifier.
+ * @returns Stats object with counts per timeframe/status or an error object.
+ */
 export const getUserApplicationStats = async (user_id: string) => {
   try {
     const result = await pool.query(
@@ -118,6 +134,12 @@ export const getUserApplicationStats = async (user_id: string) => {
   }
 }
 
+/**
+ * Retrieves recent applications for a user with joined job data.
+ *
+ * @param user_id Applicant identifier.
+ * @returns Array of application rows or an error object.
+ */
 export const getUserApplications = async (user_id: string) => {
   try {
     const result = await pool.query(
@@ -144,6 +166,14 @@ export const getUserApplications = async (user_id: string) => {
   }
 }
 
+/**
+ * Updates the status of a user's application with validation and normalization.
+ *
+ * @param user_id Applicant identifier.
+ * @param application_id Application to update.
+ * @param status New status value (validated against allowed set).
+ * @returns Updated application row or an error object.
+ */
 export const updateApplicationStatus = async (
   user_id: string,
   application_id: string,

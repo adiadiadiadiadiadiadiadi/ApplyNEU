@@ -1,15 +1,32 @@
-import express, { type Request, type Response } from 'express';
+import express, { type Response } from 'express';
 import { addJobApplication, getUserApplicationStats, getUserApplications, updateApplicationStatus } from '../services/application.service.ts';
+import type {
+  AddApplicationRequest,
+  ApplicationStatsRequest,
+  GetApplicationsRequest,
+  UpdateApplicationStatusRequest,
+} from '../types/applications.ts';
 
 /**
- * This controller handles job-related routes.
+ * This controller handles application-related routes.
  * 
  * @returns {express.Router} The router object containing the job routes.
  */
 const applicationController = () => {
     const router = express.Router();
 
-    const addApplicationRoute = async (req: Request, res: Response) => {
+    /**
+     * Route to add a job application.
+     * 
+     * @param req request of type AddApplicationRequest.
+     * @param res response, either the resulting application or a result.
+     * @returns 
+     */
+    /**
+     * Add a job application.
+     * @param req params.user_id, body company/title/description/status
+     */
+    const addApplicationRoute = async (req: AddApplicationRequest, res: Response) => {
         const { user_id } = req.params;
         const { company, title, description, status } = req.body;
 
@@ -22,6 +39,7 @@ const applicationController = () => {
 
         try {
             const result = await addJobApplication(user_id, company, title, description, status);
+
             if ('error' in result) {
                 console.error('[application] save failed', result.error);
                 res.status(400).json({
@@ -29,6 +47,7 @@ const applicationController = () => {
                 });
                 return;
             }
+
             res.status(200).json(result);
         } catch (err: unknown) {
             res.status(400).json({
@@ -37,7 +56,18 @@ const applicationController = () => {
         }
     };
 
-    const getApplicationStatsRoute = async (req: Request, res: Response) => {
+    /**
+     * Route to get a job application's stats.
+     * 
+     * @param req request of type AddApplicationRequest.
+     * @param res response, either the resulting application or a result.
+     * @returns 
+     */
+    /**
+     * Retrieve aggregate application stats for a user.
+     * @param req params.user_id
+     */
+    const getApplicationStatsRoute = async (req: ApplicationStatsRequest, res: Response) => {
         const { user_id } = req.params;
 
         if (!user_id) {
@@ -63,7 +93,11 @@ const applicationController = () => {
         }
     };
 
-    const updateApplicationStatusRoute = async (req: Request, res: Response) => {
+    /**
+     * Update status for a specific application.
+     * @param req params.user_id, params.application_id, body status
+     */
+    const updateApplicationStatusRoute = async (req: UpdateApplicationStatusRequest, res: Response) => {
         const { user_id, application_id } = req.params;
         const { status } = req.body ?? {};
 
@@ -84,7 +118,11 @@ const applicationController = () => {
         }
     };
 
-    const getApplicationsRoute = async (req: Request, res: Response) => {
+    /**
+     * List applications for a user.
+     * @param req params.user_id
+     */
+    const getApplicationsRoute = async (req: GetApplicationsRequest, res: Response) => {
         const { user_id } = req.params;
 
         if (!user_id) {

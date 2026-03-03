@@ -1,5 +1,11 @@
-import express, { type Request, type Response } from 'express';
-import type { ResumeMetadataRequest, ResumeSaveRequest, ResumeViewRequest } from '../types/resumes.ts';
+import express, { type Response } from 'express';
+import type {
+  ResumeMetadataRequest,
+  ResumeSaveRequest,
+  ResumeViewRequest,
+  PossibleInterestsRequest,
+  LatestResumeRequest,
+} from '../types/resumes.ts';
 import { getUploadUrl, getViewUrl, saveResume, getPossibleInterests, getLatestResume } from '../services/resume.service.ts';
 
 /**
@@ -10,6 +16,10 @@ import { getUploadUrl, getViewUrl, saveResume, getPossibleInterests, getLatestRe
 const resumeController = () => {
     const router = express.Router();
 
+    /**
+     * Generate presigned upload URL for a resume PDF.
+     * @param req body file_name/file_type/file_size
+     */
     const getUploadUrlRoute = async (req: ResumeMetadataRequest, res: Response) => {
         const { file_name, file_type, file_size } = req.body;
 
@@ -37,6 +47,10 @@ const resumeController = () => {
         }
     };
 
+    /**
+     * Generate presigned view URL for a stored resume.
+     * @param req body key
+     */
     const getViewUrlRoute = async (req: ResumeViewRequest, res: Response) => {
         const { key } = req.body;
 
@@ -64,6 +78,10 @@ const resumeController = () => {
         }
     }
 
+    /**
+     * Persist resume metadata and extracted text.
+     * @param req body resume_id/key/user_id/file_name/file_size_bytes
+     */
     const saveResumeDataRoute = async (req: ResumeSaveRequest, res: Response) => {
         const { resume_id, key, user_id, file_name, file_size_bytes } = req.body
 
@@ -90,7 +108,11 @@ const resumeController = () => {
         }
     }
 
-    const getInterestsRoute = async (req: Request, res: Response) => {
+    /**
+     * Infer possible interests from latest resume.
+     * @param req params.user_id
+     */
+    const getInterestsRoute = async (req: PossibleInterestsRequest, res: Response) => {
         const { user_id } = req.params;
 
         if (!user_id) {
@@ -117,7 +139,11 @@ const resumeController = () => {
         }
     }
 
-    const getLatestResumeRoute = async (req: Request, res: Response) => {
+    /**
+     * Fetch most recent resume metadata.
+     * @param req params.user_id
+     */
+    const getLatestResumeRoute = async (req: LatestResumeRequest, res: Response) => {
         const { user_id } = req.params;
 
         if (!user_id) {

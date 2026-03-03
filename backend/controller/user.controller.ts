@@ -1,6 +1,31 @@
-import express, { type Request, type Response } from 'express';
-import type { PostUserRequest } from '../types/users.ts';
-import { addUser, cacheShortResume, getJobTypes, getSearchTerms, getUser, getUserInterests, getUserPreferences, updateJobType, updateSearchTerms, updateUser, updateUserInterests, updateUserPreferences } from '../services/user.service.ts';
+import express, { type Response } from 'express';
+import type {
+  PostUserRequest,
+  PutUserRequest,
+  UserIdRequest,
+  UpdatePreferencesRequest,
+  UpdateInterestsRequest,
+  UpdateJobTypesRequest,
+  UpdateSearchTermsRequest,
+  CacheShortResumeRequest,
+  GetJobTypesRequest,
+  GetSearchTermsRequest,
+  GetUserInterestsRequest,
+} from '../types/users.ts';
+import {
+  addUser,
+  cacheShortResume,
+  getJobTypes,
+  getSearchTerms,
+  getUser,
+  getUserInterests,
+  getUserPreferences,
+  updateJobType,
+  updateSearchTerms,
+  updateUser,
+  updateUserInterests,
+  updateUserPreferences,
+} from '../services/user.service.ts';
 
 /**
  * This controller handles user-related routes.
@@ -10,6 +35,10 @@ import { addUser, cacheShortResume, getJobTypes, getSearchTerms, getUser, getUse
 const userController = () => {
   const router = express.Router();
 
+  /**
+   * Create a new user.
+   * @param req body with user fields
+   */
   const addUserRoute = async (req: PostUserRequest, res: Response) => {
     const { user_id, first_name, last_name, email, grad_year } = req.body;
 
@@ -37,7 +66,11 @@ const userController = () => {
     }
   };
 
-  const getUserRoute = async (req: Request, res: Response) => {
+  /**
+   * Fetch a user by id.
+   * @param req params.user_id
+   */
+  const getUserRoute = async (req: UserIdRequest, res: Response) => {
     const { user_id } = req.params;
 
     if (!user_id) {
@@ -64,7 +97,11 @@ const userController = () => {
     }
   };
 
-  const updateUserRoute = async (req: Request, res: Response) => {
+  /**
+   * Update core user fields.
+   * @param req params.user_id, body user payload
+   */
+  const updateUserRoute = async (req: PutUserRequest, res: Response) => {
     const { user_id } = req.params;
     const { first_name, last_name, email, grad_year } = req.body;
 
@@ -92,7 +129,11 @@ const userController = () => {
     }
   };
 
-  const getPreferencesRoute = async (req: Request, res: Response) => {
+  /**
+   * Retrieve preference flags.
+   * @param req params.user_id
+   */
+  const getPreferencesRoute = async (req: UserIdRequest, res: Response) => {
     const { user_id } = req.params;
 
     if (!user_id) {
@@ -119,7 +160,11 @@ const userController = () => {
     }
   };
 
-  const updatePreferencesRoute = async (req: Request, res: Response) => {
+  /**
+   * Update preference flags.
+   * @param req params.user_id, body preference fields
+   */
+  const updatePreferencesRoute = async (req: UpdatePreferencesRequest, res: Response) => {
     const { user_id } = req.params;
     const { wait_for_approval, recent_jobs, job_match, unpaid_roles, email_notifications } = req.body;
 
@@ -154,7 +199,11 @@ const userController = () => {
     }
   };
 
-  const getUserInterestsRoute = async (req: Request, res: Response) => {
+  /**
+   * Get stored interests.
+   * @param req params.user_id
+   */
+  const getUserInterestsRoute = async (req: GetUserInterestsRequest, res: Response) => {
     const { user_id } = req.params;
 
     if (!user_id) {
@@ -181,7 +230,11 @@ const userController = () => {
     }
   };
 
-  const getSearchTermsRoute = async (req: Request, res: Response) => {
+  /**
+   * Get stored search terms.
+   * @param req params.user_id
+   */
+  const getSearchTermsRoute = async (req: GetSearchTermsRequest, res: Response) => {
     const { user_id } = req.params;
 
     if (!user_id) {
@@ -208,7 +261,11 @@ const userController = () => {
     }
   };
 
-  const getJobTypesRoute = async (req: Request, res: Response) => {
+  /**
+   * Get stored job types.
+   * @param req params.user_id
+   */
+  const getJobTypesRoute = async (req: GetJobTypesRequest, res: Response) => {
     const { user_id } = req.params;
 
     if (!user_id) {
@@ -235,7 +292,11 @@ const userController = () => {
     }
   }
 
-  const updateUserInterestsRoute = async (req: Request, res: Response) => {
+  /**
+   * Update interests list.
+   * @param req params.user_id, body interests array
+   */
+  const updateUserInterestsRoute = async (req: UpdateInterestsRequest, res: Response) => {
     const { user_id } = req.params;
     const { interests } = req.body;
 
@@ -263,7 +324,11 @@ const userController = () => {
     }
   };
 
-  const updateSearchTermsRoute = async (req: Request, res: Response) => {
+  /**
+   * Regenerate search terms from resume + interests.
+   * @param req params.user_id
+   */
+  const updateSearchTermsRoute = async (req: UpdateSearchTermsRequest, res: Response) => {
     const { user_id } = req.params;
 
     if (!user_id) {
@@ -290,7 +355,11 @@ const userController = () => {
     }
   };
 
-  const updateJobTypeRoute = async (req: Request, res: Response) => {
+  /**
+   * Update preferred job types.
+   * @param req params.user_id, body job_types array
+   */
+  const updateJobTypeRoute = async (req: UpdateJobTypesRequest, res: Response) => {
     const { user_id } = req.params;
     const { job_types } = req.body;
 
@@ -318,7 +387,11 @@ const userController = () => {
     }
   }
 
-  const cacheShortResumeRoute = async (req: Request, res: Response) => {
+  /**
+   * Cache short resume summary.
+   * @param req params.user_id
+   */
+  const cacheShortResumeRoute = async (req: CacheShortResumeRequest, res: Response) => {
     const { user_id } = req.params;
 
     if (!user_id) {
