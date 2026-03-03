@@ -98,6 +98,70 @@ button:focus-visible {
   outline: none;
 }
 
+/* Global fetch error banner */
+.fetch-error-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #111827;
+  color: #e5e7eb;
+  border-bottom: 1px solid #1f2937;
+  z-index: 2000;
+}
+
+.fetch-error-text {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.fetch-error-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fetch-error-retry {
+  background: transparent;
+  border: none;
+  color: #60a5fa;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.fetch-error-retry:hover,
+.fetch-error-retry:focus-visible {
+  color: #93c5fd;
+  text-decoration: underline;
+  outline: none;
+}
+
+.fetch-error-dismiss {
+  background: #1f2937;
+  color: #e5e7eb;
+  border: 1px solid #374151;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.fetch-error-dismiss:hover,
+.fetch-error-dismiss:focus-visible {
+  background: #111827;
+  border-color: #4b5563;
+  color: #f3f4f6;
+  outline: none;
+}
+
 /* Page-level staggered fade-in (skip automation) */
 .page-stagger {
   display: contents;

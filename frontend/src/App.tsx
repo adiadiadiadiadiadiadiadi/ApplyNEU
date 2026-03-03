@@ -11,6 +11,7 @@ import Profile from './components/Profile/profile'
 import ProfileSettings from './components/Profile/profileSettings'
 import ProfileInterests from './components/Profile/profileInterests'
 import Settings from './components/Settings/settings'
+import { FetchErrorProvider, FetchErrorBanner } from './components/common/FetchError'
 
 function SideNav() {
   return (
@@ -144,18 +145,26 @@ function App() {
   }
 
   if (loading) {
-    return <div>loading...</div>
+    return (
+      <FetchErrorProvider>
+        <FetchErrorBanner />
+        <div>loading...</div>
+      </FetchErrorProvider>
+    )
   }
 
-  if (!user) {
-    return <AuthRoutes />
-  }
+  const content = !user
+    ? <AuthRoutes />
+    : showOnboarding
+      ? <OnboardingRoutes onComplete={handleOnboardingComplete} />
+      : <AppRoutes />
 
-  if (showOnboarding) {
-    return <OnboardingRoutes onComplete={handleOnboardingComplete} />
-  }
-
-  return <AppRoutes />
+  return (
+    <FetchErrorProvider>
+      <FetchErrorBanner />
+      {content}
+    </FetchErrorProvider>
+  )
 }
 
 export default App

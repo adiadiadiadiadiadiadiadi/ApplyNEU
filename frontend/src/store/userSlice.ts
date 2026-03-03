@@ -10,6 +10,8 @@ type UserProfile = {
   waitForApproval: boolean
   recent_jobs: boolean
   job_match: 'low' | 'medium' | 'high'
+  unpaid_roles: boolean
+  email_notifications: boolean
 }
 
 type UserState = {
@@ -24,15 +26,17 @@ const initialState: UserState = {
   error: null,
 }
 
-type PreferencePayload = Partial<Pick<UserProfile, 'waitForApproval' | 'recent_jobs' | 'job_match'>>
+const toBool = (value: unknown, fallback = true) =>
+  value === undefined || value === null ? fallback : value === true || value === 'true'
+
+type PreferencePayload = Partial<
+  Pick<UserProfile, 'waitForApproval' | 'recent_jobs' | 'job_match' | 'unpaid_roles' | 'email_notifications'>
+>
 
 export const fetchUserProfile = createAsyncThunk<UserProfile, void, { rejectValue: string }>(
   'user/fetchProfile',
   async (_arg, { rejectWithValue }) => {
     try {
-      const toBool = (value: unknown, fallback = true) =>
-        value === undefined || value === null ? fallback : value === true || value === 'true'
-
       const { data, error } = await supabase.auth.getUser()
       if (error || !data.user) {
         return rejectWithValue('Not authenticated')
@@ -42,7 +46,20 @@ export const fetchUserProfile = createAsyncThunk<UserProfile, void, { rejectValu
       const response = await fetch(`http://localhost:8080/users/${user.id}`)
 
       if (!response.ok) {
-        return rejectWithValue('Failed to fetch profile from backend')
+        let backendMessage = 'failed to fetch profile from backend'
+        try {
+          const body = await response.json()
+          backendMessage = body?.message ? String(body.message) : backendMessage
+        } catch {
+          try {
+            backendMessage = (await response.text()) || backendMessage
+          } catch {
+            // ignore and keep fallback
+          }
+        }
+        return rejectWithValue(
+          `failed to fetch profile for user ${user.id}: ${response.status} ${backendMessage}`
+        )
       }
 
       const userRow = await response.json()
@@ -59,6 +76,11 @@ export const fetchUserProfile = createAsyncThunk<UserProfile, void, { rejectValu
         waitForApproval: toBool(userRow.wait_for_approval ?? userRow.waitForApproval, true),
         recent_jobs: toBool(userRow.recent_jobs ?? userRow.recentJobs, true),
         job_match,
+        unpaid_roles: toBool(userRow.unpaid_roles ?? userRow.upaid_roles, false),
+        email_notifications: toBool(
+          userRow.email_notifications ?? userRow.email_notificatios ?? userRow.emailNotifications,
+          true
+        ),
       }
     } catch (err) {
       console.error('fetchUserProfile failed', err)
@@ -83,6 +105,8 @@ export const saveUserPreferences = createAsyncThunk<
         wait_for_approval: prefs.waitForApproval,
         recent_jobs: prefs.recent_jobs,
         job_match: prefs.job_match,
+        unpaid_roles: prefs.unpaid_roles,
+        email_notifications: prefs.email_notifications,
       }),
     })
 
@@ -96,9 +120,14 @@ export const saveUserPreferences = createAsyncThunk<
       jobMatchRaw === 'high' ? 'high' : jobMatchRaw === 'low' ? 'low' : 'medium'
 
     return {
-      waitForApproval: data.wait_for_approval ?? data.waitForApproval,
-      recent_jobs: data.recent_jobs ?? data.recentJobs,
+      waitForApproval: toBool(data.wait_for_approval ?? data.waitForApproval, true),
+      recent_jobs: toBool(data.recent_jobs ?? data.recentJobs, true),
       job_match,
+      unpaid_roles: toBool(data.unpaid_roles ?? data.upaid_roles, false),
+      email_notifications: toBool(
+        data.email_notifications ?? data.email_notificatios ?? data.emailNotifications,
+        true
+      ),
     }
   } catch (err) {
     console.error('saveUserPreferences failed', err)

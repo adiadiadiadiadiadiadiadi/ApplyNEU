@@ -101,6 +101,20 @@
   color: #8d8d8d;
 }
 
+.settings-retry-btn {
+  color: #60a5fa;
+  cursor: pointer;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.settings-retry-btn:hover,
+.settings-retry-btn:focus-visible {
+  color: #93c5fd;
+  text-decoration: underline;
+  outline: none;
+}
+
 .toggle {
   width: 48px;
   height: 26px;

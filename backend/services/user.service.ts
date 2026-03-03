@@ -21,7 +21,17 @@ export const getUser = async (user_id: string) => {
     try {
         const result = await pool.query(
             `
-            SELECT user_id, first_name, last_name, email, grad_year, wait_for_approval, recent_jobs, job_match
+            SELECT
+              user_id,
+              first_name,
+              last_name,
+              email,
+              grad_year,
+              wait_for_approval,
+              recent_jobs,
+              job_match,
+              unpaid_roles,
+              email_notifications
             FROM users
             WHERE user_id = $1;
             `,
@@ -42,7 +52,7 @@ export const getUserPreferences = async (user_id: string) => {
     try {
         const result = await pool.query(
             `
-            SELECT wait_for_approval, recent_jobs, job_match
+            SELECT wait_for_approval, recent_jobs, job_match, unpaid_roles, email_notifications
             FROM users
             WHERE user_id = $1;
             `,
@@ -323,7 +333,9 @@ export const updateUserPreferences = async (
   user_id: string,
   wait_for_approval?: boolean,
   recent_jobs?: boolean,
-  job_match?: string
+  job_match?: string,
+  unpaid_roles?: boolean,
+  email_notifications?: boolean
 ) => {
   try {
     const result = await pool.query(
@@ -332,11 +344,13 @@ export const updateUserPreferences = async (
         SET
           wait_for_approval   = COALESCE($1, wait_for_approval),
           recent_jobs         = COALESCE($2, recent_jobs),
-          job_match           = COALESCE($3, job_match)
-        WHERE user_id = $4
-        RETURNING wait_for_approval, recent_jobs, job_match;
+          job_match           = COALESCE($3, job_match),
+          unpaid_roles        = COALESCE($4, unpaid_roles),
+          email_notifications = COALESCE($5, email_notifications)
+        WHERE user_id = $6
+        RETURNING wait_for_approval, recent_jobs, job_match, unpaid_roles, email_notifications;
       `,
-      [wait_for_approval, recent_jobs, job_match, user_id]
+      [wait_for_approval, recent_jobs, job_match, unpaid_roles, email_notifications, user_id]
     )
 
     if (result.rows.length === 0) {

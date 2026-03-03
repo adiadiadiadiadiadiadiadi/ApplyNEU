@@ -11,6 +11,7 @@ export default function Automation() {
   const [awaitingInput, setAwaitingInput] = useState(false)
   const [approvalPrompt, setApprovalPrompt] = useState<{ jobTitle: string; company: string } | null>(null)
   const logsEndRef = useRef<HTMLDivElement>(null)
+  const statusRef = useRef<'idle' | 'running' | 'paused' | 'error'>('idle')
   const initializedRef = useRef(false)
   const existingTasksRef = useRef<Set<string>>(new Set())
   const searchTermsRef = useRef<Set<string>>(new Set())
@@ -19,7 +20,18 @@ export default function Automation() {
   const approvalResolverRef = useRef<((approved: boolean) => void) | null>(null)
   const waitForApprovalRef = useRef<boolean>(false)
   const recentJobsRef = useRef<boolean>(true)
+  const unpaidRolesRef = useRef<boolean>(false)
   const preferencesLoadedRef = useRef<boolean>(false)
+
+  useEffect(() => {
+    statusRef.current = status
+  }, [status])
+
+  const waitForResume = async () => {
+    while (statusRef.current === 'paused') {
+      await new Promise(res => setTimeout(res, 200))
+    }
+  }
 
   const cleanTitle = (title: string | undefined) => {
     if (!title) return ''
@@ -44,6 +56,7 @@ export default function Automation() {
         const data = await resp.json().catch(() => ({}))
         waitForApprovalRef.current = toBool(data.wait_for_approval ?? data.waitForApproval, true)
         recentJobsRef.current = toBool(data.recent_jobs ?? data.recentJobs, true)
+        unpaidRolesRef.current = toBool(data.unpaid_roles ?? data.upaid_roles, false)
       }
     } catch (err) {
       // ignore preference fetch errors
@@ -583,7 +596,16 @@ export default function Automation() {
   }
 
   const handleAutomationFromDashboard = async (webview: any) => {
-    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+    const sleep = async (ms: number) => {
+      let remaining = ms
+      while (remaining > 0) {
+        await waitForResume()
+        const chunk = Math.min(remaining, 200)
+        await new Promise(resolve => setTimeout(resolve, chunk))
+        remaining -= chunk
+      }
+      await waitForResume()
+    }
 
     // Wait for and click the top-nav "Jobs" link
     await (async () => {
@@ -733,7 +755,7 @@ export default function Automation() {
         if (panelVisible) {
           break
         }
-        await new Promise(res => setTimeout(res, 100))
+        await sleep(100)
       }
       // Wait for and click exclude applied jobs checkbox
       for (let j = 0; j < 60; j++) {
@@ -758,7 +780,7 @@ export default function Automation() {
         if (checkboxResult?.found) {
           break
         }
-        await new Promise(res => setTimeout(res, 100))
+        await sleep(100)
       }
       // If user prefers recent jobs, select the "last 7 days" post date filter before applying.
       if (recentJobsRef.current) {
@@ -825,7 +847,7 @@ export default function Automation() {
           addLog('Applied filters.')
           break
         }
-        await new Promise(res => setTimeout(res, 100))
+        await sleep(100)
       }
     }
 
@@ -849,6 +871,7 @@ export default function Automation() {
       .filter(Boolean)
 
     termLoop: for (const term of normalizedTerms) {
+      await waitForResume()
       addLog(`Searching for "${term}"...`)
 
       await webview.executeJavaScript(`
@@ -940,6 +963,7 @@ export default function Automation() {
 
       let pageIndex = 1
       while (true) {
+        await waitForResume()
         await (async () => {
           for (let i = 0; i < 40; i++) {
             const found = await webview.executeJavaScript(`
@@ -985,13 +1009,18 @@ export default function Automation() {
         let consecutiveDoNotApply = 0
         addLog(`${jobCount} jobs found for "${term}" on page ${pageIndex}.`)
         for (let idx = 0; idx < jobCount; idx++) {
+          await waitForResume()
           const clickJobResult = await webview.executeJavaScript(`
             (() => {
+              const skipUnpaid = ${JSON.stringify(!unpaidRolesRef.current)};
               const cards = Array.from(document.querySelectorAll('div[id^="list-item-"]'));
               const card = cards[${idx}];
               if (!card) return { status: 'missing' };
               const rawText = card.innerText || card.textContent || '';
               const normalized = rawText.toLowerCase();
+              if (skipUnpaid && (normalized.includes('unpaid') || normalized.includes('volunteer'))) {
+                return { status: 'skipped', reason: 'unpaid' };
+              }
               if (normalized.includes('not qualified')) {
                 return { status: 'skipped', reason: 'not qualified' };
               }
@@ -1971,7 +2000,7 @@ export default function Automation() {
                                 })();
                               `)
                               if (clicked) break
-                              await new Promise(res => setTimeout(res, 100))
+                              await sleep(100)
                             }
                             // Wait for the modal to disappear before continuing.
                             for (let z = 0; z < 30; z++) {
@@ -1988,11 +2017,11 @@ export default function Automation() {
                                 })();
                               `)
                               if (!stillVisible) break
-                              await new Promise(res => setTimeout(res, 100))
+                              await sleep(100)
                             }
                             break
                           }
-                          await new Promise(res => setTimeout(res, 100))
+                          await sleep(100)
                         }
                         continue
                       }
