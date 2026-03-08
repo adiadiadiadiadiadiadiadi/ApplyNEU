@@ -1,4 +1,5 @@
 import express, { type Response } from 'express';
+import { safeDel, safeGet, safeSet } from '../redis.ts';
 import type {
   PostUserRequest,
   PutUserRequest,
@@ -35,6 +36,9 @@ import {
 const userController = () => {
   const router = express.Router();
 
+  const profileCacheKey = (userId: string) => `user:profile:${userId}`;
+  const PROFILE_CACHE_TTL_SECONDS = 600;
+
   /**
    * Create a new user.
    * @param req body with user fields
@@ -58,6 +62,7 @@ const userController = () => {
         });
         return;
       }
+      await safeSet(profileCacheKey(user_id), JSON.stringify(user), PROFILE_CACHE_TTL_SECONDS);
       res.status(200).json(user);
     } catch (err: unknown) {
       res.status(400).json({
@@ -81,6 +86,17 @@ const userController = () => {
     }
 
     try {
+      const cached = await safeGet(profileCacheKey(user_id));
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          res.status(200).json(parsed);
+          return;
+        } catch {
+          // fall through to DB fetch
+        }
+      }
+
       const user = await getUser(user_id);
 
       if ('error' in user) {
@@ -89,6 +105,7 @@ const userController = () => {
         });
         return;
       }
+      await safeSet(profileCacheKey(user_id), JSON.stringify(user), PROFILE_CACHE_TTL_SECONDS);
       res.status(200).json(user);
     } catch (err: unknown) {
       res.status(400).json({
@@ -121,6 +138,7 @@ const userController = () => {
         });
         return;
       }
+      await safeDel(profileCacheKey(user_id));
       res.status(200).json(user);
     } catch (err: unknown) {
       res.status(400).json({
@@ -191,6 +209,7 @@ const userController = () => {
         });
         return;
       }
+      await safeDel(profileCacheKey(user_id));
       res.status(200).json(prefs);
     } catch (err: unknown) {
       res.status(400).json({
@@ -316,6 +335,7 @@ const userController = () => {
         });
         return;
       }
+      await safeDel(profileCacheKey(user_id));
       res.status(200).json(result);
     } catch (err: unknown) {
       res.status(400).json({
@@ -347,6 +367,7 @@ const userController = () => {
         });
         return;
       }
+      await safeDel(profileCacheKey(user_id));
       res.status(200).json(result);
     } catch (err: unknown) {
       res.status(400).json({
@@ -379,6 +400,7 @@ const userController = () => {
         });
         return;
       }
+      await safeDel(profileCacheKey(user_id));
       res.status(200).json(result);
     } catch (err: unknown) {
       res.status(400).json({

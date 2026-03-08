@@ -14,3 +14,9 @@ declare namespace JSX {
   }
 }
 
+interface Window {
+  electronAPI?: {
+    openExternal?: (url: string) => void;
+  };
+}
+

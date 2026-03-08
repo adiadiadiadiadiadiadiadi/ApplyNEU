@@ -29,7 +29,6 @@ export default function ProfileSettings() {
   const [uploadingResume, setUploadingResume] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [currentResumeName, setCurrentResumeName] = useState('')
-  const [currentResumeKey, setCurrentResumeKey] = useState('')
   const [emailError, setEmailError] = useState<string | null>(null)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -98,9 +97,6 @@ export default function ProfileSettings() {
             if (latestResumeResp.ok) {
               const latest = await latestResumeResp.json()
               setCurrentResumeName((latest.file_name ?? '').toString())
-              setCurrentResumeKey((latest.key ?? '').toString())
-            } else {
-              setCurrentResumeKey('')
             }
           } catch (err) {
             console.error('Failed fetching latest resume', err)
@@ -364,7 +360,6 @@ export default function ProfileSettings() {
       }
 
       setCurrentResumeName(file.name)
-      setCurrentResumeKey(key)
       setResumeFile(null)
       navigate('/profile-settings/interests', { state: { interests } })
     } catch (err) {
@@ -372,36 +367,6 @@ export default function ProfileSettings() {
       setUploadError('Could not upload resume. Please try again.')
     } finally {
       setUploadingResume(false)
-    }
-  }
-
-  const viewCurrentResume = async () => {
-    if (!currentResumeKey) {
-      setUploadError('No resume available to view.')
-      return
-    }
-
-    try {
-      setUploadError(null)
-      const resp = await fetch('http://localhost:8080/resumes/view-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: currentResumeKey }),
-      })
-
-      if (!resp.ok) {
-        throw new Error('Failed to get resume url')
-      }
-
-      const { viewUrl } = await resp.json()
-      if (!viewUrl) {
-        throw new Error('Missing view url')
-      }
-
-      window.open(viewUrl, '_blank', 'noopener,noreferrer')
-    } catch (err) {
-      console.error('Resume view failed', err)
-      setUploadError('Could not open resume. Please try again.')
     }
   }
 
@@ -591,27 +556,6 @@ export default function ProfileSettings() {
                 }
               }}
             />
-            <button
-              type="button"
-              className="profile-check-button"
-              aria-label="View current resume"
-              onClick={() => void viewCurrentResume()}
-              disabled={!currentResumeKey || uploadingResume}
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z"></path>
-                <circle cx="12" cy="12" r="3"></circle>
-              </svg>
-            </button>
           </div>
           {uploadError && <div className="profile-upload-error">{uploadError}</div>}
         </form>
