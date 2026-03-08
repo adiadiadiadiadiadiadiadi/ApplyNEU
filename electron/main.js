@@ -1,4 +1,4 @@
-const { app, BrowserWindow, session } = require('electron');
+const { app, BrowserWindow, session, shell } = require('electron');
 const path = require('path');
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
@@ -14,6 +14,16 @@ function createWindow() {
       webviewTag: true,  // Enable webview tag
       preload: path.join(__dirname, 'preload.js')
     }
+  });
+
+  // Open all new window requests in the user's default browser instead of a new Electron window
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      shell.openExternal(url);
+    } catch (err) {
+      console.error('Failed to open external URL', err);
+    }
+    return { action: 'deny' };
   });
 
   // Allow webview to load external content

@@ -46,8 +46,8 @@ export default function Login({ onNavigateToSignup }: LoginProps) {
   }
 
   return (
-    <div className="login-container page-stagger">
-      <div className="login-content stagger-children">
+    <div className="login-container">
+      <div className="login-content">
         <h1 className="login-title">welcome back</h1>
 
         <form onSubmit={handleEmailLogin} className="login-form">
