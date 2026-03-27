@@ -7,6 +7,11 @@
   background-color: #000000;
 }
 
+/* Ensure animation utility does not override layout */
+.signup-container.page-stagger {
+  display: flex;
+}
+
 .signup-content {
   max-width: 450px;
   width: 100%;

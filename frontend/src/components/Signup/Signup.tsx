@@ -17,6 +17,7 @@ export default function Signup({ onNavigateToLogin }: SignupProps) {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [step, setStep] = useState<'signup' | 'verify'>('signup')
+    const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
 
     const handleSignup = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -67,7 +68,7 @@ export default function Signup({ onNavigateToLogin }: SignupProps) {
             
             if (userId) {
                 try {
-                    const response = await fetch('http://localhost:8080/users/new', {
+                    const response = await fetch(`${API_BASE}/users/new`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -107,16 +108,9 @@ export default function Signup({ onNavigateToLogin }: SignupProps) {
 
         if (error) {
             setError(error.message)
-            setLoading(false)
-        } else {
-            await fetch("http://localhost:3000/api/users", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({firstName, lastName, email, graduationYear}),
-            });
         }
+
+        setLoading(false)
     }
 
     const handleResendCode = async () => {

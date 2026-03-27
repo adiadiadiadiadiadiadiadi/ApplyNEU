@@ -115,6 +115,7 @@
 .social-buttons {
   display: flex;
   gap: 1rem;
+  width: 100%;
 }
 
 .social-button {
