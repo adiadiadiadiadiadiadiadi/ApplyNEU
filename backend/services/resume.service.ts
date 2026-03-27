@@ -152,6 +152,7 @@ export const getPossibleInterests = async (user_id: string) => {
             [user_id]
         )
         const resumeText = result.rows[0].resume_text
+
         const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
         const message = await anthropic.messages.create({
