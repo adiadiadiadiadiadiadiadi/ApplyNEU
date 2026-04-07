@@ -12,6 +12,7 @@ import type {
   GetSearchTermsRequest,
   GetUserInterestsRequest,
 } from '../types/users.ts';
+import { validateAddUser, validateUserIdParam, validateUpdateUser, validateUpdateInterests, validateUpdateJobTypes } from './middleware/user.validate.ts';
 import {
   addUser,
   cacheShortResume,
@@ -42,13 +43,6 @@ const userController = () => {
   const addUserRoute = async (req: PostUserRequest, res: Response) => {
     const { user_id, first_name, last_name, email, grad_year } = req.body;
 
-    if (!user_id || !first_name || !last_name || !email || !grad_year) {
-      res.status(404).json({
-        "message": "Required arguments not found to post user."
-      });
-      return;
-    }
-
     try {
       const user = await addUser(user_id, first_name, last_name, email, grad_year);
 
@@ -72,13 +66,6 @@ const userController = () => {
    */
   const getUserRoute = async (req: UserIdRequest, res: Response) => {
     const { user_id } = req.params;
-
-    if (!user_id) {
-      res.status(404).json({
-        "message": "Required arguments not found to get user."
-      });
-      return;
-    }
 
     try {
       const user = await getUser(user_id);
@@ -105,13 +92,6 @@ const userController = () => {
     const { user_id } = req.params;
     const { first_name, last_name, email, grad_year } = req.body;
 
-    if (!user_id || !first_name || !last_name || !email || !grad_year) {
-      res.status(404).json({
-        "message": "Required arguments not found to update user."
-      });
-      return;
-    }
-
     try {
       const user = await updateUser(user_id, first_name, last_name, email, grad_year);
 
@@ -135,13 +115,6 @@ const userController = () => {
    */
   const getPreferencesRoute = async (req: UserIdRequest, res: Response) => {
     const { user_id } = req.params;
-
-    if (!user_id) {
-      res.status(404).json({
-        "message": "Required arguments not found to get preferences."
-      });
-      return;
-    }
 
     try {
       const prefs = await getUserPreferences(user_id);
@@ -167,13 +140,6 @@ const userController = () => {
   const updatePreferencesRoute = async (req: UpdatePreferencesRequest, res: Response) => {
     const { user_id } = req.params;
     const { wait_for_approval, recent_jobs, job_match, unpaid_roles, email_notifications } = req.body;
-
-    if (!user_id) {
-      res.status(404).json({
-        "message": "Required arguments not found to update preferences."
-      });
-      return;
-    }
 
     try {
       const prefs = await updateUserPreferences(
@@ -206,13 +172,6 @@ const userController = () => {
   const getUserInterestsRoute = async (req: GetUserInterestsRequest, res: Response) => {
     const { user_id } = req.params;
 
-    if (!user_id) {
-      res.status(404).json({
-        "message": "Required arguments not found to get interests."
-      });
-      return;
-    }
-
     try {
       const result = await getUserInterests(user_id);
 
@@ -237,13 +196,6 @@ const userController = () => {
   const getSearchTermsRoute = async (req: GetSearchTermsRequest, res: Response) => {
     const { user_id } = req.params;
 
-    if (!user_id) {
-      res.status(404).json({
-        "message": "Required arguments not found to get search terms."
-      });
-      return;
-    }
-
     try {
       const result = await getSearchTerms(user_id);
 
@@ -267,13 +219,6 @@ const userController = () => {
    */
   const getJobTypesRoute = async (req: GetJobTypesRequest, res: Response) => {
     const { user_id } = req.params;
-
-    if (!user_id) {
-      res.status(404).json({
-        "message": "Required arguments not found to get job types."
-      });
-      return;
-    }
 
     try {
       const result = await getJobTypes(user_id);
@@ -300,13 +245,6 @@ const userController = () => {
     const { user_id } = req.params;
     const { interests } = req.body;
 
-    if (!user_id || !interests) {
-      res.status(404).json({
-        "message": "Required arguments not found to update interests."
-      });
-      return;
-    }
-
     try {
       const result = await updateUserInterests(user_id, interests);
 
@@ -330,13 +268,6 @@ const userController = () => {
    */
   const updateSearchTermsRoute = async (req: UpdateSearchTermsRequest, res: Response) => {
     const { user_id } = req.params;
-
-    if (!user_id) {
-      res.status(404).json({
-        "message": "Required arguments not found to update search terms."
-      });
-      return;
-    }
 
     try {
       const result = await updateSearchTerms(user_id);
@@ -363,13 +294,6 @@ const userController = () => {
     const { user_id } = req.params;
     const { job_types } = req.body;
 
-    if (!user_id || !job_types) {
-      res.status(404).json({
-        "message": "Required arguments not found to update job interests."
-      });
-      return;
-    }
-
     try {
       const result = await updateJobType(user_id, job_types);
 
@@ -394,13 +318,6 @@ const userController = () => {
   const cacheShortResumeRoute = async (req: CacheShortResumeRequest, res: Response) => {
     const { user_id } = req.params;
 
-    if (!user_id) {
-      res.status(404).json({
-        "message": "Required arguments not found to cache resume."
-      });
-      return;
-    }
-
     try {
       const result = await cacheShortResume(user_id);
 
@@ -418,18 +335,18 @@ const userController = () => {
     }
   }
 
-  router.post('/new', addUserRoute);
-  router.get('/:user_id', getUserRoute);
-  router.put('/:user_id', updateUserRoute);
-  router.get('/:user_id/preferences', getPreferencesRoute);
-  router.put('/:user_id/preferences', updatePreferencesRoute);
-  router.get('/:user_id/interests', getUserInterestsRoute);
-  router.put('/:user_id/interests', updateUserInterestsRoute);
-  router.put('/:user_id/job-types', updateJobTypeRoute);
-  router.get('/:user_id/job-types', getJobTypesRoute);
-  router.put('/:user_id/search-terms', updateSearchTermsRoute);
-  router.get('/:user_id/search-terms', getSearchTermsRoute);
-  router.post('/:user_id/cache-short-resume', cacheShortResumeRoute)
+  router.post('/new', validateAddUser, addUserRoute);
+  router.get('/:user_id', validateUserIdParam, getUserRoute);
+  router.put('/:user_id', validateUpdateUser, updateUserRoute);
+  router.get('/:user_id/preferences', validateUserIdParam, getPreferencesRoute);
+  router.put('/:user_id/preferences', validateUserIdParam, updatePreferencesRoute);
+  router.get('/:user_id/interests', validateUserIdParam, getUserInterestsRoute);
+  router.put('/:user_id/interests', validateUpdateInterests, updateUserInterestsRoute);
+  router.put('/:user_id/job-types', validateUpdateJobTypes, updateJobTypeRoute);
+  router.get('/:user_id/job-types', validateUserIdParam, getJobTypesRoute);
+  router.put('/:user_id/search-terms', validateUserIdParam, updateSearchTermsRoute);
+  router.get('/:user_id/search-terms', validateUserIdParam, getSearchTermsRoute);
+  router.post('/:user_id/cache-short-resume', validateUserIdParam, cacheShortResumeRoute);
   return router;
 };
 

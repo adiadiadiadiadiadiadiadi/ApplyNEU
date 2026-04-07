@@ -6,6 +6,9 @@ interface SignupProps {
     onNavigateToLogin: () => void
 }
 
+const formatError = (msg: string) =>
+    msg === 'Failed to fetch' ? 'Network connection failed.' : msg
+
 export default function Signup({ onNavigateToLogin }: SignupProps) {
     const [firstName, setFirstName] = useState('')
     const [lastName, setLastName] = useState('')
@@ -62,7 +65,7 @@ export default function Signup({ onNavigateToLogin }: SignupProps) {
         })
 
         if (error) {
-            setError(error.message)
+            setError(formatError(error.message))
         } else {
             const userId = data.user?.id
             
@@ -107,7 +110,7 @@ export default function Signup({ onNavigateToLogin }: SignupProps) {
         })
 
         if (error) {
-            setError(error.message)
+            setError(formatError(error.message))
         }
 
         setLoading(false)
@@ -123,7 +126,7 @@ export default function Signup({ onNavigateToLogin }: SignupProps) {
         })
 
         if (error) {
-            setError(error.message)
+            setError(formatError(error.message))
         } else {
             setError('verification code resent!')
         }

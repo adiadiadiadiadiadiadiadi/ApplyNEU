@@ -6,6 +6,9 @@ interface LoginProps {
   onNavigateToSignup: () => void
 }
 
+const formatError = (msg: string) =>
+  msg === 'Failed to fetch' ? 'Network connection failed.' : msg
+
 export default function Login({ onNavigateToSignup }: LoginProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -23,7 +26,7 @@ export default function Login({ onNavigateToSignup }: LoginProps) {
     })
 
     if (error) {
-      setError(error.message)
+      setError(formatError(error.message))
     }
     setLoading(false)
   }
@@ -40,7 +43,7 @@ export default function Login({ onNavigateToSignup }: LoginProps) {
     })
 
     if (error) {
-      setError(error.message)
+      setError(formatError(error.message))
     }
     setLoading(false)
   }
