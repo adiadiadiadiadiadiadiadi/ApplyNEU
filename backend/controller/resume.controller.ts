@@ -7,6 +7,7 @@ import type {
   LatestResumeRequest,
 } from '../types/resumes.ts';
 import { getUploadUrl, getViewUrl, saveResume, getPossibleInterests, getLatestResume } from '../services/resume.service.ts';
+import { validateUploadUrl, validateViewUrl, validateSaveResume, validateUserIdParam } from './middleware/resume.validate.ts';
 
 /**
  * This controller handles user-related routes.
@@ -22,13 +23,6 @@ const resumeController = () => {
      */
     const getUploadUrlRoute = async (req: ResumeMetadataRequest, res: Response) => {
         const { file_name, file_type, file_size } = req.body;
-
-        if (!file_name || !file_type || !file_size) {
-            res.status(404).json({
-                "message": "Required arguments not found to post resume."
-            });
-            return;
-        }
 
         try {
             const url = await getUploadUrl(file_name, file_type, file_size);
@@ -54,13 +48,6 @@ const resumeController = () => {
     const getViewUrlRoute = async (req: ResumeViewRequest, res: Response) => {
         const { key } = req.body;
 
-        if (!key) {
-            res.status(404).json({
-                "message": "Required arguments not found to view resume."
-            });
-            return;
-        }
-
         try {
             const url = await getViewUrl(key);
 
@@ -85,13 +72,6 @@ const resumeController = () => {
     const saveResumeDataRoute = async (req: ResumeSaveRequest, res: Response) => {
         const { resume_id, key, user_id, file_name, file_size_bytes } = req.body
 
-        if (!resume_id || !key || !user_id || !file_name || !file_size_bytes) {
-            res.status(404).json({
-                "message": "Required arguments not found to save resume."
-            });
-            return;
-        }
-
         try {
             const resume = await saveResume(resume_id, key, user_id, file_name, file_size_bytes);
             if ('error' in resume) {
@@ -114,13 +94,6 @@ const resumeController = () => {
      */
     const getInterestsRoute = async (req: PossibleInterestsRequest, res: Response) => {
         const { user_id } = req.params;
-
-        if (!user_id) {
-            res.status(404).json({
-                "message": "Required arguments not found to get interests."
-            });
-            return;
-        }
 
         try {
             const result = await getPossibleInterests(user_id);
@@ -146,13 +119,6 @@ const resumeController = () => {
     const getLatestResumeRoute = async (req: LatestResumeRequest, res: Response) => {
         const { user_id } = req.params;
 
-        if (!user_id) {
-            res.status(404).json({
-                "message": "Required arguments not found to get latest resume."
-            });
-            return;
-        }
-
         try {
             const result = await getLatestResume(user_id);
 
@@ -170,11 +136,11 @@ const resumeController = () => {
         }
     }
 
-    router.post('/upload-url', getUploadUrlRoute);
-    router.post('/view-url', getViewUrlRoute);
-    router.post('/save-resume', saveResumeDataRoute)
-    router.get('/:user_id/possible-interests', getInterestsRoute)
-    router.get('/:user_id/latest', getLatestResumeRoute)
+    router.post('/upload-url', validateUploadUrl, getUploadUrlRoute);
+    router.post('/view-url', validateViewUrl, getViewUrlRoute);
+    router.post('/save-resume', validateSaveResume, saveResumeDataRoute);
+    router.get('/:user_id/possible-interests', validateUserIdParam, getInterestsRoute);
+    router.get('/:user_id/latest', validateUserIdParam, getLatestResumeRoute);
     return router;
 };
 

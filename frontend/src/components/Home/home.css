@@ -603,6 +603,5 @@
 
   .dashboard-grid {
     grid-template-columns: 1fr;
-    overflow-y: auto;
   }
 }

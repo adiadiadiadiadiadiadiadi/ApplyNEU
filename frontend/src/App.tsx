@@ -60,6 +60,7 @@ function SideNav() {
 function AuthenticatedLayout() {
   return (
     <>
+      <FetchErrorBanner />
       <SideNav />
       <Outlet />
     </>
@@ -147,7 +148,6 @@ function App() {
   if (loading) {
     return (
       <FetchErrorProvider>
-        <FetchErrorBanner />
         <div>loading...</div>
       </FetchErrorProvider>
     )
@@ -161,7 +161,6 @@ function App() {
 
   return (
     <FetchErrorProvider>
-      <FetchErrorBanner />
       {content}
     </FetchErrorProvider>
   )
