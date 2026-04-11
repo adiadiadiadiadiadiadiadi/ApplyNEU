@@ -8,7 +8,7 @@ import { validateAddJob, validateSendJobDescription } from './middleware/job.val
  * 
  * @returns {express.Router} The router object containing the job routes.
  */
-const jobController = () => {
+const jobController = (): express.Router => {
     const router = express.Router();
 
     /**
@@ -29,14 +29,14 @@ const jobController = () => {
             }
             res.status(200).json(result);
         } catch (err: unknown) {
-            res.status(400).json({
+            res.status(500).json({
                 "message": "Unable to send job description."
             });
         }
     };
 
     /**
-     * Insert a job entry if not present.
+     * Insert a job if not present.
      * @param req body company/title/description
      */
     const addJobRoute = async (req: AddJobRequest, res: Response) => {
@@ -52,7 +52,7 @@ const jobController = () => {
             }
             res.status(200).json(result);
         } catch (err: unknown) {
-            res.status(400).json({
+            res.status(500).json({
                 "message": "Unable to add job."
             });
         }
