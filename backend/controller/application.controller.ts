@@ -13,11 +13,11 @@ import { validateAddApplication, validateUpdateApplicationStatus, validateUserId
  * 
  * @returns {express.Router} The router object containing the job routes.
  */
-const applicationController = () => {
+const applicationController = (): express.Router => {
     const router = express.Router();
 
     /**
-     * Add a job application.
+     * Add a job application to the database.
      * @param req params.user_id, body company/title/description/status
      */
     const addApplicationRoute = async (req: AddApplicationRequest, res: Response) => {
@@ -28,7 +28,7 @@ const applicationController = () => {
             const result = await addJobApplication(user_id, company, title, description, status);
 
             if ('error' in result) {
-                res.status(400).json({
+                res.status(404).json({
                     "message": "Unable to add job application."
                 });
                 return;
@@ -43,13 +43,6 @@ const applicationController = () => {
     };
 
     /**
-     * Route to get a job application's stats.
-     * 
-     * @param req request of type AddApplicationRequest.
-     * @param res response, either the resulting application or a result.
-     * @returns 
-     */
-    /**
      * Retrieve aggregate application stats for a user.
      * @param req params.user_id
      */
@@ -59,14 +52,14 @@ const applicationController = () => {
         try {
             const stats = await getUserApplicationStats(user_id);
             if ('error' in stats) {
-                res.status(400).json({
+                res.status(404).json({
                     "message": "Unable to fetch job application stats."
                 });
                 return;
             }
             res.status(200).json(stats);
         } catch (err: unknown) {
-            res.status(400).json({
+            res.status(500).json({
                 "message": "Unable to fetch job application stats."
             });
         }
@@ -83,12 +76,12 @@ const applicationController = () => {
         try {
             const result = await updateApplicationStatus(user_id, application_id, status);
             if ('error' in result) {
-                res.status(400).json({ message: result.error });
+                res.status(404).json({ message: result.error });
                 return;
             }
             res.status(200).json(result);
         } catch (err: unknown) {
-            res.status(400).json({ message: 'Unable to update application status.' });
+            res.status(500).json({ message: 'Unable to update application status.' });
         }
     };
 
@@ -102,12 +95,12 @@ const applicationController = () => {
         try {
             const result = await getUserApplications(user_id);
             if ('error' in result) {
-                res.status(400).json({ message: 'Unable to fetch applications.' });
+                res.status(404).json({ message: 'Unable to fetch applications.' });
                 return;
             }
             res.status(200).json(result);
         } catch {
-            res.status(400).json({ message: 'Unable to fetch applications.' });
+            res.status(500).json({ message: 'Unable to fetch applications.' });
         }
     };
 

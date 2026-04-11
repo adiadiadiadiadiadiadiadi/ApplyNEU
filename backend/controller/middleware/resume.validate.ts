@@ -11,6 +11,7 @@ const handleValidation = (req: Request, res: Response, next: NextFunction) => {
 };
 
 export const validateUploadUrl = [
+    param('user_id').notEmpty().withMessage('user_id is required.'),
     body('file_name').notEmpty().withMessage('file_name is required.'),
     body('file_type').notEmpty().withMessage('file_type is required.'),
     body('file_size').notEmpty().withMessage('file_size is required.'),
@@ -26,8 +27,6 @@ export const validateSaveResume = [
     body('resume_id').notEmpty().withMessage('resume_id is required.'),
     body('key').notEmpty().withMessage('key is required.'),
     body('user_id').notEmpty().withMessage('user_id is required.'),
-    body('file_name').notEmpty().withMessage('file_name is required.'),
-    body('file_size_bytes').notEmpty().withMessage('file_size_bytes is required.'),
     handleValidation,
 ];
 

@@ -1,6 +1,6 @@
 import { type Request } from 'express';
 
-export interface ResumeMetadataRequest extends Request {
+export interface ResumeMetadataRequest extends Request<{ user_id: string }> {
   body: {
     file_name: string;
     file_type: string;
@@ -19,8 +19,6 @@ export interface ResumeSaveRequest extends Request {
     resume_id: string;
     key: string;
     user_id: string;
-    file_name: string;
-    file_size_bytes: number;
   };
 }
 
