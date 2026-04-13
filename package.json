@@ -4,6 +4,7 @@
   "description": "Electron app with React frontend",
   "main": "electron/main.js",
   "scripts": {
+    "postinstall": "plutil -replace CFBundleIdentifier -string com.applyneu.electron-dev node_modules/electron/dist/Electron.app/Contents/Info.plist || true",
     "dev": "concurrently \"npm run dev:react\" \"wait-on http://localhost:5173 && electron .\"",
     "dev:react": "cd frontend && npm run dev",
     "build": "cd frontend && npm run build",

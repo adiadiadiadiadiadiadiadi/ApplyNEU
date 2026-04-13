@@ -111,6 +111,19 @@ function App() {
   const navigate = useNavigate()
 
   useEffect(() => {
+    window.electronAPI?.onOAuthCallback?.(async (url: string) => {
+      const hash = url.split('#')[1]
+      if (!hash) return
+      const params = new URLSearchParams(hash)
+      const access_token = params.get('access_token')
+      const refresh_token = params.get('refresh_token')
+      if (access_token && refresh_token) {
+        await supabase.auth.setSession({ access_token, refresh_token })
+      }
+    })
+  }, [])
+
+  useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
 

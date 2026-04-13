@@ -17,6 +17,7 @@ declare namespace JSX {
 interface Window {
   electronAPI?: {
     openExternal?: (url: string) => void;
+    onOAuthCallback?: (cb: (url: string) => void) => void;
   };
 }
 
