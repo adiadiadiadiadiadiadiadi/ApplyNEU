@@ -177,16 +177,17 @@ export const getPossibleInterests = async (user_id: string) => {
                 ${resumeText}
                 
                 Extract and return ONLY a JSON array of 50 relevant topics including:
-                - ~5: Technical skills (e.g., "Python", "React", "AWS")
-                - ~15: Industries (e.g., "FinTech", "Healthcare", "E-commerce")
-                - ~15: Job types (e.g., "Software Engineering", "Data Science", "Product Management")
-                - ~15: Domains (e.g., "Machine Learning", "Cloud Infrastructure", "Mobile Development")
+                - 5: Technical skills (e.g., "Python", "React", "AWS")
+                - 15: Industries (e.g., "FinTech", "Healthcare", "E-commerce")
+                - 15: Job types (e.g., "Software Engineering", "Data Science", "Product Management")
+                - 15: Domains (e.g., "Machine Learning", "Cloud Infrastructure", "Mobile Development")
                 
-                Return about 50 topics. Be specific but not overly granular.
-                About 15 topics should not be on the user's resume, but be related.
+                Return 50 topics. Be specific but not overly granular.
+                Exactly 15 topics should not be on the user's resume, but be related.
                 
-                Example format: ["Python", "Machine Learning", "FinTech", "Backend Development", "Mobile Development"]
-                
+                Output format:
+                ["Topic1","Topic2",...,"Topic50"] 
+                               
                 Return ONLY the JSON array, nothing else. There should be no extra whitespace or punctuation.
                 `
             }]
