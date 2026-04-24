@@ -7,6 +7,7 @@ import type {
   UpdateApplicationStatusRequest,
 } from '../types/applications.ts';
 import { validateAddApplication, validateUpdateApplicationStatus, validateUserIdParam } from './middleware/application.validate.ts';
+import { requireUser } from './middleware/requireUser.ts';
 
 /**
  * This controller handles application-related routes.
@@ -104,10 +105,10 @@ const applicationController = (): express.Router => {
         }
     };
 
-    router.post('/:user_id/new', validateAddApplication, addApplicationRoute);
-    router.get('/:user_id/stats', validateUserIdParam, getApplicationStatsRoute);
-    router.get('/:user_id', validateUserIdParam, getApplicationsRoute);
-    router.put('/:user_id/:application_id/status', validateUpdateApplicationStatus, updateApplicationStatusRoute);
+    router.post('/:user_id/new', validateAddApplication, requireUser, addApplicationRoute);
+    router.get('/:user_id/stats', validateUserIdParam, requireUser, getApplicationStatsRoute);
+    router.get('/:user_id', validateUserIdParam, requireUser, getApplicationsRoute);
+    router.put('/:user_id/:application_id/status', validateUpdateApplicationStatus, requireUser, updateApplicationStatusRoute);
 
     return router;
 };

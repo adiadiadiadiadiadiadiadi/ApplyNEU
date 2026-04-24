@@ -8,6 +8,7 @@ import type {
 } from '../types/resumes.ts';
 import { getUploadUrl, completeResumeUpload, getPossibleInterests, getLatestResume } from '../services/resume.service.ts';
 import { validateUploadUrl, validateViewUrl, validateSaveResume, validateUserIdParam } from './middleware/resume.validate.ts';
+import { requireUser } from './middleware/requireUser.ts';
 
 /**
  * This controller handles user-related routes.
@@ -113,10 +114,10 @@ const resumeController = (): express.Router => {
         }
     }
 
-    router.post('/:user_id/upload-url', validateUploadUrl, getUploadUrlRoute);
+    router.post('/:user_id/upload-url', validateUploadUrl, requireUser, getUploadUrlRoute);
     router.post('/save-resume', validateSaveResume, completeResumeUploadRoute);
-    router.get('/:user_id/possible-interests', validateUserIdParam, getInterestsRoute);
-    router.get('/:user_id/latest', validateUserIdParam, getLatestResumeRoute);
+    router.get('/:user_id/possible-interests', validateUserIdParam, requireUser, getInterestsRoute);
+    router.get('/:user_id/latest', validateUserIdParam, requireUser, getLatestResumeRoute);
     return router;
 };
 

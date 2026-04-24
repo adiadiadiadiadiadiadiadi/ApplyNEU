@@ -2,6 +2,7 @@ import express, { type Response } from 'express';
 import { addJob, sendJobDescription } from '../services/job.service.ts';
 import type { AddJobRequest, SendJobDescriptionRequest } from '../types/jobs.ts';
 import { validateAddJob, validateSendJobDescription } from './middleware/job.validate.ts';
+import { requireUser } from './middleware/requireUser.ts';
 
 /**
  * This controller handles job-related routes.
@@ -58,7 +59,7 @@ const jobController = (): express.Router => {
         }
     }
 
-    router.post('/:user_id/send-job', validateSendJobDescription, sendJobDescriptionRoute);
+    router.post('/:user_id/send-job', validateSendJobDescription, requireUser, sendJobDescriptionRoute);
     router.post('/add-job', validateAddJob, addJobRoute);
 
     return router;
