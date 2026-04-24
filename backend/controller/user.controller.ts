@@ -13,6 +13,7 @@ import type {
   GetUserInterestsRequest,
 } from '../types/users.ts';
 import { validateAddUser, validateUserIdParam, validateUpdateUser, validateUpdateInterests, validateUpdateJobTypes } from './middleware/user.validate.ts';
+import { requireUser } from './middleware/requireUser.ts';
 import {
   addUser,
   cacheShortResume,
@@ -337,16 +338,16 @@ const userController = () => {
 
   router.post('/new', validateAddUser, addUserRoute);
   router.get('/:user_id', validateUserIdParam, getUserRoute);
-  router.put('/:user_id', validateUpdateUser, updateUserRoute);
-  router.get('/:user_id/preferences', validateUserIdParam, getPreferencesRoute);
-  router.put('/:user_id/preferences', validateUserIdParam, updatePreferencesRoute);
-  router.get('/:user_id/interests', validateUserIdParam, getUserInterestsRoute);
-  router.put('/:user_id/interests', validateUpdateInterests, updateUserInterestsRoute);
-  router.put('/:user_id/job-types', validateUpdateJobTypes, updateJobTypeRoute);
-  router.get('/:user_id/job-types', validateUserIdParam, getJobTypesRoute);
-  router.put('/:user_id/search-terms', validateUserIdParam, updateSearchTermsRoute);
-  router.get('/:user_id/search-terms', validateUserIdParam, getSearchTermsRoute);
-  router.post('/:user_id/cache-short-resume', validateUserIdParam, cacheShortResumeRoute);
+  router.put('/:user_id', validateUpdateUser, requireUser, updateUserRoute);
+  router.get('/:user_id/preferences', validateUserIdParam, requireUser, getPreferencesRoute);
+  router.put('/:user_id/preferences', validateUserIdParam, requireUser, updatePreferencesRoute);
+  router.get('/:user_id/interests', validateUserIdParam, requireUser, getUserInterestsRoute);
+  router.put('/:user_id/interests', validateUpdateInterests, requireUser, updateUserInterestsRoute);
+  router.put('/:user_id/job-types', validateUpdateJobTypes, requireUser, updateJobTypeRoute);
+  router.get('/:user_id/job-types', validateUserIdParam, requireUser, getJobTypesRoute);
+  router.put('/:user_id/search-terms', validateUserIdParam, requireUser, updateSearchTermsRoute);
+  router.get('/:user_id/search-terms', validateUserIdParam, requireUser, getSearchTermsRoute);
+  router.post('/:user_id/cache-short-resume', validateUserIdParam, requireUser, cacheShortResumeRoute);
   return router;
 };
 

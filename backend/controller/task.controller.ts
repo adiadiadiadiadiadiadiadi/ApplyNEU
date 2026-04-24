@@ -8,6 +8,7 @@ import type {
 } from '../types/tasks.ts';
 import { addInstructions, addTask, toggleTask, getTasks, deleteTasksForApplication } from '../services/task.service.ts';
 import { validateAddTask, validateAddInstructions, validateTaskIdParam, validateUserIdParam, validateClearTasks } from './middleware/task.validate.ts';
+import { requireUser } from './middleware/requireUser.ts';
 
 /**
  * This controller handles task-related routes.
@@ -139,11 +140,11 @@ const taskController = () => {
     }
   };
 
-  router.post('/:user_id/new', validateAddTask, addTaskRoute);
-  router.post('/:user_id/add-instructions', validateAddInstructions, addInstructionsRoute);
-  router.delete('/:user_id/application/:application_id', validateClearTasks, clearTasksForApplicationRoute);
+  router.post('/:user_id/new', validateAddTask, requireUser, addTaskRoute);
+  router.post('/:user_id/add-instructions', validateAddInstructions, requireUser, addInstructionsRoute);
+  router.delete('/:user_id/application/:application_id', validateClearTasks, requireUser, clearTasksForApplicationRoute);
   router.put('/:task_id/complete', validateTaskIdParam, toggleTaskRoute);
-  router.get('/:user_id', validateUserIdParam, getTasksRoute);
+  router.get('/:user_id', validateUserIdParam, requireUser, getTasksRoute);
   return router;
 };
 
