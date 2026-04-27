@@ -15,9 +15,7 @@ const handleValidation = (req: Request, res: Response, next: NextFunction) => {
 
 export const validateAddApplication = [
     param('user_id').notEmpty().withMessage('user_id is required.'),
-    body('company').notEmpty().withMessage('company is required.'),
-    body('title').notEmpty().withMessage('title is required.'),
-    body('description').notEmpty().withMessage('description is required.'),
+    body('job_id').notEmpty().withMessage('job_id is required.'),
     body('status').notEmpty().withMessage('status is required.'),
     handleValidation,
 ];

@@ -20,8 +20,9 @@ export interface PutUserRequest extends Request {
 }
 
 export interface UpdatePreferencesBody {
+  job_types: string[];
   wait_for_approval: boolean;
-  recent_jobs: number;
+  recent_jobs: boolean;
   job_match: string;
   unpaid_roles: boolean;
   email_notifications: boolean;

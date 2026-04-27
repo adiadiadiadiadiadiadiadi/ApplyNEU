@@ -1,145 +1,75 @@
 import { pool } from '../db/index.ts';
+import { AppError } from '../errors/AppError.ts';
 
-/**
- * Creates or updates a job application for a user, deduplicating jobs by company/title.
- *
- * @param user_id Applicant identifier.
- * @param company Company name from the posting.
- * @param title Job title from the posting.
- * @param description Job description body to store on the job.
- * @param status Application status (normalized internally).
- * @returns Upserted application row or an error object.
- */
-export const addJobApplication = async (
-  user_id: string, company: string, title: string, description: string, status: string
-  ) => {
+export const addJobApplication = async (user_id: string, job_id: string, status: string) => {
   try {
     const normalizedStatus = (() => {
-      const trimmed = (status ?? '').trim();
-      if (!trimmed) return trimmed;
-      const lower = trimmed.toLowerCase();
+      const lower = (status ?? '').trim().toLowerCase();
       return lower === 'submitted' ? 'applied' : lower;
     })();
-
-    // Try to find an existing job case-insensitively to avoid duplicate rows when casing/spacing differs.
-    const job = await pool.query(
-      `SELECT * FROM jobs WHERE lower(title) = lower($1) AND lower(company) = lower($2) LIMIT 1;`,
-      [title, company]
-    );
-
-    let job_id: string | undefined = job.rows[0]?.job_id;
-
-    if (!job_id) {
-      const inserted = await pool.query(
-        `
-          INSERT INTO jobs (company, title, description)
-          VALUES ($1, $2, $3)
-          ON CONFLICT (company, title)
-          DO UPDATE SET description = EXCLUDED.description
-          RETURNING *;
-        `,
-        [company, title, description]
-      );
-      job_id = inserted.rows[0]?.job_id;
-    }
-
-    if (!job_id) {
-      return { error: 'Job not found or could not be created.' };
-    }
 
     const result = await pool.query(
       `
         INSERT INTO job_applications (job_id, user_id, status)
-        VALUES ($1, $2, $3)
+        VALUES ($1, $2, $3::application_status)
         ON CONFLICT (job_id, user_id)
         DO UPDATE SET
           applied_at = NOW(),
           status = CASE
-            -- Preserve downstream/manual pipeline states.
-            WHEN LOWER(COALESCE(job_applications.status, '')) IN ('interview', 'offer', 'rejected') THEN job_applications.status
-            -- Allow correcting an external -> draft/pending downgrade when submit was not actually completed.
-            WHEN LOWER(COALESCE(job_applications.status, '')) IN ('external', 'external action needed')
-                 AND LOWER(COALESCE(EXCLUDED.status, '')) IN ('draft', 'pending') THEN EXCLUDED.status
-            -- For automation-managed statuses, only move status forward.
-            WHEN (
-              CASE
-                WHEN LOWER(COALESCE(EXCLUDED.status, '')) IN ('submitted', 'applied') THEN 3
-                WHEN LOWER(COALESCE(EXCLUDED.status, '')) IN ('external', 'external action needed') THEN 2
-                WHEN LOWER(COALESCE(EXCLUDED.status, '')) IN ('draft', 'pending') THEN 1
-                ELSE 0
-              END
-            ) >= (
-              CASE
-                WHEN LOWER(COALESCE(job_applications.status, '')) IN ('submitted', 'applied') THEN 3
-                WHEN LOWER(COALESCE(job_applications.status, '')) IN ('external', 'external action needed') THEN 2
-                WHEN LOWER(COALESCE(job_applications.status, '')) IN ('draft', 'pending') THEN 1
-                ELSE 0
-              END
-            ) THEN EXCLUDED.status
+            WHEN EXCLUDED.status > job_applications.status THEN EXCLUDED.status
             ELSE job_applications.status
           END
         RETURNING *;
       `,
       [job_id, user_id, normalizedStatus]
     );
-
-    return result.rows[0] ?? { error: 'Application already exists for this job/user.' };
+    if (!result.rows[0]) throw new AppError(409, 'Application already exists for this job/user.');
+    return result.rows[0];
   } catch (error) {
-    return { error: 'Error occurred while inserting into job applications.' };
+    if (error instanceof AppError) throw error;
+    throw new AppError(500, 'Error creating job application.');
   }
-}
+};
 
-/**
- * Aggregates application counts for a user across common status buckets.
- *
- * @param user_id Applicant identifier.
- * @returns Stats object with counts per timeframe/status or an error object.
- */
 export const getUserApplicationStats = async (user_id: string) => {
   try {
     const result = await pool.query(
       `
         SELECT
           COUNT(*)                                                           AS total,
-          COUNT(*) FILTER (WHERE applied_at >= date_trunc('day', NOW()))    AS today_count,
-          COUNT(*) FILTER (WHERE applied_at >= date_trunc('week', NOW()))   AS week_count,
-          COUNT(*) FILTER (WHERE applied_at >= date_trunc('year', NOW()))   AS year_count,
-          COUNT(*) FILTER (WHERE LOWER(status) IN ('applied', 'submitted'))         AS applied_count,
-          COUNT(*) FILTER (WHERE LOWER(status) = 'interview')                      AS interview_count,
-          COUNT(*) FILTER (WHERE LOWER(status) = 'offer')                          AS offer_count,
-          COUNT(*) FILTER (WHERE LOWER(status) = 'rejected')                       AS rejected_count,
-          COUNT(*) FILTER (WHERE LOWER(status) IN ('pending', 'draft'))            AS pending_count,
-          COUNT(*) FILTER (WHERE LOWER(status) IN ('external', 'external action needed')) AS external_count
+          COUNT(*) FILTER (WHERE applied_at >= date_trunc('day', NOW()))              AS today_count,
+          COUNT(*) FILTER (WHERE applied_at >= date_trunc('week', NOW()))             AS week_count,
+          COUNT(*) FILTER (WHERE applied_at >= date_trunc('year', NOW()))             AS year_count,
+          COUNT(*) FILTER (WHERE status = 'applied')                                  AS applied_count,
+          COUNT(*) FILTER (WHERE status = 'interview')                                AS interview_count,
+          COUNT(*) FILTER (WHERE status = 'offer')                                    AS offer_count,
+          COUNT(*) FILTER (WHERE status = 'rejected')                                 AS rejected_count,
+          COUNT(*) FILTER (WHERE status IN ('pending', 'draft'))                      AS pending_count,
+          COUNT(*) FILTER (WHERE status IN ('external', 'external action needed'))    AS external_count
         FROM job_applications
         WHERE user_id = $1;
       `,
       [user_id]
     );
-
     const row = result.rows?.[0] ?? {};
     return {
-      total:      Number(row.total         ?? 0),
-      today:      Number(row.today_count   ?? 0),
-      week:       Number(row.week_count    ?? 0),
-      year:       Number(row.year_count    ?? 0),
-      applied:    Number(row.applied_count   ?? 0),
+      total:      Number(row.total          ?? 0),
+      today:      Number(row.today_count    ?? 0),
+      week:       Number(row.week_count     ?? 0),
+      year:       Number(row.year_count     ?? 0),
+      applied:    Number(row.applied_count  ?? 0),
       interviews: Number(row.interview_count ?? 0),
-      offers:     Number(row.offer_count     ?? 0),
-      rejected:   Number(row.rejected_count  ?? 0),
-      pending:    Number(row.pending_count   ?? 0),
-      external:   Number(row.external_count  ?? 0),
+      offers:     Number(row.offer_count    ?? 0),
+      rejected:   Number(row.rejected_count ?? 0),
+      pending:    Number(row.pending_count  ?? 0),
+      external:   Number(row.external_count ?? 0),
     };
   } catch (error) {
-    return { error: 'Error fetching application stats.' };
+    if (error instanceof AppError) throw error;
+    throw new AppError(500, 'Error fetching application stats.');
   }
-}
+};
 
-/**
- * Retrieves recent applications for a user with joined job data.
- *
- * @param user_id Applicant identifier.
- * @returns Array of application rows or an error object.
- */
 export const getUserApplications = async (user_id: string) => {
   try {
     const result = await pool.query(
@@ -162,63 +92,43 @@ export const getUserApplications = async (user_id: string) => {
     );
     return result.rows;
   } catch (error) {
-    return { error: 'Error fetching applications.' };
+    if (error instanceof AppError) throw error;
+    throw new AppError(500, 'Error fetching applications.');
   }
-}
+};
 
-/**
- * Updates the status of a user's application with validation and normalization.
- *
- * @param user_id Applicant identifier.
- * @param application_id Application to update.
- * @param status New status value (validated against allowed set).
- * @returns Updated application row or an error object.
- */
-export const updateApplicationStatus = async (
-  user_id: string,
-  application_id: string,
-  status: string
-) => {
+export const updateApplicationStatus = async (user_id: string, application_id: string, status: string) => {
   try {
     const normalizedStatus = (() => {
-      const trimmed = (status ?? '').trim()
-      if (!trimmed) return trimmed
-      const lower = trimmed.toLowerCase()
-      if (lower === 'submitted') return 'applied'
-      if (lower === 'ext' || lower === 'ext. action') return 'external'
-      return lower
-    })()
+      const trimmed = (status ?? '').trim();
+      if (!trimmed) return trimmed;
+      const lower = trimmed.toLowerCase();
+      if (lower === 'submitted') return 'applied';
+      if (lower === 'ext' || lower === 'ext. action') return 'external';
+      return lower;
+    })();
 
     const allowed = new Set([
-      'pending',
-      'draft',
-      'applied',
-      'interview',
-      'offer',
-      'rejected',
-      'external',
-      'external action needed'
-    ])
+      'pending', 'draft', 'applied', 'interview', 'offer',
+      'rejected', 'external', 'external action needed',
+    ]);
     if (!normalizedStatus || !allowed.has(normalizedStatus)) {
-      return { error: 'Invalid status.' }
+      throw new AppError(400, 'Invalid status.');
     }
 
     const result = await pool.query(
       `
         UPDATE job_applications
-        SET status = $3
+        SET status = $3::application_status
         WHERE application_id = $2 AND user_id = $1
         RETURNING application_id, job_id, status, applied_at;
       `,
       [user_id, application_id, normalizedStatus]
-    )
-
-    if (!result.rowCount) {
-      return { error: 'Application not found for user.' }
-    }
-
-    return result.rows[0]
+    );
+    if (!result.rowCount) throw new AppError(404, 'Application not found for user.');
+    return result.rows[0];
   } catch (error) {
-    return { error: 'Error updating application status.' }
+    if (error instanceof AppError) throw error;
+    throw new AppError(500, 'Error updating application status.');
   }
-}
+};
