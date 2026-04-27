@@ -1,12 +1,16 @@
 import type { Request, Response, NextFunction } from 'express';
-import { getUser } from '../../services/user.service.ts';
+import { getUser } from '../../services/user/user.service.ts';
 
 export const requireUser = async (req: Request, res: Response, next: NextFunction) => {
   const user_id = req.params.user_id;
-  const user = user_id && await getUser(user_id);
-  if (!user || 'error' in user) {
+  if (!user_id) {
     res.status(401).json({ message: 'Unauthorized.' });
     return;
   }
-  next();
+  try {
+    await getUser(user_id);
+    next();
+  } catch {
+    res.status(401).json({ message: 'Unauthorized.' });
+  }
 };

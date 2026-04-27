@@ -9,6 +9,7 @@ import resumeController from './controller/resume.controller.ts';
 import jobController from './controller/job.controller.ts';
 import taskController from './controller/task.controller.ts';
 import applicationController from './controller/application.controller.ts';
+import errorHandler from './controller/middleware/handlers/errorHandler.ts';
 
 const PORT = 8080;
 
@@ -36,6 +37,8 @@ app.use('/resumes', resumeController());
 app.use('/jobs', jobController());
 app.use('/tasks', taskController());
 app.use('/applications', applicationController());
+
+app.use(errorHandler);
 
 // Only auto-start when not under test to allow Jest/supertest to import the app without
 // binding to a port or requiring a running Postgres instance.

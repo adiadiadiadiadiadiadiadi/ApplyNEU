@@ -5,9 +5,7 @@ export interface AddApplicationRequest extends Request {
     user_id: string;
   };
   body: {
-    company: string;
-    title: string;
-    description: string;
+    job_id: string;
     status: string;
   };
 }

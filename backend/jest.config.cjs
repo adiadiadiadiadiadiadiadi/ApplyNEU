@@ -1,6 +1,5 @@
-import type { JestConfigWithTsJest } from 'ts-jest'
-
-const config: JestConfigWithTsJest = {
+/** @type {import('ts-jest').JestConfigWithTsJest} */
+module.exports = {
   preset: 'ts-jest/presets/default-esm',
   testEnvironment: 'node',
   roots: ['<rootDir>/tests'],
@@ -19,5 +18,3 @@ const config: JestConfigWithTsJest = {
     'services/**/*.ts',
   ],
 }
-
-export default config
