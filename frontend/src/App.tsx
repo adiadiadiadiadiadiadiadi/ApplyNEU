@@ -12,6 +12,9 @@ import ProfileSettings from './components/Profile/profileSettings'
 import ProfileInterests from './components/Profile/profileInterests'
 import Settings from './components/Settings/settings'
 import { FetchErrorProvider, FetchErrorBanner } from './components/common/FetchError'
+import { setNavigate } from './lib/navigation'
+import Unauthorized from './components/NotFound/unauthorized'
+import NotFound from './components/NotFound/notfound'
 
 function SideNav() {
   return (
@@ -67,13 +70,14 @@ function AuthenticatedLayout() {
   )
 }
 
-function AuthRoutes() {
+function AuthRoutes({ authError }: { authError: string | null }) {
   const navigate = useNavigate()
 
   return (
     <Routes>
-      <Route path="/login" element={<Login onNavigateToSignup={() => navigate('/signup')} />} />
+      <Route path="/login" element={<Login onNavigateToSignup={() => navigate('/signup')} authError={authError} />} />
       <Route path="/signup" element={<Signup onNavigateToLogin={() => navigate('/login')} />} />
+      <Route path="/401" element={<Unauthorized />} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   )
@@ -99,16 +103,42 @@ function AppRoutes() {
         <Route path="/profile-settings/interests" element={<ProfileInterests />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
+      <Route path="/401" element={<Unauthorized />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
+}
+
+const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
+
+async function ensureBackendUser(user: { id: string; email?: string; user_metadata?: Record<string, string> }) {
+  const existing = await fetch(`${API_BASE}/users/${user.id}`)
+  if (existing.status !== 404) return
+  const fullName: string = user.user_metadata?.full_name ?? user.user_metadata?.name ?? ''
+  const spaceIdx = fullName.indexOf(' ')
+  const firstName = spaceIdx >= 0 ? fullName.slice(0, spaceIdx) : fullName
+  const lastName = spaceIdx >= 0 ? fullName.slice(spaceIdx + 1) : ''
+  await fetch(`${API_BASE}/users/new`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      user_id: user.id,
+      first_name: firstName,
+      last_name: lastName,
+      email: user.email ?? '',
+      grad_year: 0,
+    }),
+  })
 }
 
 function App() {
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [showOnboarding, setShowOnboarding] = useState(false)
+  const [authError, setAuthError] = useState<string | null>(null)
   const navigate = useNavigate()
+
+  useEffect(() => { setNavigate(navigate) }, [navigate])
 
   useEffect(() => {
     window.electronAPI?.onOAuthCallback?.(async (url: string) => {
@@ -118,7 +148,15 @@ function App() {
       const access_token = params.get('access_token')
       const refresh_token = params.get('refresh_token')
       if (access_token && refresh_token) {
-        await supabase.auth.setSession({ access_token, refresh_token })
+        const { data } = await supabase.auth.setSession({ access_token, refresh_token })
+        if (data.user) {
+          if (!data.user.email?.endsWith('@northeastern.edu')) {
+            await supabase.auth.signOut()
+            setAuthError('please use a valid @northeastern.edu email address')
+            return
+          }
+          await ensureBackendUser(data.user)
+        }
       }
     })
   }, [])
@@ -166,11 +204,7 @@ function App() {
     )
   }
 
-  const content = !user
-    ? <AuthRoutes />
-    : showOnboarding
-      ? <OnboardingRoutes onComplete={handleOnboardingComplete} />
-      : <AppRoutes />
+  const content = <NotFound />
 
   return (
     <FetchErrorProvider>

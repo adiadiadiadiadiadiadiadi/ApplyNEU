@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { navigateTo } from '../../lib/navigation'
 
 type FetchErrorState = {
   message: string | null
@@ -25,6 +26,10 @@ export const FetchErrorProvider = ({ children }: { children: React.ReactNode }) 
     window.fetch = async (...args) => {
       try {
         const res = await originalFetch(...args)
+        if (res.status === 401) {
+          navigateTo('/401')
+          return res
+        }
         if (!res.ok) {
           setState({ message: 'Failed to fetch. Please try again.', retry: () => window.location.reload() })
         }

@@ -1,5 +1,6 @@
 import './home.css'
 import { supabase } from '../../lib/supabase'
+import { ApplicationStatus } from '../../lib/types'
 import React, { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import ComponentLoader from '../common/ComponentLoader'
@@ -62,49 +63,42 @@ const AlertIcon = ({ cls }: { cls: string }) => (
   </svg>
 )
 
-const STATUS_CONFIG: Record<string, StatusCfg> = {
-  applied:                  { label: 'Applied',   colorClass: 'status--applied',   icon: <SendIcon cls="app-icon status--applied" /> },
-  submitted:                { label: 'Applied',   colorClass: 'status--applied',   icon: <SendIcon cls="app-icon status--applied" /> },
-  pending:                  { label: 'Pending',   colorClass: 'status--pending',   icon: <ClockIcon cls="app-icon status--pending" /> },
-  draft:                    { label: 'Draft',     colorClass: 'status--pending',   icon: <ClockIcon cls="app-icon status--pending" /> },
-  interview:                { label: 'Interview', colorClass: 'status--interview', icon: <EyeIcon cls="app-icon status--interview" /> },
-  offer:                    { label: 'Offer',     colorClass: 'status--offer',     icon: <CheckCircleIcon cls="app-icon status--offer" /> },
-  rejected:                 { label: 'Rejected',  colorClass: 'status--rejected',  icon: <XCircleIcon cls="app-icon status--rejected" /> },
-  external:                 { label: 'Ext. Action', colorClass: 'status--external', icon: <AlertIcon cls="app-icon status--external" /> },
-  'external action needed': { label: 'Ext. Action', colorClass: 'status--external', icon: <AlertIcon cls="app-icon status--external" /> },
+const STATUS_CONFIG: Record<ApplicationStatus, StatusCfg> = {
+  applied:   { label: 'Applied',      colorClass: 'status--applied',   icon: <SendIcon cls="app-icon status--applied" /> },
+  pending:   { label: 'Pending',      colorClass: 'status--pending',   icon: <ClockIcon cls="app-icon status--pending" /> },
+  draft:     { label: 'Draft',        colorClass: 'status--pending',   icon: <ClockIcon cls="app-icon status--pending" /> },
+  interview: { label: 'Interview',    colorClass: 'status--interview', icon: <EyeIcon cls="app-icon status--interview" /> },
+  offer:     { label: 'Offer',        colorClass: 'status--offer',     icon: <CheckCircleIcon cls="app-icon status--offer" /> },
+  rejected:  { label: 'Rejected',     colorClass: 'status--rejected',  icon: <XCircleIcon cls="app-icon status--rejected" /> },
+  external:  { label: 'Ext. Action',  colorClass: 'status--external',  icon: <AlertIcon cls="app-icon status--external" /> },
 }
 
-const PIPELINE_DOTS: Record<string, string> = {
+const PIPELINE_DOTS: Record<ApplicationStatus, string> = {
   offer: '#4ade80', interview: '#fbbf24', applied: '#93c5fd',
-  submitted: '#93c5fd', pending: '#6b7280', draft: '#6b7280',
+  pending: '#6b7280', draft: '#6b7280',
   rejected: '#f87171', external: '#fb923c',
 }
 
-const normalizeStatusKey = (value: string) => {
-  const lower = (value ?? '').trim().toLowerCase()
-  if (lower === 'submitted') return 'applied'
-  if (lower === 'external action needed' || lower === 'ext' || lower === 'ext. action') return 'external'
-  return lower
-}
+const normalizeStatusKey = (value: string) => (value ?? '').trim().toLowerCase()
 
 const statusToStatKey = (value: string): keyof Stats | null => {
-  const key = normalizeStatusKey(value)
-  if (key === 'applied') return 'applied'
-  if (key === 'interview') return 'interviews'
-  if (key === 'offer') return 'offers'
-  if (key === 'rejected') return 'rejected'
-  if (key === 'pending' || key === 'draft') return 'pending'
-  if (key === 'external') return 'external'
+  const key = normalizeStatusKey(value) as ApplicationStatus
+  if (key === ApplicationStatus.APPLIED) return 'applied'
+  if (key === ApplicationStatus.INTERVIEW) return 'interviews'
+  if (key === ApplicationStatus.OFFER) return 'offers'
+  if (key === ApplicationStatus.REJECTED) return 'rejected'
+  if (key === ApplicationStatus.PENDING || key === ApplicationStatus.DRAFT) return 'pending'
+  if (key === ApplicationStatus.EXTERNAL) return 'external'
   return null
 }
 
-const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: 'applied',   label: 'Applied' },
-  { value: 'interview', label: 'Interview' },
-  { value: 'offer',     label: 'Offer' },
-  { value: 'rejected',  label: 'Rejected' },
-  { value: 'draft',     label: 'Draft' },
-  { value: 'external',  label: 'External' },
+const STATUS_OPTIONS: Array<{ value: ApplicationStatus; label: string }> = [
+  { value: ApplicationStatus.APPLIED,   label: 'Applied' },
+  { value: ApplicationStatus.INTERVIEW, label: 'Interview' },
+  { value: ApplicationStatus.OFFER,     label: 'Offer' },
+  { value: ApplicationStatus.REJECTED,  label: 'Rejected' },
+  { value: ApplicationStatus.DRAFT,     label: 'Draft' },
+  { value: ApplicationStatus.EXTERNAL,  label: 'External' },
 ]
 
 function formatDate(dateStr: string) {
@@ -508,7 +502,7 @@ export default function Home() {
                 <div className="apps-scroll">
                   <div className="apps-list">
                     {applications.map(app => {
-                      const statusKey = (app.status ?? '').toLowerCase()
+                      const statusKey = normalizeStatusKey(app.status ?? '')
                       const cfg: StatusCfg = STATUS_CONFIG[statusKey] ?? {
                         label: app.status,
                         colorClass: 'status--pending',

@@ -2,10 +2,11 @@ import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import pdfParse from 'pdf-parse';
 import { randomBytes } from 'crypto';
-import { pool } from '../db/index.ts';
+import { AppError } from '../../errors/AppError.ts';
+import { pool } from '../../db/index.ts';
 import Anthropic from '@anthropic-ai/sdk';
-import { AppError } from '../errors/AppError.ts';
-import { withRetry } from '../utils/retry.ts';
+import { withRetry } from '../../utils/retry.ts';
+import { cacheShortResume } from './ai.resume.service.ts';
 
 const s3Client = new S3Client({
     region: process.env.AWS_REGION || 'us-east-2',
@@ -16,6 +17,15 @@ const s3Client = new S3Client({
     },
 });
 
+/**
+ * Validates the file, generates a presigned S3 PUT URL, and kicks off an async resume save.
+ * The save runs fire-and-forget so the client gets the URL without waiting for DB insertion.
+ * @param user_id - ID of the uploading user
+ * @param file_name - Original filename to store
+ * @param file_type - MIME type; must be application/pdf
+ * @param file_size - File size in bytes; must be ≤ 10 MB
+ * @returns Presigned upload URL, S3 key, generated resumeId, and original filename
+ */
 export const getUploadUrl = async (user_id: string, file_name: string, file_type: string, file_size: number) => {
     const DESIRED_FILE_TYPE = 'application/pdf';
     const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -50,6 +60,10 @@ export const getUploadUrl = async (user_id: string, file_name: string, file_type
     }
 };
 
+/**
+ * Collects an async byte stream into a single Buffer.
+ * Returns an empty Buffer when stream is null (e.g. empty S3 object).
+ */
 const streamToBuffer = async (stream: AsyncIterable<Uint8Array> | null): Promise<Buffer> => {
     if (!stream) return Buffer.alloc(0);
     const chunks: Uint8Array[] = [];
@@ -59,6 +73,11 @@ const streamToBuffer = async (stream: AsyncIterable<Uint8Array> | null): Promise
     return Buffer.concat(chunks);
 };
 
+/**
+ * Downloads a PDF from S3 by key and extracts its plain text via pdf-parse.
+ * Returns an empty string on any error so callers can proceed without text.
+ * @param key - S3 object key of the PDF
+ */
 const extractTextFromPDF = async (key: string): Promise<string> => {
     try {
         const command = new GetObjectCommand({
@@ -76,6 +95,16 @@ const extractTextFromPDF = async (key: string): Promise<string> => {
     }
 };
 
+/**
+ * Extracts text from the uploaded PDF and inserts the resume record into the DB.
+ * Called fire-and-forget from getUploadUrl before the S3 upload completes,
+ * so text may be empty; completeResumeUpload re-extracts after upload finishes.
+ * @param resume_id - UUID for the new resume row
+ * @param key - S3 object key
+ * @param user_id - Owning user ID
+ * @param file_name - Original filename
+ * @param file_size_bytes - File size in bytes
+ */
 const saveResume = async (resume_id: string, key: string, user_id: string, file_name: string, file_size_bytes: number) => {
     try {
         const resume_text = await extractTextFromPDF(key);
@@ -94,6 +123,13 @@ const saveResume = async (resume_id: string, key: string, user_id: string, file_
     }
 };
 
+/**
+ * Marks a resume upload as complete and re-extracts text now that the file is fully in S3.
+ * Requires the resume to exist and not already be marked complete, preventing duplicate completions.
+ * @param resume_id - ID of the resume to complete
+ * @param key - S3 key used as an additional ownership check
+ * @param user_id - Owning user ID
+ */
 export const completeResumeUpload = async (resume_id: string, key: string, user_id: string) => {
     try {
         const existing = await pool.query(
@@ -108,6 +144,7 @@ export const completeResumeUpload = async (resume_id: string, key: string, user_
             `UPDATE resumes SET upload_complete = true, resume_text = $1 WHERE resume_id = $2 RETURNING *`,
             [resume_text, resume_id]
         );
+        cacheShortResume(resume_id);
         return result.rows[0];
     } catch (error) {
         if (error instanceof AppError) throw error;
@@ -115,6 +152,12 @@ export const completeResumeUpload = async (resume_id: string, key: string, user_
     }
 };
 
+/**
+ * Uses Claude Haiku to derive 50 job-related interest topics from the user's latest resume.
+ * 15 of the topics are intentionally outside the resume to surface adjacent interests.
+ * @param user_id - ID of the user whose resume is analyzed
+ * @returns Array of 50 topic strings
+ */
 export const getPossibleInterests = async (user_id: string) => {
     try {
         const result = await pool.query(
@@ -165,6 +208,10 @@ export const getPossibleInterests = async (user_id: string) => {
     }
 };
 
+/**
+ * Retrieves metadata (no full text) for the user's most recently uploaded resume.
+ * @param user_id - ID of the user
+ */
 export const getLatestResume = async (user_id: string) => {
     try {
         const result = await pool.query(
