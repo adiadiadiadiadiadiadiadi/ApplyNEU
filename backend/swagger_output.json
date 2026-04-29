@@ -1,0 +1,801 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "ApplyNEU API",
+    "description": "Backend API for the ApplyNEU job application tracker",
+    "version": "1.0.0"
+  },
+  "host": "localhost:8080",
+  "basePath": "/",
+  "tags": [
+    {
+      "name": "Users",
+      "description": "User account management and preferences"
+    },
+    {
+      "name": "Applications",
+      "description": "Job application lifecycle tracking"
+    },
+    {
+      "name": "Tasks",
+      "description": "Per-application task management"
+    },
+    {
+      "name": "Resumes",
+      "description": "Resume upload and AI-powered analysis"
+    },
+    {
+      "name": "Jobs",
+      "description": "Job listing management"
+    }
+  ],
+  "schemes": [
+    "http"
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/users/new": {
+      "post": {
+        "description": "",
+        "responses": {
+          "default": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/users/{user_id}": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      },
+      "put": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/users/{user_id}/preferences": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      },
+      "put": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/users/{user_id}/interests": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      },
+      "put": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/users/{user_id}/job-types": {
+      "put": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      },
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/users/{user_id}/search-terms": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/users/{user_id}/application-stats": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/resumes/{user_id}/upload-url": {
+      "post": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Resumes"
+        ]
+      }
+    },
+    "/resumes/save-resume": {
+      "post": {
+        "description": "",
+        "responses": {
+          "default": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Resumes"
+        ]
+      }
+    },
+    "/resumes/{user_id}/possible-interests": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Resumes"
+        ]
+      }
+    },
+    "/resumes/{user_id}/latest": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Resumes"
+        ]
+      }
+    },
+    "/jobs/{user_id}/send-job": {
+      "post": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Jobs"
+        ]
+      }
+    },
+    "/jobs/add-job": {
+      "post": {
+        "description": "",
+        "responses": {
+          "default": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Jobs"
+        ]
+      }
+    },
+    "/tasks/{user_id}/new": {
+      "post": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Tasks"
+        ]
+      }
+    },
+    "/tasks/{user_id}/add-instructions": {
+      "post": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Tasks"
+        ]
+      }
+    },
+    "/tasks/{user_id}/application/{application_id}": {
+      "delete": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "application_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Tasks"
+        ]
+      }
+    },
+    "/tasks/{task_id}/complete": {
+      "put": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "default": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Tasks"
+        ]
+      }
+    },
+    "/tasks/{user_id}": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Tasks"
+        ]
+      }
+    },
+    "/applications/{user_id}/new": {
+      "post": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Applications"
+        ]
+      }
+    },
+    "/applications/{user_id}": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Applications"
+        ]
+      }
+    },
+    "/applications/{user_id}/{application_id}/status": {
+      "put": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "application_id",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
+        "tags": [
+          "Applications"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "NewUser": {
+      "type": "object",
+      "properties": {
+        "user_id": {
+          "type": "string",
+          "example": "firebase-uid"
+        },
+        "first_name": {
+          "type": "string",
+          "example": "Jane"
+        },
+        "last_name": {
+          "type": "string",
+          "example": "Doe"
+        },
+        "email": {
+          "type": "string",
+          "example": "jane@northeastern.edu"
+        },
+        "grad_year": {
+          "type": "number",
+          "example": 2026
+        }
+      }
+    },
+    "UpdateUser": {
+      "type": "object",
+      "properties": {
+        "first_name": {
+          "type": "string",
+          "example": "Jane"
+        },
+        "last_name": {
+          "type": "string",
+          "example": "Doe"
+        },
+        "email": {
+          "type": "string",
+          "example": "jane@northeastern.edu"
+        },
+        "grad_year": {
+          "type": "number",
+          "example": 2026
+        }
+      }
+    },
+    "Preferences": {
+      "type": "object",
+      "properties": {
+        "wait_for_approval": {
+          "type": "boolean",
+          "example": false
+        },
+        "recent_jobs": {
+          "type": "boolean",
+          "example": true
+        },
+        "job_match": {
+          "type": "string",
+          "example": "any"
+        },
+        "unpaid_roles": {
+          "type": "boolean",
+          "example": false
+        },
+        "email_notifications": {
+          "type": "boolean",
+          "example": true
+        }
+      }
+    },
+    "NewApplication": {
+      "type": "object",
+      "properties": {
+        "job_id": {
+          "type": "string",
+          "example": "job-uuid"
+        },
+        "status": {
+          "type": "string",
+          "example": "applied"
+        }
+      }
+    },
+    "UpdateApplicationStatus": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "example": "interview"
+        }
+      }
+    },
+    "NewTask": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "example": "Submit cover letter"
+        },
+        "description": {
+          "type": "string",
+          "example": "Write and submit a tailored cover letter"
+        },
+        "application_id": {
+          "type": "string",
+          "example": "app-uuid"
+        }
+      }
+    },
+    "AddInstructions": {
+      "type": "object",
+      "properties": {
+        "employer_instructions": {
+          "type": "string",
+          "example": "Please submit a cover letter and resume via the portal."
+        },
+        "application_id": {
+          "type": "string",
+          "example": "app-uuid"
+        },
+        "company": {
+          "type": "string",
+          "example": "Acme Corp"
+        },
+        "title": {
+          "type": "string",
+          "example": "Software Engineer"
+        }
+      }
+    },
+    "ResumeUploadUrl": {
+      "type": "object",
+      "properties": {
+        "file_name": {
+          "type": "string",
+          "example": "resume.pdf"
+        },
+        "file_type": {
+          "type": "string",
+          "example": "application/pdf"
+        },
+        "file_size": {
+          "type": "number",
+          "example": 102400
+        }
+      }
+    },
+    "SaveResume": {
+      "type": "object",
+      "properties": {
+        "resume_id": {
+          "type": "string",
+          "example": "resume-uuid"
+        },
+        "key": {
+          "type": "string",
+          "example": "s3/path/resume.pdf"
+        },
+        "user_id": {
+          "type": "string",
+          "example": "firebase-uid"
+        }
+      }
+    },
+    "SendJobDescription": {
+      "type": "object",
+      "properties": {
+        "job_description": {
+          "type": "string",
+          "example": "We are looking for a full-stack software engineer..."
+        },
+        "company": {
+          "type": "string",
+          "example": "Acme Corp"
+        },
+        "title": {
+          "type": "string",
+          "example": "Software Engineer Co-op"
+        }
+      }
+    },
+    "AddJob": {
+      "type": "object",
+      "properties": {
+        "company": {
+          "type": "string",
+          "example": "Acme Corp"
+        },
+        "title": {
+          "type": "string",
+          "example": "Software Engineer Co-op"
+        },
+        "description": {
+          "type": "string",
+          "example": "We are looking for a full-stack software engineer..."
+        }
+      }
+    },
+    "UpdateInterests": {
+      "type": "object",
+      "properties": {
+        "interests": {
+          "type": "array",
+          "example": [
+            "software engineering",
+            "machine learning"
+          ],
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "UpdateJobTypes": {
+      "type": "object",
+      "properties": {
+        "job_types": {
+          "type": "array",
+          "example": [
+            "co-op",
+            "full-time"
+          ],
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "UpdateSearchTerms": {
+      "type": "object",
+      "properties": {
+        "resume_id": {
+          "type": "string",
+          "example": "resume-uuid"
+        }
+      }
+    },
+    "Error": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "number",
+          "example": 400
+        },
+        "message": {
+          "type": "string",
+          "example": "Validation error message"
+        }
+      }
+    }
+  }
+}

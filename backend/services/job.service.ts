@@ -9,6 +9,11 @@ type EmployerInstruction = { instruction: string; description: string };
 
 const NON_REQUIRED_TASK_PATTERN = /\b(ad[\s-]?block(?:er)?|pop[\s-]?up(?: blocker)?|clear (?:your )?cache|cookies?|switch (?:to )?(?:another|different) browser|disable (?:browser )?extensions?|enable javascript|incognito|private mode|vpn|proxy|firewall|antivirus|troubleshoot|workaround|tip|optional|recommended|preference)\b/i;
 
+/**
+ * Filters and deduplicates a raw list of employer instruction objects.
+ * Strips items that match NON_REQUIRED_TASK_PATTERN (browser tips, optional advice, etc.)
+ * and any instruction/description pair that is an exact case-insensitive duplicate.
+ */
 const normalizeEmployerInstructions = (input: any): EmployerInstruction[] => {
   if (!Array.isArray(input)) return [];
 
@@ -28,6 +33,17 @@ const normalizeEmployerInstructions = (input: any): EmployerInstruction[] => {
     .filter((v: EmployerInstruction | null): v is EmployerInstruction => !!v);
 };
 
+/**
+ * Sends a job description to Claude Haiku to decide APPLY/DO_NOT_APPLY using the user's
+ * cached short resume and their job_match sensitivity preference (low/medium/high).
+ * Also extracts any required external application steps from the posting.
+ * Relies on short_resume being pre-cached; throws 404 if it hasn't been generated yet.
+ * @param user_id - User evaluating the job
+ * @param job_description - Full text of the job posting
+ * @param company - Company name for prompt context and instruction formatting
+ * @param title - Job title for prompt context
+ * @returns AI decision and normalized list of required employer instructions
+ */
 export const sendJobDescription = async (user_id: string, job_description: string, company?: string, title?: string) => {
   try {
     const resumeResult = await pool.query(
@@ -160,6 +176,14 @@ export const sendJobDescription = async (user_id: string, job_description: strin
   }
 };
 
+/**
+ * Inserts a job, deduplicating on (company, title). On conflict, fetches and returns
+ * the existing row instead of inserting — the DO NOTHING clause means RETURNING would
+ * otherwise give no rows.
+ * @param company - Company name
+ * @param title - Job title
+ * @param description - Full job description text
+ */
 export const addJob = async (company: string, title: string, description: string) => {
   try {
     const result = await pool.query(
@@ -167,21 +191,12 @@ export const addJob = async (company: string, title: string, description: string
         INSERT INTO jobs (company, title, description)
         VALUES ($1, $2, $3)
         ON CONFLICT (company, title)
-        DO NOTHING
+        DO UPDATE SET description = EXCLUDED.description
         RETURNING *;
       `,
       [company, title, description]
     );
-
-    if (!result.rows.length) {
-      const existing = await pool.query(
-        `SELECT * FROM jobs WHERE company = $1 AND title = $2 LIMIT 1;`,
-        [company, title]
-      );
-      if (!existing.rows.length) throw new AppError(500, 'Job already exists but could not be retrieved.');
-      return existing.rows[0];
-    }
-
+    if (!result.rows[0]) throw new AppError(500, 'Error creating job.');
     return result.rows[0];
   } catch (error) {
     if (error instanceof AppError) throw error;

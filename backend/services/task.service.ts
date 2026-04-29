@@ -8,6 +8,13 @@ type EmployerInstruction = { instruction: string; description: string };
 const NON_REQUIRED_TASK_PATTERN =
     /\b(ad[\s-]?block(?:er)?|pop[\s-]?up(?: blocker)?|clear (?:your )?cache|cookies?|switch (?:to )?(?:another|different) browser|disable (?:browser )?extensions?|enable javascript|incognito|private mode|vpn|proxy|firewall|antivirus|troubleshoot|workaround|tip|optional|recommended|preference)\b/i;
 
+/**
+ * Inserts a single task for a user, optionally linked to a job application.
+ * @param user_id - Owning user ID
+ * @param text - Short action label (imperative form)
+ * @param description - Detailed description or URL
+ * @param application_id - Optional application to associate the task with
+ */
 export const addTask = async (user_id: string, text: string, description: string, application_id?: string) => {
     try {
         const columns = ['user_id', 'text', 'description'];
@@ -35,6 +42,18 @@ export const addTask = async (user_id: string, text: string, description: string
     }
 };
 
+/**
+ * Sends raw employer instruction text to Claude Haiku, which extracts only REQUIRED
+ * application steps (external portals, assessments, emails). Optional/browser tips are
+ * filtered out by both the prompt and NON_REQUIRED_TASK_PATTERN before insertion.
+ * Individual task insertion failures are swallowed so one bad row doesn't abort the batch.
+ * @param user_id - User the tasks belong to
+ * @param employer_instructions - Raw text copied from the job posting
+ * @param application_id - Optional application to link tasks to
+ * @param company - Company name injected into the AI prompt for context
+ * @param title - Job title injected into the AI prompt for context
+ * @returns Normalized instruction list and the DB rows that were successfully inserted
+ */
 export const addInstructions = async (user_id: string, employer_instructions: string, application_id?: string, company?: string, title?: string) => {
     try {
         const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -158,6 +177,13 @@ export const addInstructions = async (user_id: string, employer_instructions: st
     }
 };
 
+/**
+ * Flips a task's completed state. When a task is marked complete, checks whether all
+ * remaining tasks for the linked application are done; if so, auto-advances the
+ * application status from 'external' to 'applied'. Status promotion errors are swallowed
+ * to avoid breaking the toggle response.
+ * @param task_id - UUID of the task to toggle
+ */
 export const toggleTask = async (task_id: string) => {
     try {
         const result = await pool.query(
@@ -203,6 +229,11 @@ export const toggleTask = async (task_id: string) => {
     }
 };
 
+/**
+ * Fetches all tasks for a user, ordered oldest-first.
+ * @param user_id - Owning user ID
+ * @param includeCompleted - When true, includes completed tasks; defaults to pending-only
+ */
 export const getTasks = async (user_id: string, includeCompleted = false) => {
     try {
         const result = await pool.query(
@@ -222,6 +253,10 @@ export const getTasks = async (user_id: string, includeCompleted = false) => {
     }
 };
 
+/**
+ * Fetches incomplete (pending) tasks for a user across all applications.
+ * @param user_id - Owning user ID
+ */
 export const getCompletedTasksForApplication = async (user_id: string) => {
     try {
         const result = await pool.query(
@@ -239,6 +274,12 @@ export const getCompletedTasksForApplication = async (user_id: string) => {
     }
 };
 
+/**
+ * Deletes all tasks associated with a specific application for a user.
+ * Typically called when an application is removed or reset.
+ * @param user_id - Owning user ID (prevents cross-user deletion)
+ * @param application_id - Application whose tasks should be deleted
+ */
 export const deleteTasksForApplication = async (user_id: string, application_id: string) => {
     try {
         await pool.query(

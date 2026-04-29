@@ -1,6 +1,15 @@
 import { pool } from '../../db/index.ts';
 import { AppError } from '../../errors/AppError.ts';
 
+/**
+ * Creates a user, their profile row, and a default preferences row atomically.
+ * Uses a transaction with explicit ROLLBACK so all three inserts succeed or none do.
+ * @param user_id - User's UUID
+ * @param first_name - User's first name
+ * @param last_name - User's last name
+ * @param email - User's email address
+ * @param grad_year - Expected graduation year
+ */
 export const addUser = async (user_id: string, first_name: string, last_name: string, email: string, grad_year: number) => {
     const client = await pool.connect();
     try {
@@ -37,6 +46,10 @@ export const addUser = async (user_id: string, first_name: string, last_name: st
     }
 };
 
+/**
+ * Fetches a user record joined with their profile row.
+ * @param user_id - ID of the user to retrieve
+ */
 export const getUser = async (user_id: string) => {
     try {
         const result = await pool.query(
@@ -55,6 +68,10 @@ export const getUser = async (user_id: string) => {
     }
 };
 
+/**
+ * Retrieves all preference settings for a user.
+ * @param user_id - ID of the user
+ */
 export const getUserPreferences = async (user_id: string) => {
     try {
         const result = await pool.query(
@@ -73,6 +90,10 @@ export const getUserPreferences = async (user_id: string) => {
     }
 };
 
+/**
+ * Retrieves the user's stored interest topics from their profile.
+ * @param user_id - ID of the user
+ */
 export const getUserInterests = async (user_id: string) => {
     try {
         const result = await pool.query(
@@ -87,6 +108,10 @@ export const getUserInterests = async (user_id: string) => {
     }
 };
 
+/**
+ * Retrieves the AI-generated job search terms cached on the user's latest resume.
+ * @param user_id - ID of the user
+ */
 export const getSearchTerms = async (user_id: string) => {
     try {
         const result = await pool.query(
@@ -101,6 +126,10 @@ export const getSearchTerms = async (user_id: string) => {
     }
 };
 
+/**
+ * Retrieves the user's preferred job types from preferences.
+ * @param user_id - ID of the user
+ */
 export const getJobTypes = async (user_id: string) => {
     try {
         const result = await pool.query(
@@ -115,6 +144,11 @@ export const getJobTypes = async (user_id: string) => {
     }
 };
 
+/**
+ * Replaces the user's interest topics array in their profile.
+ * @param user_id - ID of the user
+ * @param interests - Full replacement array of interest topic strings
+ */
 export const updateUserInterests = async (user_id: string, interests: string[]) => {
     try {
         const result = await pool.query(
@@ -132,6 +166,11 @@ export const updateUserInterests = async (user_id: string, interests: string[]) 
     }
 };
 
+/**
+ * Replaces the user's preferred job types array in preferences.
+ * @param user_id - ID of the user
+ * @param job_types - Full replacement array of job type strings
+ */
 export const updateJobType = async (user_id: string, job_types: string[]) => {
     try {
         const result = await pool.query(
@@ -149,6 +188,15 @@ export const updateJobType = async (user_id: string, job_types: string[]) => {
     }
 };
 
+/**
+ * Updates a user's email and profile fields atomically.
+ * Uses a transaction so that a profile update failure rolls back the email change too.
+ * @param user_id - ID of the user to update
+ * @param first_name - Updated first name
+ * @param last_name - Updated last name
+ * @param email - Updated email address
+ * @param grad_year - Updated graduation year
+ */
 export const updateUser = async (user_id: string, first_name: string, last_name: string, email: string, grad_year: number) => {
     const client = await pool.connect();
     try {
@@ -177,6 +225,16 @@ export const updateUser = async (user_id: string, first_name: string, last_name:
     }
 };
 
+/**
+ * Partially updates user preferences. Any parameter left undefined is preserved
+ * via SQL COALESCE, so callers only need to pass the fields they want to change.
+ * @param user_id - ID of the user
+ * @param wait_for_approval - Whether to hold jobs for manual approval before acting
+ * @param recent_jobs - Recency filter setting for job recommendations
+ * @param job_match - Match sensitivity: 'low' | 'medium' | 'high'
+ * @param unpaid_roles - Whether to include unpaid roles in recommendations
+ * @param email_notifications - Whether to send email notifications
+ */
 export const updateUserPreferences = async (
     user_id: string,
     wait_for_approval?: boolean,

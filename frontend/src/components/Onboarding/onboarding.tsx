@@ -11,6 +11,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   const [loading, setLoading] = useState(false)
   const [stepError, setStepError] = useState<string | null>(null)
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
+  const [resumeId, setResumeId] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [interests, setInterests] = useState<string[]>([])
   const [selectedInterests, setSelectedInterests] = useState<string[]>([])
@@ -49,17 +50,10 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     try {
       const response = await fetch(`http://localhost:8080/users/${userId}/interests`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          interests: selectedInterests
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ interests: selectedInterests })
       })
-      
       if (response.ok) {
-        
-        // Update search terms after saving interests
         return await updateSearchTerms(userId)
       }
       return false
@@ -88,18 +82,14 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   }
 
   const updateSearchTerms = async (userId: string): Promise<boolean> => {
+    if (!resumeId) return false
     try {
       const response = await fetch(`http://localhost:8080/users/${userId}/search-terms`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resume_id: resumeId })
       })
-      
-      if (response.ok) {
-        return true
-      }
-      return false
+      return response.ok
     } catch (error) {
       console.error('Error updating search terms:', error)
       return false
@@ -173,35 +163,29 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         })
 
         if (response.ok) {
-          const { uploadUrl, key, resumeId } = await response.json()
+          const { uploadUrl, key, resumeId: newResumeId } = await response.json()
 
           const uploadResponse = await fetch(uploadUrl, {
             method: 'PUT',
-            headers: {
-              'Content-Type': uploadedFile.type,
-            },
+            headers: { 'Content-Type': uploadedFile.type },
             body: uploadedFile
           })
 
           if (uploadResponse.ok) {
             const saveResponse = await fetch('http://localhost:8080/resumes/save-resume', {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
+              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                resume_id: resumeId,
+                resume_id: newResumeId,
                 key: key,
                 user_id: user.id,
                 file_name: uploadedFile.name,
                 file_size_bytes: uploadedFile.size
               })
             })
-            
+
             if (saveResponse.ok) {
-              // Cache short resume
-              await fetch(`http://localhost:8080/users/${user.id}/cache-short-resume`, { method: 'POST' })
-              // Fetch interests before advancing to step 4
+              setResumeId(newResumeId)
               await fetchInterests(user.id)
             }
           } else {

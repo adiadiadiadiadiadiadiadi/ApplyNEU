@@ -12,6 +12,9 @@ import asyncHandler from './middleware/handlers/asyncHandler.ts';
 const applicationController = (): express.Router => {
     const router = express.Router();
 
+    /** POST /:user_id/new
+     * create or upsert a job application; status advances forward-only via enum ordering.
+    **/
     const addApplicationRoute = async (req: AddApplicationRequest, res: Response) => {
         const { user_id } = req.params;
         const { job_id, status } = req.body;
@@ -19,6 +22,7 @@ const applicationController = (): express.Router => {
         res.status(200).json(result);
     };
 
+    /** PUT /:user_id/:application_id/status — update the status of an existing application owned by the user. */
     const updateApplicationStatusRoute = async (req: UpdateApplicationStatusRequest, res: Response) => {
         const { user_id, application_id } = req.params;
         const { status } = req.body;
@@ -26,6 +30,7 @@ const applicationController = (): express.Router => {
         res.status(200).json(result);
     };
 
+    /** GET /:user_id — return all applications for the user, joined with job details, ordered by most recent. */
     const getApplicationsRoute = async (req: GetApplicationsRequest, res: Response) => {
         const { user_id } = req.params;
         const result = await getUserApplications(user_id);

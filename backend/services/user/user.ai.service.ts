@@ -5,7 +5,14 @@ import { withRetry } from '../../utils/retry.ts';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-const generateSearchTerms = async (user_id: string) => {
+/**
+ * Uses Claude Haiku to generate 10 job-board search terms from the user's resume text
+ * and stored interests. Terms are intentionally broad to maximize search results on
+ * platforms like NUworks. Results are ordered by relevance priority.
+ * @param resume_id - ID of the specific resume to generate terms for
+ * @returns Array of up to 10 search term strings
+ */
+const generateSearchTerms = async (resume_id: string) => {
     try {
         const result = await pool.query(
             `
@@ -14,11 +21,9 @@ const generateSearchTerms = async (user_id: string) => {
                 p.interests
             FROM resumes r
             JOIN profile p ON p.user_id = r.user_id
-            WHERE r.user_id = $1
-            ORDER BY r.created_at DESC
-            LIMIT 1;
+            WHERE r.resume_id = $1;
             `,
-            [user_id]
+            [resume_id]
         );
 
         if (!result.rows.length) throw new AppError(404, 'Resume not found.');
@@ -88,102 +93,22 @@ const generateSearchTerms = async (user_id: string) => {
     }
 };
 
-export const updateSearchTerms = async (user_id: string) => {
-    const search_terms = await generateSearchTerms(user_id);
+/**
+ * Persists search terms to the specified resume row.
+ * @param resume_id - ID of the resume to store search terms for
+ */
+export const getSearchTerms = async (resume_id: string) => {
+    const search_terms = await generateSearchTerms(resume_id);
 
     try {
         const result = await pool.query(
-            `
-            UPDATE resumes SET search_terms = $1
-            WHERE resume_id = 
-                (SELECT resume_id FROM resumes 
-                WHERE user_id = $2 
-                ORDER BY created_at 
-                DESC LIMIT 1)
-            RETURNING *;
-            `,
-            [search_terms, user_id]
+            `UPDATE resumes SET search_terms = $1 WHERE resume_id = $2 RETURNING *;`,
+            [search_terms, resume_id]
         );
         if (result.rows.length === 0) throw new AppError(404, 'Resume not found.');
         return result.rows[0];
     } catch (error) {
         if (error instanceof AppError) throw error;
         throw new AppError(500, 'Error updating search terms.');
-    }
-};
-
-export const cacheShortResume = async (user_id: string) => {
-    try {
-        const result = await pool.query(
-            `SELECT * FROM resumes WHERE user_id::text = $1 ORDER BY created_at DESC LIMIT 1;`,
-            [user_id]
-        );
-        if (!result.rows.length) throw new AppError(404, 'Resume not found.');
-        const resumeText = result.rows[0].resume_text;
-
-        const message = await withRetry(() => anthropic.messages.create({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 1024,
-            messages: [{
-                role: 'user',
-                content:
-                    `
-                You are summarizing a resume for automated job matching.
-
-                Rules:
-                - Extract only factual information explicitly stated in the resume
-                - Do NOT infer or guess
-                - Do NOT include placeholders like "unknown"
-                - No fluff, opinions, formatting, or markdown
-                - Keep under 250 tokens
-
-                If seniority level is not explicitly stated, infer it using role titles:
-                    - Intern → Entry-level
-                    - New Graduate / Junior → Entry-level
-                    - Software Engineer → Mid-level
-                    - Senior / Lead / Staff → Senior-level
-                    - Founder / Co-founder only does NOT imply seniority
-
-                Return ONLY the following JSON fields:
-                - skills: array of strings containing ONLY skills explicitly mentioned
-                - role_titles: array of strings
-                - seniority_level: string (empty if not stated)
-                - domains: array of strings
-
-                If a field has no data, return an empty array or empty string.
-
-                RESUME:
-                ${resumeText}
-
-                This is NOT markdown.
-                Return ONLY the JSON of information, nothing else. There should be no extra whitespace, punctuation, or markdown characters.
-                `
-            }]
-        }));
-
-        if (!message.content[0] || message.content[0].type !== 'text') {
-            throw new AppError(502, 'Error with API.');
-        }
-
-        const shortened_resume = JSON.parse(
-            message.content[0].text
-                .replace(/```json/g, '')
-                .replace(/```/g, '')
-                .replace(/`/g, '')
-                .trim()
-        );
-
-        const updated = await pool.query(
-            `
-            UPDATE resumes SET short_resume = $1 WHERE user_id = $2
-            RETURNING *;
-            `,
-            [shortened_resume, user_id]
-        );
-        if (updated.rows.length === 0) throw new AppError(404, 'Resume not found.');
-        return updated.rows[0];
-    } catch (error) {
-        if (error instanceof AppError) throw error;
-        throw new AppError(500, 'Error caching shortened resume.');
     }
 };

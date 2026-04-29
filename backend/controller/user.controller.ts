@@ -6,8 +6,6 @@ import type {
   UpdatePreferencesRequest,
   UpdateInterestsRequest,
   UpdateJobTypesRequest,
-  UpdateSearchTermsRequest,
-  CacheShortResumeRequest,
   GetJobTypesRequest,
   GetSearchTermsRequest,
   GetUserInterestsRequest,
@@ -26,7 +24,6 @@ import {
   updateUserInterests,
   updateUserPreferences,
 } from '../services/user/user.service.ts';
-import { cacheShortResume, updateSearchTerms } from '../services/user/user.ai.service.ts';
 import { getUserApplicationStats } from '../services/application.service.ts';
 import type { ApplicationStatsRequest } from '../types/applications.ts';
 import asyncHandler from './middleware/handlers/asyncHandler.ts';
@@ -34,18 +31,21 @@ import asyncHandler from './middleware/handlers/asyncHandler.ts';
 const userController = () => {
   const router = express.Router();
 
+  /** POST /new — register a new user account. */
   const addUserRoute = async (req: PostUserRequest, res: Response) => {
     const { user_id, first_name, last_name, email, grad_year } = req.body;
     const user = await addUser(user_id, first_name, last_name, email, grad_year);
     res.status(200).json(user);
   };
 
+  /** GET /:user_id — fetch a user's profile. */
   const getUserRoute = async (req: UserIdRequest, res: Response) => {
     const { user_id } = req.params;
     const user = await getUser(user_id);
     res.status(200).json(user);
   };
 
+  /** PUT /:user_id — update a user's basic profile fields. */
   const updateUserRoute = async (req: PutUserRequest, res: Response) => {
     const { user_id } = req.params;
     const { first_name, last_name, email, grad_year } = req.body;
@@ -53,12 +53,14 @@ const userController = () => {
     res.status(200).json(user);
   };
 
+  /** GET /:user_id/preferences — return the user's job-matching preferences. */
   const getPreferencesRoute = async (req: UserIdRequest, res: Response) => {
     const { user_id } = req.params;
     const prefs = await getUserPreferences(user_id);
     res.status(200).json(prefs);
   };
 
+  /** PUT /:user_id/preferences — update job-matching preference flags for the user. */
   const updatePreferencesRoute = async (req: UpdatePreferencesRequest, res: Response) => {
     const { user_id } = req.params;
     const { wait_for_approval, recent_jobs, job_match, unpaid_roles, email_notifications } = req.body;
@@ -66,24 +68,28 @@ const userController = () => {
     res.status(200).json(prefs);
   };
 
+  /** GET /:user_id/interests — return the user's saved interest tags. */
   const getUserInterestsRoute = async (req: GetUserInterestsRequest, res: Response) => {
     const { user_id } = req.params;
     const result = await getUserInterests(user_id);
     res.status(200).json(result);
   };
 
+  /** GET /:user_id/search-terms — return the AI-generated search terms derived from the user's resume. */
   const getSearchTermsRoute = async (req: GetSearchTermsRequest, res: Response) => {
     const { user_id } = req.params;
     const result = await getSearchTerms(user_id);
     res.status(200).json(result);
   };
 
+  /** GET /:user_id/job-types — return the job types (co-op, full-time, etc.) the user is targeting. */
   const getJobTypesRoute = async (req: GetJobTypesRequest, res: Response) => {
     const { user_id } = req.params;
     const result = await getJobTypes(user_id);
     res.status(200).json(result);
   };
 
+  /** PUT /:user_id/interests — replace the user's interest tags. */
   const updateUserInterestsRoute = async (req: UpdateInterestsRequest, res: Response) => {
     const { user_id } = req.params;
     const { interests } = req.body;
@@ -91,12 +97,7 @@ const userController = () => {
     res.status(200).json(result);
   };
 
-  const updateSearchTermsRoute = async (req: UpdateSearchTermsRequest, res: Response) => {
-    const { user_id } = req.params;
-    const result = await updateSearchTerms(user_id);
-    res.status(200).json(result);
-  };
-
+  /** PUT /:user_id/job-types — update the job types the user is targeting. */
   const updateJobTypeRoute = async (req: UpdateJobTypesRequest, res: Response) => {
     const { user_id } = req.params;
     const { job_types } = req.body;
@@ -104,12 +105,7 @@ const userController = () => {
     res.status(200).json(result);
   };
 
-  const cacheShortResumeRoute = async (req: CacheShortResumeRequest, res: Response) => {
-    const { user_id } = req.params;
-    const result = await cacheShortResume(user_id);
-    res.status(200).json(result);
-  };
-
+  /** GET /:user_id/application-stats — return aggregate application counts broken down by status. */
   const getApplicationStatsRoute = async (req: ApplicationStatsRequest, res: Response) => {
     const { user_id } = req.params;
     const stats = await getUserApplicationStats(user_id);
@@ -125,9 +121,7 @@ const userController = () => {
   router.put('/:user_id/interests', validateUpdateInterests, requireUser, asyncHandler(updateUserInterestsRoute));
   router.put('/:user_id/job-types', validateUpdateJobTypes, requireUser, asyncHandler(updateJobTypeRoute));
   router.get('/:user_id/job-types', validateUserIdParam, requireUser, asyncHandler(getJobTypesRoute));
-  router.put('/:user_id/search-terms', validateUserIdParam, requireUser, asyncHandler(updateSearchTermsRoute));
   router.get('/:user_id/search-terms', validateUserIdParam, requireUser, asyncHandler(getSearchTermsRoute));
-  router.post('/:user_id/cache-short-resume', validateUserIdParam, requireUser, asyncHandler(cacheShortResumeRoute));
   router.get('/:user_id/application-stats', validateUserIdParam, requireUser, asyncHandler(getApplicationStatsRoute));
 
   return router;

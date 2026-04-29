@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import './automation.css'
 import { waitForSelector, waitForLegend, waitForSearchBar, playAlertSound } from './automationHelpers'
 import { getUserId } from '../../lib/supabase'
+import { ApplicationStatus } from '../../lib/types'
 
 export default function Automation() {
   const [status, setStatus] = useState<'idle' | 'running' | 'paused' | 'error'>('idle')
@@ -1169,9 +1170,9 @@ export default function Automation() {
                   if (data.decision === 'APPLY') {
                     consecutiveDoNotApply = 0
                     addLog(`Decision: apply.`)
-                    let applicationRecordedStatus: 'draft' | 'applied' | 'external' | null = null
+                    let applicationRecordedStatus: ApplicationStatus | null = null
                 let pendingModalInstructionText: string | null = null
-                    const recordApplication = async (status: 'draft' | 'applied' | 'external') => {
+                    const recordApplication = async (status: ApplicationStatus) => {
                       const userIdForApplication = await getUserId()
                       if (!userIdForApplication) return currentJobApplicationIdRef.current
                       if (applicationRecordedStatus === status && currentJobApplicationIdRef.current) {
@@ -1208,7 +1209,7 @@ export default function Automation() {
                       } catch (err) {}
                       return currentJobApplicationIdRef.current
                     }
-                    await recordApplication('draft')
+                    await recordApplication(ApplicationStatus.DRAFT)
                     const waitForApproval = await loadUserPreferences()
                     if (waitForApproval) {
                       addLog(`Waiting for approval before applying to ${titleStr}...`)
@@ -1571,7 +1572,7 @@ export default function Automation() {
                             portfolioChecked = true
                             }
                             if (skipJob) {
-                              await recordApplication('draft')
+                              await recordApplication(ApplicationStatus.DRAFT)
                               await closeModalIfPresent(webview)
                               break
                             }
@@ -1633,7 +1634,7 @@ export default function Automation() {
                             setStatus('running')
                             await waitForDividerSubmissionAndClose(webview)
                             if (skipJob) {
-                              await recordApplication('draft')
+                              await recordApplication(ApplicationStatus.DRAFT)
                               await closeModalIfPresent(webview, preferHeadlessClose)
                               break
                             }
@@ -1846,7 +1847,7 @@ export default function Automation() {
                               }
                             }
                     if (skipJob) {
-                      await recordApplication('draft')
+                      await recordApplication(ApplicationStatus.DRAFT)
                       await closeModalIfPresent(webview)
                       break
                     }
@@ -1913,7 +1914,7 @@ export default function Automation() {
                             }
                             await waitForDividerSubmissionAndClose(webview)
                           if (skipJob) {
-                            await recordApplication('draft')
+                            await recordApplication(ApplicationStatus.DRAFT)
                             await closeModalIfPresent(webview, preferHeadlessClose)
                             break
                           }
@@ -1921,14 +1922,14 @@ export default function Automation() {
                           break
                         }
                          if (skipJob) {
-                           await recordApplication('draft')
+                           await recordApplication(ApplicationStatus.DRAFT)
                            await closeModalIfPresent(webview, preferHeadlessClose)
                            break
                          }
                           await sleep(50)
                       }
                       if (skipJob) {
-                        await recordApplication('draft')
+                        await recordApplication(ApplicationStatus.DRAFT)
                         await closeModalIfPresent(webview, preferHeadlessClose)
                         continue
                       }
@@ -1971,7 +1972,7 @@ export default function Automation() {
                             })
                           }
                         } catch (err) {}
-                        await recordApplication(submitClickedForApplication && needsExternalAction ? 'external' : 'draft')
+                        await recordApplication(submitClickedForApplication && needsExternalAction ? ApplicationStatus.EXTERNAL : ApplicationStatus.DRAFT)
                         await closeModalIfPresent(webview, preferHeadlessClose)
                         // Wait for the "One more thing..." modal to appear, click through, then continue.
                         for (let m = 0; m < 20; m++) {
@@ -2062,8 +2063,8 @@ export default function Automation() {
                       }
                       const statusToRecord =
                         !submitClickedForApplication
-                          ? 'draft'
-                          : (hasExternalTasks ? 'external' : 'applied')
+                          ? ApplicationStatus.DRAFT
+                          : (hasExternalTasks ? ApplicationStatus.EXTERNAL : ApplicationStatus.APPLIED)
                       await recordApplication(statusToRecord)
                     }
                   } else if (data.decision === 'DO_NOT_APPLY') {
