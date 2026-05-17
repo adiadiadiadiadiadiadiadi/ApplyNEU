@@ -6,7 +6,6 @@ import { AppError } from '../../errors/AppError.ts';
 import { pool } from '../../db/index.ts';
 import Anthropic from '@anthropic-ai/sdk';
 import { withRetry } from '../../utils/retry.ts';
-import { cacheShortResume } from './ai.resume.service.ts';
 
 const s3Client = new S3Client({
     region: process.env.AWS_REGION || 'us-east-2',
@@ -107,14 +106,13 @@ const extractTextFromPDF = async (key: string): Promise<string> => {
  */
 const saveResume = async (resume_id: string, key: string, user_id: string, file_name: string, file_size_bytes: number) => {
     try {
-        const resume_text = await extractTextFromPDF(key);
         const result = await pool.query(
             `
             INSERT INTO resumes (resume_id, key, user_id, file_name, file_size_bytes, resume_text)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            VALUES ($1, $2, $3, $4, $5, '')
             RETURNING *;
             `,
-            [resume_id, key, user_id, file_name, file_size_bytes, resume_text]
+            [resume_id, key, user_id, file_name, file_size_bytes]
         );
         return result.rows[0];
     } catch (error) {
@@ -144,7 +142,6 @@ export const completeResumeUpload = async (resume_id: string, key: string, user_
             `UPDATE resumes SET upload_complete = true, resume_text = $1 WHERE resume_id = $2 RETURNING *`,
             [resume_text, resume_id]
         );
-        cacheShortResume(resume_id);
         return result.rows[0];
     } catch (error) {
         if (error instanceof AppError) throw error;
@@ -158,11 +155,11 @@ export const completeResumeUpload = async (resume_id: string, key: string, user_
  * @param user_id - ID of the user whose resume is analyzed
  * @returns Array of 50 topic strings
  */
-export const getPossibleInterests = async (user_id: string) => {
+export const getPossibleInterests = async (resume_id: string) => {
     try {
         const result = await pool.query(
-            `SELECT resume_text FROM resumes WHERE user_id::text = $1 ORDER BY created_at DESC LIMIT 1;`,
-            [user_id]
+            `SELECT resume_text FROM resumes WHERE resume_id = $1 LIMIT 1;`,
+            [resume_id]
         );
         if (!result.rows.length) throw new AppError(404, 'Resume not found.');
         const resumeText = result.rows[0].resume_text;
@@ -201,10 +198,67 @@ export const getPossibleInterests = async (user_id: string) => {
             throw new AppError(502, 'Error with API.');
         }
 
+        console.log(message.content[0].text);
+
         return JSON.parse(message.content[0].text);
     } catch (error) {
         if (error instanceof AppError) throw error;
         throw new AppError(500, 'Error extracting interests from resume.');
+    }
+};
+
+/**
+ * Retrieves the interest tags stored on a specific resume.
+ * @param resume_id - ID of the resume
+ */
+export const getResumeInterests = async (resume_id: string) => {
+    try {
+        const result = await pool.query(
+            `SELECT interests FROM resumes WHERE resume_id = $1;`,
+            [resume_id]
+        );
+        if (result.rows.length === 0) throw new AppError(404, 'Resume not found.');
+        return result.rows[0];
+    } catch (error) {
+        if (error instanceof AppError) throw error;
+        throw new AppError(500, 'Error fetching interests.');
+    }
+};
+
+/**
+ * Replaces the interest tags on a specific resume.
+ * @param resume_id - ID of the resume
+ * @param interests - Full replacement array of interest topic strings
+ */
+export const updateResumeInterests = async (resume_id: string, interests: string[]) => {
+    try {
+        const result = await pool.query(
+            `UPDATE resumes SET interests = $1 WHERE resume_id = $2 RETURNING *;`,
+            [interests, resume_id]
+        );
+        if (result.rows.length === 0) throw new AppError(404, 'Resume not found.');
+        return result.rows[0];
+    } catch (error) {
+        if (error instanceof AppError) throw error;
+        throw new AppError(500, 'Error updating interests.');
+    }
+};
+
+/**
+ * Retrieves the search terms stored on a specific resume.
+ * @param resume_id - ID of the resume
+ */
+export const getResumeSearchTerms = async (resume_id: string) => {
+    try {
+        const result = await pool.query(
+            `SELECT search_terms FROM resumes WHERE resume_id = $1;`,
+            [resume_id]
+        );
+        if (result.rows.length === 0) throw new AppError(404, 'Resume not found.');
+        return result.rows[0];
+    } catch (error) {
+        if (error instanceof AppError) throw error;
+        throw new AppError(500, 'Error fetching search terms.');
     }
 };
 

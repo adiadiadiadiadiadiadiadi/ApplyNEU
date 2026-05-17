@@ -15,14 +15,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const generateSearchTerms = async (resume_id: string) => {
     try {
         const result = await pool.query(
-            `
-            SELECT
-                r.resume_text,
-                p.interests
-            FROM resumes r
-            JOIN profile p ON p.user_id = r.user_id
-            WHERE r.resume_id = $1;
-            `,
+            `SELECT resume_text, interests FROM resumes WHERE resume_id = $1;`,
             [resume_id]
         );
 

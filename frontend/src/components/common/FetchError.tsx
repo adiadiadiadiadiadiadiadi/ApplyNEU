@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { navigateTo } from '../../lib/navigation'
+import { supabase } from '../../lib/supabase'
 
 type FetchErrorState = {
   message: string | null
@@ -27,6 +28,7 @@ export const FetchErrorProvider = ({ children }: { children: React.ReactNode }) 
       try {
         const res = await originalFetch(...args)
         if (res.status === 401) {
+          await supabase.auth.signOut()
           navigateTo('/401')
           return res
         }

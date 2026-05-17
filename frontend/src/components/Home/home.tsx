@@ -208,7 +208,7 @@ export default function Home() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setLoadingStats(false); return }
     try {
-      const resp = await fetch(`http://localhost:8080/applications/${user.id}/stats`)
+      const resp = await fetch(`http://localhost:8080/users/${user.id}/application-stats`)
       if (resp.ok) {
         const d = await resp.json()
         setStats({
@@ -357,11 +357,7 @@ export default function Home() {
   return (
     <>
       <button onClick={handleLogout} className="logout-button" title="Logout">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-          <polyline points="16 17 21 12 16 7"></polyline>
-          <line x1="21" y1="12" x2="9" y2="12"></line>
-        </svg>
+        logout
       </button>
 
       <div className="home-dashboard stagger-children">

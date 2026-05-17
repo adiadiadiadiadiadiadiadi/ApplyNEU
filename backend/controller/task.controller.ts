@@ -6,10 +6,11 @@ import type {
   GetTasksRequest,
   ClearTasksRequest,
 } from '../types/tasks.ts';
-import { addInstructions, addTask, toggleTask, getTasks, deleteTasksForApplication } from '../services/task.service.ts';
+import { addTask, toggleTask, getTasks, deleteTasksForApplication } from '../services/task/task.service.ts';
 import { validateAddTask, validateAddInstructions, validateTaskIdParam, validateUserIdParam, validateClearTasks } from './middleware/validators/task.validate.ts';
 import { requireUser } from './middleware/requireUser.ts';
 import asyncHandler from './middleware/handlers/asyncHandler.ts';
+import { addInstructions } from '../services/task/ai.task.service.ts';
 
 const taskController = () => {
   const router = express.Router();

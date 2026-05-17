@@ -1,17 +1,23 @@
 import request from 'supertest';
 import { app } from '../app.ts';
 
-jest.mock('../services/user.service.ts', () => ({
+jest.mock('../services/user/user.service.ts', () => ({
   addUser: jest.fn(),
   getUser: jest.fn(),
   updateUser: jest.fn(),
+}));
+
+jest.mock('../services/preference.service.ts', () => ({
   getUserPreferences: jest.fn(),
   updateUserPreferences: jest.fn(),
   getUserInterests: jest.fn(),
   updateUserInterests: jest.fn(),
   updateJobType: jest.fn(),
   getJobTypes: jest.fn(),
-  updateSearchTerms: jest.fn(),
+  getSearchTerms: jest.fn(),
+}));
+
+jest.mock('../services/user/user.ai.service.ts', () => ({
   getSearchTerms: jest.fn(),
   cacheShortResume: jest.fn(),
 }));
@@ -38,50 +44,45 @@ describe('PUT /users/:user_id', () => {
   it.todo('returns 401 when user does not exist');
 });
 
-describe('GET /users/:user_id/preferences', () => {
+describe('GET /preferences/:user_id', () => {
   it.todo('returns 200 and preference flags');
   it.todo('returns 401 when user does not exist');
 });
 
-describe('PUT /users/:user_id/preferences', () => {
+describe('PUT /preferences/:user_id', () => {
   it.todo('returns 200 and updated preferences');
   it.todo('returns 401 when user does not exist');
 });
 
-describe('GET /users/:user_id/interests', () => {
+describe('GET /preferences/:user_id/interests', () => {
   it.todo('returns 200 and list of interests');
   it.todo('returns 401 when user does not exist');
 });
 
-describe('PUT /users/:user_id/interests', () => {
+describe('PUT /preferences/:user_id/interests', () => {
   it.todo('returns 200 and updated interests');
   it.todo('returns 400 when interests field is missing');
   it.todo('returns 401 when user does not exist');
 });
 
-describe('PUT /users/:user_id/job-types', () => {
+describe('PUT /preferences/:user_id/job-types', () => {
   it.todo('returns 200 and updated job types');
   it.todo('returns 400 when job_types field is missing');
   it.todo('returns 401 when user does not exist');
 });
 
-describe('GET /users/:user_id/job-types', () => {
+describe('GET /preferences/:user_id/job-types', () => {
   it.todo('returns 200 and list of job types');
   it.todo('returns 401 when user does not exist');
 });
 
-describe('PUT /users/:user_id/search-terms', () => {
+describe('PUT /preferences/:user_id/search-terms', () => {
   it.todo('returns 200 after regenerating search terms');
   it.todo('returns 401 when user does not exist');
 });
 
-describe('GET /users/:user_id/search-terms', () => {
+describe('GET /preferences/:user_id/search-terms', () => {
   it.todo('returns 200 and list of search terms');
-  it.todo('returns 401 when user does not exist');
-});
-
-describe('POST /users/:user_id/cache-short-resume', () => {
-  it.todo('returns 200 after caching the short resume');
   it.todo('returns 401 when user does not exist');
 });
 

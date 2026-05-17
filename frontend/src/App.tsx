@@ -87,6 +87,7 @@ function OnboardingRoutes({ onComplete }: { onComplete: () => void }) {
   return (
     <Routes>
       <Route path="/onboarding" element={<Onboarding onComplete={onComplete} />} />
+      <Route path="/401" element={<Unauthorized />} />
       <Route path="*" element={<Navigate to="/onboarding" replace />} />
     </Routes>
   )
@@ -104,7 +105,7 @@ function AppRoutes() {
         <Route path="/settings" element={<Settings />} />
       </Route>
       <Route path="/401" element={<Unauthorized />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<NotFound />} />
     </Routes>
   )
 }
@@ -204,11 +205,17 @@ function App() {
     )
   }
 
-  const content = <NotFound />
-
   return (
     <FetchErrorProvider>
-      {content}
+      {user ? (
+        showOnboarding ? (
+          <OnboardingRoutes onComplete={handleOnboardingComplete} />
+        ) : (
+          <AppRoutes />
+        )
+      ) : (
+        <AuthRoutes authError={authError} />
+      )}
     </FetchErrorProvider>
   )
 }
