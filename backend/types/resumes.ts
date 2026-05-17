@@ -22,5 +22,5 @@ export interface ResumeSaveRequest extends Request {
   };
 }
 
-export type PossibleInterestsRequest = Request<{ user_id: string }>;
+export type PossibleInterestsRequest = Request<{ resume_id: string }>;
 export type LatestResumeRequest = Request<{ user_id: string }>;

@@ -13,6 +13,7 @@ import resumeController from './controller/resume.controller.ts';
 import jobController from './controller/job.controller.ts';
 import taskController from './controller/task.controller.ts';
 import applicationController from './controller/application.controller.ts';
+import preferenceController from './controller/preference.controller.ts';
 import errorHandler from './controller/middleware/handlers/errorHandler.ts';
 
 const PORT = 8080;
@@ -21,6 +22,13 @@ const app = express();
 const server = http.createServer(app);
 
 function startServer() {
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`Port ${PORT} is already in use. Kill the process and retry.`);
+      process.exit(1);
+    }
+    throw err;
+  });
   server.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
   });
@@ -37,6 +45,7 @@ app.use(cors());
 app.use(express.json());
 
 app.use('/users', userController());
+app.use('/preferences', preferenceController());
 app.use('/resumes', resumeController());
 app.use('/jobs', jobController());
 app.use('/tasks', taskController());

@@ -33,14 +33,3 @@ export const validateUpdateUser = [
     handleValidation,
 ];
 
-export const validateUpdateInterests = [
-    param('user_id').notEmpty().withMessage('user_id is required.'),
-    body('interests').notEmpty().withMessage('interests is required.'),
-    handleValidation,
-];
-
-export const validateUpdateJobTypes = [
-    param('user_id').notEmpty().withMessage('user_id is required.'),
-    body('job_types').notEmpty().withMessage('job_types is required.'),
-    handleValidation,
-];
