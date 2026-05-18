@@ -1,45 +1,22 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
 import './profile.css'
 import '../Onboarding/onboarding.css'
 
 type LocationState = {
   interests?: string[]
+  resumeId?: string
 }
 
 export default function ProfileInterests() {
   const navigate = useNavigate()
   const location = useLocation()
   const locationState = (location.state as LocationState) ?? {}
-  const [userId, setUserId] = useState('')
-  const [interests, setInterests] = useState<string[]>(locationState.interests ?? [])
+  const resumeId = locationState.resumeId ?? ''
+  const [interests] = useState<string[]>(locationState.interests ?? [])
   const [selectedInterests, setSelectedInterests] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    const init = async () => {
-      const { data } = await supabase.auth.getUser()
-      const user = data.user
-      if (!user) return
-      setUserId(user.id)
-
-      if (!locationState.interests || locationState.interests.length === 0) {
-        try {
-          const resp = await fetch(`http://localhost:8080/resumes/${user.id}/possible-interests`)
-          if (resp.ok) {
-            const list = await resp.json()
-            setInterests(list)
-          }
-        } catch (err) {
-          console.error('Failed fetching interests', err)
-        }
-      }
-    }
-
-    void init()
-  }, [locationState.interests])
 
   const toggleInterest = (interest: string) => {
     setSelectedInterests((prev) =>
@@ -48,11 +25,11 @@ export default function ProfileInterests() {
   }
 
   const saveInterests = async () => {
-    if (!userId || selectedInterests.length === 0) return
+    if (!resumeId || selectedInterests.length === 0) return
     setLoading(true)
     setError(null)
     try {
-      const saveResp = await fetch(`http://localhost:8080/users/${userId}/interests`, {
+      const saveResp = await fetch(`http://localhost:8080/resumes/${resumeId}/interests`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ interests: selectedInterests }),
@@ -60,7 +37,7 @@ export default function ProfileInterests() {
       if (!saveResp.ok) {
         throw new Error('Unable to save interests')
       }
-      const searchResp = await fetch(`http://localhost:8080/users/${userId}/search-terms`, {
+      const searchResp = await fetch(`http://localhost:8080/resumes/${resumeId}/search-terms`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
       })

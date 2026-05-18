@@ -63,7 +63,14 @@ export const fetchUserProfile = createAsyncThunk<UserProfile, void, { rejectValu
       }
 
       const userRow = await response.json()
-      const jobMatchRaw = (userRow.job_match ?? 'medium').toString().toLowerCase()
+
+      let prefsRow: Record<string, unknown> = {}
+      try {
+        const prefsResp = await fetch(`http://localhost:8080/preferences/${user.id}`)
+        if (prefsResp.ok) prefsRow = await prefsResp.json()
+      } catch { /* proceed with defaults */ }
+
+      const jobMatchRaw = (prefsRow.job_match ?? 'medium').toString().toLowerCase()
       const job_match: UserProfile['job_match'] =
         jobMatchRaw === 'high' ? 'high' : jobMatchRaw === 'low' ? 'low' : 'medium'
 
@@ -73,14 +80,11 @@ export const fetchUserProfile = createAsyncThunk<UserProfile, void, { rejectValu
         lastName: (userRow.last_name ?? '').toString(),
         email: (userRow.email ?? user.email ?? '').toString(),
         gradYear: (userRow.grad_year ?? '').toString(),
-        waitForApproval: toBool(userRow.wait_for_approval ?? userRow.waitForApproval, true),
-        recent_jobs: toBool(userRow.recent_jobs ?? userRow.recentJobs, true),
+        waitForApproval: toBool(prefsRow.wait_for_approval, true),
+        recent_jobs: toBool(prefsRow.recent_jobs, true),
         job_match,
-        unpaid_roles: toBool(userRow.unpaid_roles ?? userRow.upaid_roles, false),
-        email_notifications: toBool(
-          userRow.email_notifications ?? userRow.email_notificatios ?? userRow.emailNotifications,
-          true
-        ),
+        unpaid_roles: toBool(prefsRow.unpaid_roles, false),
+        email_notifications: toBool(prefsRow.email_notifications, true),
       }
     } catch (err) {
       console.error('fetchUserProfile failed', err)
@@ -98,7 +102,7 @@ export const saveUserPreferences = createAsyncThunk<
   if (!userId) return rejectWithValue('No user loaded')
 
   try {
-    const response = await fetch(`http://localhost:8080/users/${userId}/preferences`, {
+    const response = await fetch(`http://localhost:8080/preferences/${userId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

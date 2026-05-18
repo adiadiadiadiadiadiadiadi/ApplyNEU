@@ -3,351 +3,51 @@ import type {
   PostUserRequest,
   PutUserRequest,
   UserIdRequest,
-  UpdatePreferencesRequest,
-  UpdateInterestsRequest,
-  UpdateJobTypesRequest,
-  UpdateSearchTermsRequest,
-  CacheShortResumeRequest,
-  GetJobTypesRequest,
-  GetSearchTermsRequest,
-  GetUserInterestsRequest,
 } from '../types/users.ts';
-import { validateAddUser, validateUserIdParam, validateUpdateUser, validateUpdateInterests, validateUpdateJobTypes } from './middleware/user.validate.ts';
+import { validateAddUser, validateUserIdParam, validateUpdateUser } from './middleware/validators/user.validate.ts';
 import { requireUser } from './middleware/requireUser.ts';
-import {
-  addUser,
-  cacheShortResume,
-  getJobTypes,
-  getSearchTerms,
-  getUser,
-  getUserInterests,
-  getUserPreferences,
-  updateJobType,
-  updateSearchTerms,
-  updateUser,
-  updateUserInterests,
-  updateUserPreferences,
-} from '../services/user.service.ts';
+import { addUser, getUser, updateUser } from '../services/user/user.service.ts';
+import { getUserApplicationStats } from '../services/application.service.ts';
+import type { ApplicationStatsRequest } from '../types/applications.ts';
+import asyncHandler from './middleware/handlers/asyncHandler.ts';
 
-/**
- * This controller handles user-related routes.
- * 
- * @returns {express.Router} The router object containing the words routes.
- */
 const userController = () => {
   const router = express.Router();
 
-  /**
-   * Create a new user.
-   * @param req body with user fields
-   */
+  /** POST /new — register a new user account. */
   const addUserRoute = async (req: PostUserRequest, res: Response) => {
     const { user_id, first_name, last_name, email, grad_year } = req.body;
-
-    try {
-      const user = await addUser(user_id, first_name, last_name, email, grad_year);
-
-      if ('error' in user) {
-        res.status(400).json({
-          "message": "Unable to post user."
-        });
-        return;
-      }
-      res.status(200).json(user);
-    } catch (err: unknown) {
-      res.status(400).json({
-        "message": "Unable to post user."
-      });
-    }
+    const user = await addUser(user_id, first_name, last_name, email, grad_year);
+    res.status(200).json(user);
   };
 
-  /**
-   * Fetch a user by id.
-   * @param req params.user_id
-   */
+  /** GET /:user_id — fetch a user's profile. */
   const getUserRoute = async (req: UserIdRequest, res: Response) => {
     const { user_id } = req.params;
-
-    try {
-      const user = await getUser(user_id);
-
-      if ('error' in user) {
-        res.status(404).json({
-          "message": `User not found for id ${user_id}.`
-        });
-        return;
-      }
-      res.status(200).json(user);
-    } catch (err: unknown) {
-      res.status(400).json({
-        "message": `Unable to get user ${user_id}.`
-      });
-    }
+    const user = await getUser(user_id);
+    res.status(200).json(user);
   };
 
-  /**
-   * Update core user fields.
-   * @param req params.user_id, body user payload
-   */
+  /** PUT /:user_id — update a user's basic profile fields. */
   const updateUserRoute = async (req: PutUserRequest, res: Response) => {
     const { user_id } = req.params;
     const { first_name, last_name, email, grad_year } = req.body;
-
-    try {
-      const user = await updateUser(user_id, first_name, last_name, email, grad_year);
-
-      if ('error' in user) {
-        res.status(400).json({
-          "message": "Unable to update user."
-        });
-        return;
-      }
-      res.status(200).json(user);
-    } catch (err: unknown) {
-      res.status(400).json({
-        "message": "Unable to update user."
-      });
-    }
+    const user = await updateUser(user_id, first_name, last_name, email, grad_year);
+    res.status(200).json(user);
   };
 
-  /**
-   * Retrieve preference flags.
-   * @param req params.user_id
-   */
-  const getPreferencesRoute = async (req: UserIdRequest, res: Response) => {
+  /** GET /:user_id/application-stats — return aggregate application counts broken down by status. */
+  const getApplicationStatsRoute = async (req: ApplicationStatsRequest, res: Response) => {
     const { user_id } = req.params;
-
-    try {
-      const prefs = await getUserPreferences(user_id);
-
-      if ('error' in prefs) {
-        res.status(404).json({
-          "message": "Preferences not found."
-        });
-        return;
-      }
-      res.status(200).json(prefs);
-    } catch (err: unknown) {
-      res.status(400).json({
-        "message": "Unable to get preferences."
-      });
-    }
+    const stats = await getUserApplicationStats(user_id);
+    res.status(200).json(stats);
   };
 
-  /**
-   * Update preference flags.
-   * @param req params.user_id, body preference fields
-   */
-  const updatePreferencesRoute = async (req: UpdatePreferencesRequest, res: Response) => {
-    const { user_id } = req.params;
-    const { wait_for_approval, recent_jobs, job_match, unpaid_roles, email_notifications } = req.body;
+  router.post('/new', validateAddUser, asyncHandler(addUserRoute));
+  router.get('/:user_id', validateUserIdParam, asyncHandler(getUserRoute));
+  router.put('/:user_id', validateUpdateUser, requireUser, asyncHandler(updateUserRoute));
+  router.get('/:user_id/application-stats', validateUserIdParam, requireUser, asyncHandler(getApplicationStatsRoute));
 
-    try {
-      const prefs = await updateUserPreferences(
-        user_id,
-        wait_for_approval,
-        recent_jobs,
-        job_match,
-        unpaid_roles,
-        email_notifications
-      );
-
-      if ('error' in prefs) {
-        res.status(400).json({
-          "message": "Unable to update preferences."
-        });
-        return;
-      }
-      res.status(200).json(prefs);
-    } catch (err: unknown) {
-      res.status(400).json({
-        "message": "Unable to update preferences."
-      });
-    }
-  };
-
-  /**
-   * Get stored interests.
-   * @param req params.user_id
-   */
-  const getUserInterestsRoute = async (req: GetUserInterestsRequest, res: Response) => {
-    const { user_id } = req.params;
-
-    try {
-      const result = await getUserInterests(user_id);
-
-      if ('error' in result) {
-        res.status(400).json({
-          "message": "Unable to get interests."
-        });
-        return;
-      }
-      res.status(200).json(result);
-    } catch (err: unknown) {
-      res.status(400).json({
-        "message": "Unable to get interests."
-      });
-    }
-  };
-
-  /**
-   * Get stored search terms.
-   * @param req params.user_id
-   */
-  const getSearchTermsRoute = async (req: GetSearchTermsRequest, res: Response) => {
-    const { user_id } = req.params;
-
-    try {
-      const result = await getSearchTerms(user_id);
-
-      if ('error' in result) {
-        res.status(400).json({
-          "message": "Unable to get search terms."
-        });
-        return;
-      }
-      res.status(200).json(result);
-    } catch (err: unknown) {
-      res.status(400).json({
-        "message": "Unable to get search terms."
-      });
-    }
-  };
-
-  /**
-   * Get stored job types.
-   * @param req params.user_id
-   */
-  const getJobTypesRoute = async (req: GetJobTypesRequest, res: Response) => {
-    const { user_id } = req.params;
-
-    try {
-      const result = await getJobTypes(user_id);
-
-      if ('error' in result) {
-        res.status(400).json({
-          "message": "Unable to get job types."
-        });
-        return;
-      }
-      res.status(200).json(result);
-    } catch (err: unknown) {
-      res.status(400).json({
-        "message": "Unable to get job types."
-      });
-    }
-  }
-
-  /**
-   * Update interests list.
-   * @param req params.user_id, body interests array
-   */
-  const updateUserInterestsRoute = async (req: UpdateInterestsRequest, res: Response) => {
-    const { user_id } = req.params;
-    const { interests } = req.body;
-
-    try {
-      const result = await updateUserInterests(user_id, interests);
-
-      if ('error' in result) {
-        res.status(400).json({
-          "message": "Unable to update interests."
-        });
-        return;
-      }
-      res.status(200).json(result);
-    } catch (err: unknown) {
-      res.status(400).json({
-        "message": "Unable to update interests."
-      });
-    }
-  };
-
-  /**
-   * Regenerate search terms from resume + interests.
-   * @param req params.user_id
-   */
-  const updateSearchTermsRoute = async (req: UpdateSearchTermsRequest, res: Response) => {
-    const { user_id } = req.params;
-
-    try {
-      const result = await updateSearchTerms(user_id);
-
-      if ('error' in result) {
-        res.status(400).json({
-          "message": "Unable to update search terms."
-        });
-        return;
-      }
-      res.status(200).json(result);
-    } catch (err: unknown) {
-      res.status(400).json({
-        "message": "Unable to update search terms."
-      });
-    }
-  };
-
-  /**
-   * Update preferred job types.
-   * @param req params.user_id, body job_types array
-   */
-  const updateJobTypeRoute = async (req: UpdateJobTypesRequest, res: Response) => {
-    const { user_id } = req.params;
-    const { job_types } = req.body;
-
-    try {
-      const result = await updateJobType(user_id, job_types);
-
-      if ('error' in result) {
-        res.status(400).json({
-          "message": "Unable to update job types."
-        });
-        return;
-      }
-      res.status(200).json(result);
-    } catch (err: unknown) {
-      res.status(400).json({
-        "message": "Unable to update job types."
-      });
-    }
-  }
-
-  /**
-   * Cache short resume summary.
-   * @param req params.user_id
-   */
-  const cacheShortResumeRoute = async (req: CacheShortResumeRequest, res: Response) => {
-    const { user_id } = req.params;
-
-    try {
-      const result = await cacheShortResume(user_id);
-
-      if ('error' in result) {
-        res.status(400).json({
-          "message": "Unable to cache resume."
-        });
-        return;
-      }
-      res.status(200).json(result);
-    } catch (err: unknown) {
-      res.status(400).json({
-        "message": "Unable to cache resume."
-      });
-    }
-  }
-
-  router.post('/new', validateAddUser, addUserRoute);
-  router.get('/:user_id', validateUserIdParam, getUserRoute);
-  router.put('/:user_id', validateUpdateUser, requireUser, updateUserRoute);
-  router.get('/:user_id/preferences', validateUserIdParam, requireUser, getPreferencesRoute);
-  router.put('/:user_id/preferences', validateUserIdParam, requireUser, updatePreferencesRoute);
-  router.get('/:user_id/interests', validateUserIdParam, requireUser, getUserInterestsRoute);
-  router.put('/:user_id/interests', validateUpdateInterests, requireUser, updateUserInterestsRoute);
-  router.put('/:user_id/job-types', validateUpdateJobTypes, requireUser, updateJobTypeRoute);
-  router.get('/:user_id/job-types', validateUserIdParam, requireUser, getJobTypesRoute);
-  router.put('/:user_id/search-terms', validateUserIdParam, requireUser, updateSearchTermsRoute);
-  router.get('/:user_id/search-terms', validateUserIdParam, requireUser, getSearchTermsRoute);
-  router.post('/:user_id/cache-short-resume', validateUserIdParam, requireUser, cacheShortResumeRoute);
   return router;
 };
 

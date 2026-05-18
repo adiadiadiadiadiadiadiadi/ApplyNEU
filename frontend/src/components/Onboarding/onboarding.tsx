@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import './onboarding.css'
 
@@ -7,19 +8,21 @@ interface OnboardingProps {
 }
 
 export default function Onboarding({ onComplete }: OnboardingProps) {
+  const navigate = useNavigate()
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [stepError, setStepError] = useState<string | null>(null)
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
+  const [resumeId, setResumeId] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [interests, setInterests] = useState<string[]>([])
   const [selectedInterests, setSelectedInterests] = useState<string[]>([])
   const jobTypes = ['Co-op', 'Full Time / Part Time', 'Internship']
   const [selectedJobTypes, setSelectedJobTypes] = useState<string[]>([])
 
-  const fetchInterests = async (userId: string) => {
+  const fetchInterests = async (resumeId: string) => {
     try {
-      const response = await fetch(`http://localhost:8080/resumes/${userId}/possible-interests`)
+      const response = await fetch(`http://localhost:8080/resumes/${resumeId}/possible-interests`)
       if (response.ok) {
         const data = await response.json()
         setInterests(data)
@@ -45,22 +48,15 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     )
   }
 
-  const saveInterests = async (userId: string): Promise<boolean> => {
+  const saveInterests = async (resumeId: string): Promise<boolean> => {
     try {
-      const response = await fetch(`http://localhost:8080/users/${userId}/interests`, {
+      const response = await fetch(`http://localhost:8080/resumes/${resumeId}/interests`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          interests: selectedInterests
-        })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ interests: selectedInterests })
       })
-      
       if (response.ok) {
-        
-        // Update search terms after saving interests
-        return await updateSearchTerms(userId)
+        return await updateSearchTerms(resumeId)
       }
       return false
     } catch (error) {
@@ -71,7 +67,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
   const updateJobTypes = async (userId: string): Promise<boolean> => {
     try {
-      const response = await fetch(`http://localhost:8080/users/${userId}/job-types`, {
+      const response = await fetch(`http://localhost:8080/preferences/${userId}/job-types`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -87,19 +83,13 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     }
   }
 
-  const updateSearchTerms = async (userId: string): Promise<boolean> => {
+  const updateSearchTerms = async (resumeId: string): Promise<boolean> => {
     try {
-      const response = await fetch(`http://localhost:8080/users/${userId}/search-terms`, {
+      const response = await fetch(`http://localhost:8080/resumes/${resumeId}/search-terms`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        }
+        headers: { 'Content-Type': 'application/json' },
       })
-      
-      if (response.ok) {
-        return true
-      }
-      return false
+      return response.ok
     } catch (error) {
       console.error('Error updating search terms:', error)
       return false
@@ -137,7 +127,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
         setLoading(false)
-        setStepError('unable to find your account session. please try again.')
+        navigate('/401')
         return
       }
       const updated = await updateJobTypes(user.id)
@@ -160,7 +150,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       }
 
       try {
-        const response = await fetch('http://localhost:8080/resumes/upload-url', {
+        const response = await fetch(`http://localhost:8080/resumes/upload/${user.id}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -173,36 +163,30 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         })
 
         if (response.ok) {
-          const { uploadUrl, key, resumeId } = await response.json()
+          const { uploadUrl, key, resumeId: newResumeId } = await response.json()
 
           const uploadResponse = await fetch(uploadUrl, {
             method: 'PUT',
-            headers: {
-              'Content-Type': uploadedFile.type,
-            },
+            headers: { 'Content-Type': uploadedFile.type },
             body: uploadedFile
           })
 
           if (uploadResponse.ok) {
-            const saveResponse = await fetch('http://localhost:8080/resumes/save-resume', {
+            const saveResponse = await fetch('http://localhost:8080/resumes/save', {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
+              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                resume_id: resumeId,
+                resume_id: newResumeId,
                 key: key,
                 user_id: user.id,
                 file_name: uploadedFile.name,
                 file_size_bytes: uploadedFile.size
               })
             })
-            
+
             if (saveResponse.ok) {
-              // Cache short resume
-              await fetch(`http://localhost:8080/users/${user.id}/cache-short-resume`, { method: 'POST' })
-              // Fetch interests before advancing to step 4
-              await fetchInterests(user.id)
+              setResumeId(newResumeId)
+              await fetchInterests(newResumeId)
             }
           } else {
             setLoading(false)
@@ -235,10 +219,15 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
       setLoading(false)
-      setStepError('unable to find your account session. please try again.')
+      navigate('/401')
       return
     }
-    const saved = await saveInterests(user.id)
+    if (!resumeId) {
+      setLoading(false)
+      setStepError('resume not found. please try again.')
+      return
+    }
+    const saved = await saveInterests(resumeId)
     if (!saved) {
       setLoading(false)
       setStepError('could not save interests/search terms. please try again.')

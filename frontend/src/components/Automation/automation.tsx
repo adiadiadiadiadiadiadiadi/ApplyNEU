@@ -1,7 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import './automation.css'
-import { waitForSelector, waitForLegend, waitForSearchBar, playAlertSound } from './automationHelpers'
+import {
+  waitForSelector, waitForLegend, waitForSearchBar, playAlertSound,
+  withTitleSuffix, toBool, buildTaskKey,
+  normalizeEmployerInstructions, closeModalIfPresent,
+  waitForDividerSubmissionAndClose, waitForModalOpen, applyPanelFilters,
+} from './automationHelpers'
+import type { EmployerInstruction } from './automationHelpers'
 import { getUserId } from '../../lib/supabase'
+import { ApplicationStatus } from '../../lib/types'
 
 export default function Automation() {
   const [status, setStatus] = useState<'idle' | 'running' | 'paused' | 'error'>('idle')
@@ -33,25 +40,12 @@ export default function Automation() {
     }
   }
 
-  const cleanTitle = (title: string | undefined) => {
-    if (!title) return ''
-    const atSplit = title.split(' @ ')[0] || title
-    return atSplit.trim()
-  }
-  const withTitleSuffix = (title: string | undefined, text: string) => {
-    const cleaned = cleanTitle(title)
-    return cleaned ? `${text} (${cleaned})` : text
-  }
-
-  const toBool = (value: unknown, fallback = true) =>
-    value === undefined || value === null ? fallback : value === true || value === 'true'
-
   async function loadUserPreferences() {
     if (preferencesLoadedRef.current) return waitForApprovalRef.current
     const userId = await getUserId()
     if (!userId) return waitForApprovalRef.current
     try {
-      const resp = await fetch(`http://localhost:8080/users/${userId}`)
+      const resp = await fetch(`http://localhost:8080/preferences/${userId}`)
       if (resp.ok) {
         const data = await resp.json().catch(() => ({}))
         waitForApprovalRef.current = toBool(data.wait_for_approval ?? data.waitForApproval, true)
@@ -88,22 +82,24 @@ export default function Automation() {
     }
   }
 
-  async function handleNoCoverLetter(
+  async function handleMissingDocument(
+    type: 'cover letter' | 'work sample' | 'portfolio' | 'transcript',
     companyName: string,
-    webview: any,
     userId: string | undefined,
     applicationId?: string | null,
-    jobTitle?: string
+    jobTitle?: string,
+    webview?: any
   ) {
-    addLog(`No cover letter found for ${companyName}.`)
+    addLog(`No ${type} found for ${companyName}.`)
     if (!userId) {
       addLog(`Error occured.`)
       return
     }
-    const text = `Upload ${companyName} cover letter`
+    const text = `Upload ${companyName} ${type}`
+    const article = type === 'cover letter' ? 'your' : 'a'
     const description = withTitleSuffix(
       jobTitle,
-      `Upload your ${companyName} cover letter in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}.'`
+      `Upload ${article} ${companyName} ${type} in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
     )
     const key = buildTaskKey(text, applicationId)
     if (!existingTasksRef.current.has(key)) {
@@ -118,211 +114,9 @@ export default function Automation() {
         existingTasksRef.current.add(key)
       }
     }
-    await webview.executeJavaScript(`
-      (() => {
-        const btn =
-          document.querySelector('button.modal-close') ||
-          document.querySelector('button.headless-close-btn') ||
-          Array.from(document.querySelectorAll('button')).find(b => {
-            const cls = (b.className || '').toLowerCase();
-            return cls.includes('modal-close') || cls.includes('headless-close-btn');
-          });
-        if (btn) {
-          btn.scrollIntoView({ behavior: 'instant', block: 'center' });
-          if (typeof btn.click === 'function') btn.click();
-          else btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-          return true;
-        }
-        return false;
-      })();
-    `)
-  }
-
-  async function handleNoWorkSample(
-    companyName: string,
-    userId: string | undefined,
-    applicationId?: string | null,
-    jobTitle?: string
-  ) {
-    addLog(`No work sample found for ${companyName}.`)
-    if (!userId) {
-      addLog(`Error occured.`)
-      return
+    if (webview) {
+      await closeModalIfPresent(webview)
     }
-    const text = `Upload ${companyName} work sample`
-    const description = withTitleSuffix(
-      jobTitle,
-      `Upload a work sample for ${companyName} in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
-    )
-    const key = buildTaskKey(text, applicationId)
-    if (existingTasksRef.current.has(key)) {
-      return
-    }
-    const resp = await fetch(`http://localhost:8080/tasks/${userId}/new`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, description, application_id: applicationId ?? undefined })
-    })
-    if (!resp.ok) {
-      addLog('Error occured while creating task.')
-      return
-    }
-    existingTasksRef.current.add(key)
-  }
-
-  async function handleNoPortfolio(
-    companyName: string,
-    userId: string | undefined,
-    applicationId?: string | null,
-    jobTitle?: string
-  ) {
-    addLog(`No portfolio found for ${companyName}.`)
-    if (!userId) {
-      addLog(`Error occured.`)
-      return
-    }
-    const text = `Upload ${companyName} portfolio`
-    const description = withTitleSuffix(
-      jobTitle,
-      `Upload a portfolio for ${companyName} in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
-    )
-    const key = buildTaskKey(text, applicationId)
-    if (existingTasksRef.current.has(key)) {
-      return
-    }
-    const resp = await fetch(`http://localhost:8080/tasks/${userId}/new`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, description, application_id: applicationId ?? undefined })
-    })
-    if (!resp.ok) {
-      addLog('Error occured while creating task.')
-      return
-    }
-    existingTasksRef.current.add(key)
-  }
-
-  async function handleNoTranscript(
-    companyName: string,
-    userId: string | undefined,
-    applicationId?: string | null,
-    jobTitle?: string
-  ) {
-    addLog(`No transcript found for ${companyName}.`)
-    if (!userId) {
-      addLog(`Error occured.`)
-      return
-    }
-    const text = `Upload ${companyName} transcript`
-    const description = withTitleSuffix(
-      jobTitle,
-      `Upload a transcript for ${companyName} in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
-    )
-    const key = buildTaskKey(text, applicationId)
-    if (existingTasksRef.current.has(key)) {
-      return
-    }
-    const resp = await fetch(`http://localhost:8080/tasks/${userId}/new`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, description, application_id: applicationId ?? undefined })
-    })
-    if (!resp.ok) {
-      addLog('Error occured while creating task.')
-      return
-    }
-    existingTasksRef.current.add(key)
-  }
-
-  const closeModalIfPresent = async (webview: any, preferHeadless = false) => {
-    return webview.executeJavaScript(`
-      (() => {
-        const ordered =
-          ${preferHeadless ? `[ 'button.headless-close-btn', 'button.modal-close' ]` : `[ 'button.modal-close', 'button.headless-close-btn' ]`};
-        const btn =
-          ordered
-            .map(sel => document.querySelector(sel))
-            .find(Boolean) ||
-          Array.from(document.querySelectorAll('button')).find(b => {
-            const cls = (b.className || '').toLowerCase();
-            return cls.includes('modal-close') || cls.includes('headless-close-btn');
-          });
-        if (!btn) return false;
-        btn.scrollIntoView({ behavior: 'instant', block: 'center' });
-        if (typeof btn.click === 'function') btn.click();
-        else btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-        return true;
-      })();
-    `)
-  }
-
-  const waitForDividerSubmissionAndClose = async (webview: any) => {
-    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
-    let detectedLogged = false
-    for (let i = 0; i < 24; i++) { // up to ~6s
-      const res = await webview.executeJavaScript(`
-        (() => {
-          const modalEl = document.querySelector('div.job-success-modal') || document.querySelector('div.job-success-modal.padding-lg');
-          const hasSuccessText = Array.from(document.querySelectorAll('p, h1, h2, h3, h4, div, span'))
-            .some(el => ((el.innerText || el.textContent || '').toLowerCase().includes('your application has been submitted')));
-          if (!modalEl && !hasSuccessText) {
-            return { detected: false, closed: false };
-          }
-          const candidates = [
-            'button.headless-close-btn',
-            'button.modal-close',
-            'button[aria-label="Close"]',
-            'button[aria-label="close"]',
-            'button[title*="lose"]',
-            'button[title*="Close"]',
-          ];
-          let btn = null;
-          for (const sel of candidates) {
-            const el = document.querySelector(sel);
-            if (el) { btn = el; break; }
-          }
-          if (!btn) {
-            btn = Array.from(document.querySelectorAll('button, [role="button"]')).find(el => {
-              const text = (el.innerText || el.textContent || '').trim().toLowerCase();
-              const cls = (el.className || '').toLowerCase();
-              return text === '×' || text === 'x' || text === 'close' || cls.includes('headless-close-btn') || cls.includes('modal-close');
-            }) || null;
-          }
-          if (btn) {
-            btn.scrollIntoView({ behavior: 'instant', block: 'center' });
-            if (typeof btn.click === 'function') btn.click();
-            else btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-            return { detected: true, closed: true };
-          }
-          return { detected: true, closed: false };
-        })();
-      `)
-      if (res?.closed) {
-        return true
-      }
-      if (res?.detected && !detectedLogged) {
-        detectedLogged = true
-      }
-      await sleep(250)
-    }
-    return false
-  }
-
-  const waitForModalOpen = async (webview: any) => {
-    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
-    for (let i = 0; i < 20; i++) { // ~3s max
-      const open = await webview.executeJavaScript(`
-        (() => {
-          const modal = document.querySelector('div.modal-content') || document.querySelector('div[role="dialog"]');
-          const how = document.querySelector('#how-to-apply') || document.querySelector('p#how-to-apply');
-          const visible = (el) => el && (el.offsetParent !== null || el.getClientRects().length > 0);
-          return !!(visible(modal) || visible(how));
-        })();
-      `)
-      if (open) return true
-      await sleep(150)
-    }
-    return false
   }
 
   useEffect(() => {
@@ -351,7 +145,13 @@ export default function Automation() {
           }
         } catch (err) {}
 
-        const response = await fetch(`http://localhost:8080/users/${userId}/search-terms`)
+        const latestResumeResp = await fetch(`http://localhost:8080/resumes/${userId}/latest`)
+        if (!latestResumeResp.ok) { addLog('Error occured. Could not fetch resume. Retrying...'); return; }
+        const latestResume = await latestResumeResp.json()
+        const resumeId = latestResume?.resume_id
+        if (!resumeId) { addLog('No resume found. Retrying...'); return; }
+
+        const response = await fetch(`http://localhost:8080/resumes/${resumeId}/search-terms`)
         if (!response.ok) { addLog('Error occured. Could not fetch search terms. Retrying...'); return; }
 
         const data = await response.json()
@@ -395,9 +195,6 @@ export default function Automation() {
     setLogs(prev => [...prev, `[${timestamp}] ${message}`])
   }
 
-  const buildTaskKey = (text: string, applicationId?: string | null) =>
-    `${applicationId ?? 'global'}::${text.trim().toLowerCase()}`
-
   useEffect(() => {
     ;(window as any).__automationLog = (msg: any) => addLog(String(msg ?? ''))
     return () => {
@@ -406,28 +203,6 @@ export default function Automation() {
       }
     }
   }, [addLog])
-
-  type EmployerInstruction = { text: string; description: string }
-
-  const normalizeEmployerInstructions = (input: any): EmployerInstruction[] => {
-    if (!input) return []
-    const arr = Array.isArray(input) ? input : [input]
-    return arr
-      .map((item: any) => {
-        if (item && typeof item === 'object') {
-          const text = String(item.instruction ?? item.text ?? item.title ?? '').trim()
-          const description = String(item.description ?? item.detail ?? item.text ?? item.instruction ?? '').trim()
-          const finalText = text || description
-          const finalDesc = description || text
-          if (!finalText) return null
-          return { text: finalText, description: finalDesc }
-        }
-        const asString = String(item ?? '').trim()
-        if (!asString) return null
-        return { text: asString, description: asString }
-      })
-      .filter((v: EmployerInstruction | null): v is EmployerInstruction => !!v)
-  }
 
   const addEmployerTasks = async (
     instructions: EmployerInstruction[],
@@ -476,89 +251,6 @@ export default function Automation() {
       )
     } catch (err) {
       addLog('Unable to clear existing tasks for this application.')
-    }
-  }
-
-  const applyPanelFilters = async (webview: any) => {
-    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
-    const moreClicked = await webview.executeJavaScript(`
-      (() => {
-        const el = Array.from(document.querySelectorAll('span.filter-text, button, a')).find(node => {
-          const text = (node.innerText || node.textContent || '').trim().toLowerCase();
-          return text === 'more filters';
-        });
-        if (!el) return false;
-        el.scrollIntoView({ behavior: 'instant', block: 'center' });
-        if (typeof el.click === 'function') el.click();
-        else el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-        return true;
-      })();
-    `)
-    if (!moreClicked) {
-      return
-    }
-    for (let i = 0; i < 60; i++) {
-      const panelVisible = await webview.executeJavaScript(`
-        (() => {
-          const panel = document.querySelector('div#cfEmployersAdvFilters') || document.querySelector('div[id*="EmployersAdvFilters"]');
-          if (!panel) return false;
-          const style = window.getComputedStyle(panel);
-          return style && style.display !== 'none' && style.visibility !== 'hidden';
-        })();
-      `)
-      if (panelVisible) {
-        break
-      }
-      await sleep(100)
-    }
-    // Toggle exclude applied jobs
-    for (let j = 0; j < 60; j++) {
-      const checkboxResult = await webview.executeJavaScript(`
-        (() => {
-          const cb =
-            document.querySelector('input[type="checkbox"][id*="exclude_applied_jobs"]') ||
-            Array.from(document.querySelectorAll('input[type="checkbox"]')).find(el =>
-              ((el.getAttribute('aria-label') || '').toLowerCase().includes("exclude jobs i've applied for"))
-            );
-          if (!cb) return { found: false, clicked: false, already: false };
-          const box = cb;
-          const already = !!box.checked;
-          if (!box.checked) {
-            if (typeof box.click === 'function') box.click();
-            else box.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-            return { found: true, clicked: true, already };
-          }
-          return { found: true, clicked: false, already };
-        })();
-      `)
-      if (checkboxResult?.found) {
-        break
-      }
-      await sleep(100)
-    }
-    // Click Apply in panel
-    for (let k = 0; k < 120; k++) {
-      const applied = await webview.executeJavaScript(`
-        (() => {
-          const panel = document.querySelector('div#cfEmployersAdvFilters') || document.querySelector('div[id*="EmployersAdvFilters"]');
-          const scope = panel || document;
-          const btn = Array.from(scope.querySelectorAll('button')).find(b => {
-            const text = (b.textContent || '').trim().toLowerCase();
-            const aria = (b.getAttribute('aria-label') || '').toLowerCase();
-            const enabled = !b.disabled && !!b.offsetParent;
-            return enabled && (text === 'apply' || aria === 'apply');
-          });
-          if (!btn) return 'missing';
-          btn.scrollIntoView({ behavior: 'instant', block: 'center' });
-          if (typeof btn.click === 'function') btn.click();
-          else btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-          return 'clicked';
-        })();
-      `)
-      if (applied === 'clicked') {
-        return
-      }
-      await sleep(100)
     }
   }
 
@@ -680,7 +372,7 @@ export default function Automation() {
       const userId = await getUserId();
       if (!userId) { addLog('Unable to fetch job types (no user).'); return }
       try {
-        const resp = await fetch(`http://localhost:8080/users/${userId}/job-types`)
+        const resp = await fetch(`http://localhost:8080/preferences/${userId}/job-types`)
         if (!resp.ok) { addLog('Failed to fetch job types.'); return }
         const data = await resp.json()
         const jobTypes: string[] = Array.isArray(data?.job_types) ? data.job_types : []
@@ -1169,9 +861,9 @@ export default function Automation() {
                   if (data.decision === 'APPLY') {
                     consecutiveDoNotApply = 0
                     addLog(`Decision: apply.`)
-                    let applicationRecordedStatus: 'draft' | 'applied' | 'external' | null = null
+                    let applicationRecordedStatus: ApplicationStatus | null = null
                 let pendingModalInstructionText: string | null = null
-                    const recordApplication = async (status: 'draft' | 'applied' | 'external') => {
+                    const recordApplication = async (status: ApplicationStatus) => {
                       const userIdForApplication = await getUserId()
                       if (!userIdForApplication) return currentJobApplicationIdRef.current
                       if (applicationRecordedStatus === status && currentJobApplicationIdRef.current) {
@@ -1208,7 +900,7 @@ export default function Automation() {
                       } catch (err) {}
                       return currentJobApplicationIdRef.current
                     }
-                    await recordApplication('draft')
+                    await recordApplication(ApplicationStatus.DRAFT)
                     const waitForApproval = await loadUserPreferences()
                     if (waitForApproval) {
                       addLog(`Waiting for approval before applying to ${titleStr}...`)
@@ -1401,7 +1093,7 @@ export default function Automation() {
                                     `)
                                   } else {
                                   documentsMissing = true
-                                await handleNoTranscript(clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr)
+                                await handleMissingDocument('transcript', clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr)
                                   skipJob = true
                                   }
                                   break
@@ -1410,7 +1102,7 @@ export default function Automation() {
                               }
                               if (!transcriptHandled) {
                               documentsMissing = true
-                              await handleNoTranscript(clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr)
+                              await handleMissingDocument('transcript', clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr)
                               skipJob = true
                               }
                             }
@@ -1465,7 +1157,7 @@ export default function Automation() {
                                     if (!hasCompany) {
                                       if (!coverLetterTaskAdded) {
                                         documentsMissing = true
-                                await handleNoCoverLetter(clickJobResult.company, webview, userId, currentJobApplicationIdRef.current, titleStr);
+                                await handleMissingDocument('cover letter', clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr);
                                         coverLetterTaskAdded = true
                                       }
                                     skipJob = true
@@ -1475,7 +1167,7 @@ export default function Automation() {
                               } else {
                                 if (!coverLetterTaskAdded) {
                                   documentsMissing = true
-                              await handleNoCoverLetter(clickJobResult.company, webview, userId, currentJobApplicationIdRef.current, titleStr)
+                              await handleMissingDocument('cover letter', clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr)
                                   coverLetterTaskAdded = true
                                 }
                               skipJob = true
@@ -1524,13 +1216,13 @@ export default function Automation() {
                                   `)
                                 } else {
                                   documentsMissing = true
-                                  await handleNoWorkSample(clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr)
+                                  await handleMissingDocument('work sample', clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr)
                                   skipJob = true
                                 }
                               } else if (workSampleVisible && workSampleInfo?.hasButton) {
                                 docFieldFound = true
                                 documentsMissing = true
-                                await handleNoWorkSample(clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr)
+                                await handleMissingDocument('work sample', clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr)
                                 skipJob = true
                               }
                               workSampleChecked = true
@@ -1565,13 +1257,13 @@ export default function Automation() {
                             } else if (portfolioVisible && portfolioInfo?.hasButton) {
                               docFieldFound = true
                               documentsMissing = true
-                              await handleNoPortfolio(clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr)
+                              await handleMissingDocument('portfolio', clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr)
                               skipJob = true
                             }
                             portfolioChecked = true
                             }
                             if (skipJob) {
-                              await recordApplication('draft')
+                              await recordApplication(ApplicationStatus.DRAFT)
                               await closeModalIfPresent(webview)
                               break
                             }
@@ -1633,7 +1325,7 @@ export default function Automation() {
                             setStatus('running')
                             await waitForDividerSubmissionAndClose(webview)
                             if (skipJob) {
-                              await recordApplication('draft')
+                              await recordApplication(ApplicationStatus.DRAFT)
                               await closeModalIfPresent(webview, preferHeadlessClose)
                               break
                             }
@@ -1730,7 +1422,7 @@ export default function Automation() {
                               if (!coverLetterExists.hasSelect) {
                                 if (!coverLetterTaskAdded) {
                                   documentsMissing = true
-                                await handleNoCoverLetter(clickJobResult.company, webview, userId, currentJobApplicationIdRef.current, titleStr);
+                                await handleMissingDocument('cover letter', clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr);
                                   coverLetterTaskAdded = true
                                 }
                                 await webview.executeJavaScript(`
@@ -1797,12 +1489,12 @@ export default function Automation() {
                                 workSampleChecked = true
                               } else if (workSampleInfo?.hasButton) {
                                 documentsMissing = true
-                                await handleNoWorkSample(clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr)
+                                await handleMissingDocument('work sample', clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr)
                             skipJob = true
                                 workSampleChecked = true
                               } else {
                                 documentsMissing = true
-                                await handleNoWorkSample(clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr)
+                                await handleMissingDocument('work sample', clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr)
                             skipJob = true
                                 workSampleChecked = true
                               }
@@ -1835,18 +1527,18 @@ export default function Automation() {
                                 portfolioChecked = true
                               } else if (portfolioInfo?.hasButton) {
                                 documentsMissing = true
-                                await handleNoPortfolio(clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr)
+                                await handleMissingDocument('portfolio', clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr)
                         skipJob = true
                                 portfolioChecked = true
                               } else {
                                 documentsMissing = true
-                                await handleNoPortfolio(clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr)
+                                await handleMissingDocument('portfolio', clickJobResult.company, userId, currentJobApplicationIdRef.current, titleStr)
                         skipJob = true
                                 portfolioChecked = true
                               }
                             }
                     if (skipJob) {
-                      await recordApplication('draft')
+                      await recordApplication(ApplicationStatus.DRAFT)
                       await closeModalIfPresent(webview)
                       break
                     }
@@ -1913,7 +1605,7 @@ export default function Automation() {
                             }
                             await waitForDividerSubmissionAndClose(webview)
                           if (skipJob) {
-                            await recordApplication('draft')
+                            await recordApplication(ApplicationStatus.DRAFT)
                             await closeModalIfPresent(webview, preferHeadlessClose)
                             break
                           }
@@ -1921,14 +1613,14 @@ export default function Automation() {
                           break
                         }
                          if (skipJob) {
-                           await recordApplication('draft')
+                           await recordApplication(ApplicationStatus.DRAFT)
                            await closeModalIfPresent(webview, preferHeadlessClose)
                            break
                          }
                           await sleep(50)
                       }
                       if (skipJob) {
-                        await recordApplication('draft')
+                        await recordApplication(ApplicationStatus.DRAFT)
                         await closeModalIfPresent(webview, preferHeadlessClose)
                         continue
                       }
@@ -1971,7 +1663,7 @@ export default function Automation() {
                             })
                           }
                         } catch (err) {}
-                        await recordApplication(submitClickedForApplication && needsExternalAction ? 'external' : 'draft')
+                        await recordApplication(submitClickedForApplication && needsExternalAction ? ApplicationStatus.EXTERNAL : ApplicationStatus.DRAFT)
                         await closeModalIfPresent(webview, preferHeadlessClose)
                         // Wait for the "One more thing..." modal to appear, click through, then continue.
                         for (let m = 0; m < 20; m++) {
@@ -2062,8 +1754,8 @@ export default function Automation() {
                       }
                       const statusToRecord =
                         !submitClickedForApplication
-                          ? 'draft'
-                          : (hasExternalTasks ? 'external' : 'applied')
+                          ? ApplicationStatus.DRAFT
+                          : (hasExternalTasks ? ApplicationStatus.EXTERNAL : ApplicationStatus.APPLIED)
                       await recordApplication(statusToRecord)
                     }
                   } else if (data.decision === 'DO_NOT_APPLY') {

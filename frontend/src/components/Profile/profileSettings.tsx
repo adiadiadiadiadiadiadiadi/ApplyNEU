@@ -303,7 +303,7 @@ export default function ProfileSettings() {
     setUploadError(null)
 
     try {
-      const presignResp = await fetch('http://localhost:8080/resumes/upload-url', {
+      const presignResp = await fetch(`http://localhost:8080/resumes/upload/${userId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -331,7 +331,7 @@ export default function ProfileSettings() {
         throw new Error('Upload failed')
       }
 
-      const saveResp = await fetch('http://localhost:8080/resumes/save-resume', {
+      const saveResp = await fetch('http://localhost:8080/resumes/save', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -347,11 +347,9 @@ export default function ProfileSettings() {
         throw new Error('Could not save resume record')
       }
 
-      await fetch(`http://localhost:8080/users/${userId}/cache-short-resume`, { method: 'POST' })
-
       let interests: string[] = []
       try {
-        const interestsResp = await fetch(`http://localhost:8080/resumes/${userId}/possible-interests`)
+        const interestsResp = await fetch(`http://localhost:8080/resumes/${resumeId}/possible-interests`)
         if (interestsResp.ok) {
           interests = await interestsResp.json()
         }
@@ -361,7 +359,7 @@ export default function ProfileSettings() {
 
       setCurrentResumeName(file.name)
       setResumeFile(null)
-      navigate('/profile-settings/interests', { state: { interests } })
+      navigate('/profile-settings/interests', { state: { interests, resumeId } })
     } catch (err) {
       console.error('Resume upload failed', err)
       setUploadError('Could not upload resume. Please try again.')

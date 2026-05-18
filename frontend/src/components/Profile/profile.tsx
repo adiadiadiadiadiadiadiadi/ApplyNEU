@@ -93,7 +93,7 @@ export default function Profile() {
       setMetricsLoading(true)
       setMetricsError(null)
       try {
-        const statsResp = await fetch(`http://localhost:8080/applications/${userId}/stats`)
+        const statsResp = await fetch(`http://localhost:8080/users/${userId}/application-stats`)
         const appsResp = await fetch(`http://localhost:8080/applications/${userId}`)
         const tasksResp = await fetch(`http://localhost:8080/tasks/${userId}?includeCompleted=true`)
 

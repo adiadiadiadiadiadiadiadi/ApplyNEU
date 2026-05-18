@@ -34,3 +34,14 @@ export const validateUserIdParam = [
     param('user_id').notEmpty().withMessage('user_id is required.'),
     handleValidation,
 ];
+
+export const validateResumeIdParam = [
+    param('resume_id').notEmpty().withMessage('resume_id is required.'),
+    handleValidation,
+];
+
+export const validateUpdateResumeInterests = [
+    param('resume_id').notEmpty().withMessage('resume_id is required.'),
+    body('interests').notEmpty().withMessage('interests is required.'),
+    handleValidation,
+];
