@@ -1,0 +1,33 @@
+.unauthorized-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: #000000;
+  gap: 1rem;
+}
+
+.unauthorized-code {
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 8rem;
+  font-weight: 700;
+  margin: 0;
+  line-height: 1;
+}
+
+.unauthorized-message {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 1rem;
+  margin: 0;
+}
+
+.unauthorized-link {
+  color: rgba(255, 255, 255, 0.9);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.unauthorized-link:hover {
+  text-decoration: underline;
+}

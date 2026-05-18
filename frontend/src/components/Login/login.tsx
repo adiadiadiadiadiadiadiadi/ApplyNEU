@@ -4,16 +4,17 @@ import './login.css'
 
 interface LoginProps {
   onNavigateToSignup: () => void
+  authError?: string | null
 }
 
 const formatError = (msg: string) =>
   msg === 'Failed to fetch' ? 'Network connection failed.' : msg
 
-export default function Login({ onNavigateToSignup }: LoginProps) {
+export default function Login({ onNavigateToSignup, authError }: LoginProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(authError ?? null)
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault()

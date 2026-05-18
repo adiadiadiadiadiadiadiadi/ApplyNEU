@@ -564,24 +564,21 @@
 
 .logout-button {
   position: fixed;
-  top: 1rem;
+  top: 1.75rem;
   right: 4rem;
   z-index: 1000;
-  padding: 0.5rem;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 0.5rem;
-  color: rgba(255, 255, 255, 0.9);
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.45);
   cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  text-transform: lowercase;
+  text-decoration: none;
 }
 
 .logout-button:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.3);
+  text-decoration: underline;
 }
 
 /* =========================================================

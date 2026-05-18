@@ -20,8 +20,9 @@ export interface PutUserRequest extends Request {
 }
 
 export interface UpdatePreferencesBody {
+  job_types: string[];
   wait_for_approval: boolean;
-  recent_jobs: number;
+  recent_jobs: boolean;
   job_match: string;
   unpaid_roles: boolean;
   email_notifications: boolean;
@@ -33,8 +34,7 @@ export type UserIdRequest = Request<UserIdParams>;
 export type UpdatePreferencesRequest = Request<UserIdParams, unknown, UpdatePreferencesBody>;
 export type UpdateInterestsRequest = Request<UserIdParams, unknown, { interests: string[] }>;
 export type UpdateJobTypesRequest = Request<UserIdParams, unknown, { job_types: string[] }>;
-export type UpdateSearchTermsRequest = Request<UserIdParams>;
-export type CacheShortResumeRequest = Request<UserIdParams>;
+export type UpdateSearchTermsRequest = Request<UserIdParams, unknown, { resume_id: string }>;
 export type GetJobTypesRequest = Request<UserIdParams>;
 export type GetSearchTermsRequest = Request<UserIdParams>;
 export type GetUserInterestsRequest = Request<UserIdParams>;

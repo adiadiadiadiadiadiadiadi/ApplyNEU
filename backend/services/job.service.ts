@@ -1,5 +1,7 @@
 import { pool } from '../db/index.ts';
 import Anthropic from '@anthropic-ai/sdk';
+import { AppError } from '../errors/AppError.ts';
+import { withRetry } from '../utils/retry.ts';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -7,6 +9,11 @@ type EmployerInstruction = { instruction: string; description: string };
 
 const NON_REQUIRED_TASK_PATTERN = /\b(ad[\s-]?block(?:er)?|pop[\s-]?up(?: blocker)?|clear (?:your )?cache|cookies?|switch (?:to )?(?:another|different) browser|disable (?:browser )?extensions?|enable javascript|incognito|private mode|vpn|proxy|firewall|antivirus|troubleshoot|workaround|tip|optional|recommended|preference)\b/i;
 
+/**
+ * Filters and deduplicates a raw list of employer instruction objects.
+ * Strips items that match NON_REQUIRED_TASK_PATTERN (browser tips, optional advice, etc.)
+ * and any instruction/description pair that is an exact case-insensitive duplicate.
+ */
 const normalizeEmployerInstructions = (input: any): EmployerInstruction[] => {
   if (!Array.isArray(input)) return [];
 
@@ -27,46 +34,44 @@ const normalizeEmployerInstructions = (input: any): EmployerInstruction[] => {
 };
 
 /**
- * Evaluates a job description against a user's resume and extracts required employer actions.
- *
- * @param user_id User whose resume is referenced.
- * @param job_description Raw job description text.
- * @param company Optional company name for prompt context.
- * @param title Optional job title for prompt context.
- * @returns Decision payload with normalized instructions or an error object.
+ * Sends a job description to Claude Haiku to decide APPLY/DO_NOT_APPLY using the user's
+ * cached short resume and their job_match sensitivity preference (low/medium/high).
+ * Also extracts any required external application steps from the posting.
+ * Relies on short_resume being pre-cached; throws 404 if it hasn't been generated yet.
+ * @param user_id - User evaluating the job
+ * @param job_description - Full text of the job posting
+ * @param company - Company name for prompt context and instruction formatting
+ * @param title - Job title for prompt context
+ * @returns AI decision and normalized list of required employer instructions
  */
 export const sendJobDescription = async (user_id: string, job_description: string, company?: string, title?: string) => {
   try {
-    const result = await pool.query(
+    const resumeResult = await pool.query(
       `SELECT * FROM resumes WHERE user_id::text = $1 ORDER BY created_at DESC LIMIT 1;`,
       [user_id]
-    )
-    if (!result.rows.length) {
-      return { error: 'Resume not found.' };
-    }
+    );
+    if (!resumeResult.rows.length) throw new AppError(404, 'Resume not found.');
 
-    const row = result.rows[0];
+    const row = resumeResult.rows[0];
     const resume = row.short_resume || row.resume_text;
-    if (!resume) {
-      return { error: 'Short resume not cached.' };
-    }
+    if (!resume) throw new AppError(404, 'Short resume not cached.');
 
-    const prefs = await pool.query(
-      `SELECT job_match FROM users WHERE user_id::text = $1 LIMIT 1;`,
+    const prefsResult = await pool.query(
+      `SELECT job_match FROM preferences WHERE user_id::text = $1 LIMIT 1;`,
       [user_id]
     );
-    const jobMatchRaw = (prefs.rows[0]?.job_match ?? 'medium').toString().toLowerCase();
+    const jobMatchRaw = (prefsResult.rows[0]?.job_match ?? 'medium').toString().toLowerCase();
     const jobMatchSensitivity: 'low' | 'medium' | 'high' =
       jobMatchRaw === 'high' ? 'high' : jobMatchRaw === 'low' ? 'low' : 'medium';
 
-    const message = await anthropic.messages.create({
+    const message = await withRetry(() => anthropic.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 1024,
       messages: [{
         role: 'user',
         content: `
           You are a job application filter. Your task: Decide whether the USER should apply to the JOB.
-          
+
           COMPANY: ${company || 'company unknown'}
           TITLE: ${title || 'title unknown'}
 
@@ -82,12 +87,12 @@ export const sendJobDescription = async (user_id: string, job_description: strin
           - Be practical and lean toward APPLY when the user meets a good amount of required skills/responsibilities (use sensitivity rules above).
           - If the user reasonably fits the required skills/responsibilities, return APPLY.
           - When the resume misses key REQUIRED skills/tech/experience from the job description, choose DO_NOT_APPLY (stricter if sensitivity is HIGH).
-          
+
           EMPLOYER INSTRUCTIONS:
           Extract tasks that are REQUIRED to complete the application, especially actions outside NUWorks.
           Include only explicit must-do actions from the posting.
           Always include the company name ("${company || 'company unknown'}") in the instruction text when present.
-          
+
           NEVER include:
           - Resume / cover letter / transcript / portfolio / references upload instructions
           - Generic advice (research company, tailor resume, follow up, networking, etc.)
@@ -95,22 +100,22 @@ export const sendJobDescription = async (user_id: string, job_description: strin
           - Browser/device troubleshooting or settings steps
             (ad blocker/pop-up blocker, clear cache/cookies, switch browsers, disable extensions,
              incognito/private mode, VPN/proxy, firewall/antivirus, javascript settings)
-          
+
           ONLY include required actions such as:
           - Apply through a separate company portal/site
           - Complete a required external assessment or questionnaire
           - Email required information/materials to a specific address
           - Register/schedule/confirm a required step on another platform
-          
+
           If no required extra steps exist beyond NUWorks, return an empty array.
-          
+
           FORMAT REQUIREMENTS:
           - "instruction" field: Brief action in imperative form (e.g., "Apply through company portal")
           - "description" field: Include the exact URL/email/platform destination when provided; otherwise include concise required details from the posting
           - Keep instructions short and action-oriented
           - Prefer format: "Action through/at [platform]" for instruction
           - Make sure the instruction is accurate to the link (e.g. https://ats.rippling.com/tive-careers is for Tive, not Rippling).
-          
+
           Examples:
           {
             "instruction": "Apply through Garmin careers portal",
@@ -124,9 +129,9 @@ export const sendJobDescription = async (user_id: string, job_description: strin
             "instruction": "Complete coding assessment",
             "description": "https://assessment.company.com/test"
           }
-          
+
           If there are no external/additional steps beyond completing the NUWorks form, return an empty array.
-          
+
           Output format (JSON only, no markdown):
           {
             "decision": "APPLY | DO_NOT_APPLY",
@@ -138,20 +143,20 @@ export const sendJobDescription = async (user_id: string, job_description: strin
               ...
             ]
           }
-          
+
           USER PROFILE:
           ${resume}
-          
+
           JOB DESCRIPTION:
           ${job_description}
-          
+
           Return ONLY valid JSON. No extra text, whitespace, or markdown.
           `
       }]
-    })
+    }));
 
     if (!message.content[0] || message.content[0].type !== 'text') {
-      return { error: "Error with API." };
+      throw new AppError(502, 'Error with API.');
     }
 
     const raw = message.content[0].text
@@ -164,23 +169,20 @@ export const sendJobDescription = async (user_id: string, job_description: strin
     if (!parsed || typeof parsed !== 'object') {
       return { decision: 'DO_NOT_APPLY', employer_instructions: normalizedInstructions };
     }
-    return {
-      ...parsed,
-      employer_instructions: normalizedInstructions
-    };
-
+    return { ...parsed, employer_instructions: normalizedInstructions };
   } catch (error) {
-    return { error: "Error extracting topics." }
+    if (error instanceof AppError) throw error;
+    throw new AppError(500, 'Error processing job description.');
   }
-}
+};
 
 /**
- * Inserts a job if missing or returns the existing row for the company/title pair.
- *
- * @param company Company name.
- * @param title Job title.
- * @param description Job description body to store.
- * @returns Inserted or existing job row, or an error object.
+ * Inserts a job, deduplicating on (company, title). On conflict, fetches and returns
+ * the existing row instead of inserting — the DO NOTHING clause means RETURNING would
+ * otherwise give no rows.
+ * @param company - Company name
+ * @param title - Job title
+ * @param description - Full job description text
  */
 export const addJob = async (company: string, title: string, description: string) => {
   try {
@@ -189,23 +191,15 @@ export const addJob = async (company: string, title: string, description: string
         INSERT INTO jobs (company, title, description)
         VALUES ($1, $2, $3)
         ON CONFLICT (company, title)
-        DO NOTHING
+        DO UPDATE SET description = EXCLUDED.description
         RETURNING *;
-        `,
+      `,
       [company, title, description]
     );
-
-    if (!result.rows.length) {
-      const existing = await pool.query(
-        `SELECT * FROM jobs WHERE company = $1 AND title = $2 LIMIT 1;`,
-        [company, title]
-      );
-      if (existing.rows.length) return existing.rows[0];
-      return { error: "Job already exists but could not be retrieved." };
-    }
-
+    if (!result.rows[0]) throw new AppError(500, 'Error creating job.');
     return result.rows[0];
   } catch (error) {
-    return { error: "Error extracting topics." }
+    if (error instanceof AppError) throw error;
+    throw new AppError(500, 'Error creating job.');
   }
-}
+};
