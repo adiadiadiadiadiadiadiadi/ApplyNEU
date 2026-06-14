@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Navigate, NavLink, Outlet, Route, Routes, useNavigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 import Login from './components/Login/login'
-import Signup from './components/Signup/signup'
+import Signup from './components/Signup/Signup'
 import Home from './components/Home/home'
 import Onboarding from './components/Onboarding/onboarding'
 import './index.css'
@@ -78,6 +78,7 @@ function AuthRoutes({ authError }: { authError: string | null }) {
       <Route path="/login" element={<Login onNavigateToSignup={() => navigate('/signup')} authError={authError} />} />
       <Route path="/signup" element={<Signup onNavigateToLogin={() => navigate('/login')} />} />
       <Route path="/401" element={<Unauthorized />} />
+      <Route path="/404" element={<NotFound />} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   )
@@ -88,6 +89,7 @@ function OnboardingRoutes({ onComplete }: { onComplete: () => void }) {
     <Routes>
       <Route path="/onboarding" element={<Onboarding onComplete={onComplete} />} />
       <Route path="/401" element={<Unauthorized />} />
+      <Route path="/404" element={<NotFound />} />
       <Route path="*" element={<Navigate to="/onboarding" replace />} />
     </Routes>
   )
@@ -105,6 +107,7 @@ function AppRoutes() {
         <Route path="/settings" element={<Settings />} />
       </Route>
       <Route path="/401" element={<Unauthorized />} />
+      <Route path="/404" element={<NotFound />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   )

@@ -828,7 +828,7 @@ export default function Automation() {
               const jobTitle = (titleStr || '').trim()
               const jobDescription = (descResult || '').toString()
 
-              const addJobResp = await fetch(`http://localhost:8080/jobs/add-job`, {
+              const addJobResp = await fetch(`http://localhost:8080/jobs/add`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -837,15 +837,19 @@ export default function Automation() {
                   description: jobDescription
                 })
               })
+              let addedJobId: string | null = null
               if (!addJobResp.ok) {
                 addLog('Server error.')
+              } else {
+                const addedJob = await addJobResp.json().catch(() => null)
+                addedJobId = addedJob?.job_id ?? addedJob?.id ?? null
               }
               const userId = await getUserId()
               if (!userId) {
                 addLog('Decision skipped (no user).')
               } else {
                 addLog(`Reviewing ${titleStr}...`)
-                const resp = await fetch(`http://localhost:8080/jobs/${userId}/send-job`, {
+                const resp = await fetch(`http://localhost:8080/jobs/analyze/${userId}`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
@@ -869,10 +873,12 @@ export default function Automation() {
                       if (applicationRecordedStatus === status && currentJobApplicationIdRef.current) {
                         return currentJobApplicationIdRef.current
                       }
+                      if (!addedJobId) {
+                        addLog('Unable to record application (missing job).')
+                        return currentJobApplicationIdRef.current
+                      }
                       const applicationPayload = {
-                        company: (clickJobResult.company || '').trim() || 'Unknown company',
-                        title: (titleStr || '').trim() || 'Untitled job',
-                        description: (descResult || '').toString(),
+                        job_id: addedJobId,
                         status
                       }
                       try {
@@ -904,7 +910,7 @@ export default function Automation() {
                     const waitForApproval = await loadUserPreferences()
                     if (waitForApproval) {
                       addLog(`Waiting for approval before applying to ${titleStr}...`)
-                      const approved = await requestApprovalForJob(titleStr, companyName || 'Unknown company')
+                      const approved = await requestApprovalForJob(clickJobResult.title || 'Untitled job', companyName || 'Unknown company')
                       if (!approved) {
                         addLog('Skipped applying (user declined).')
                         continue
