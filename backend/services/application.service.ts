@@ -14,7 +14,7 @@ export const addJobApplication = async (user_id: string, job_id: string, status:
         INSERT INTO job_applications (job_id, user_id, status)
         VALUES ($1, $2, $3::application_status)
         ON CONFLICT (job_id, user_id)
-        DO UPDATE SET applied_at = NOW(),
+        DO UPDATE SET applied_at = NOW()
         RETURNING *;
       `,
       [job_id, user_id, status]

@@ -37,7 +37,7 @@ export const FetchErrorProvider = ({ children }: { children: React.ReactNode }) 
         }
         return res
       } catch (err) {
-        setState({ message: 'Failed to fetch. Please check your connection.', retry: () => window.location.reload() })
+        navigateTo('/404')
         throw err
       }
     }
