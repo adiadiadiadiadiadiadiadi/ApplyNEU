@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { app } from '../app.ts';
+import { app } from '../../src/app.ts';
 
 jest.mock('../services/user/user.service.ts', () => ({
   addUser: jest.fn(),
