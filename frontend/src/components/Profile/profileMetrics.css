@@ -186,7 +186,7 @@
 }
 
 .funnel-label {
-  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   font-size: 0.78rem;
@@ -226,7 +226,7 @@
   letter-spacing: 0.05em;
   color: rgba(200, 200, 200, 0.9);
   text-transform: uppercase;
-  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
 }
 
 .metrics-card-icon {

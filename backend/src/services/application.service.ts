@@ -1,5 +1,12 @@
 import { pool } from '../db/index.ts';
+import { redis } from '../db/redis.ts';
 import { AppError } from '../errors/AppError.ts';
+
+/** Cache TTL for application stats, in seconds. */
+const STATS_CACHE_TTL = 600;
+
+/** Redis key holding a user's cached application stats. */
+const statsCacheKey = (user_id: string) => `app_stats:${user_id}`;
 
 /**
  * Upserts a job application. On conflict (same job + user) updates applied_at.
@@ -14,12 +21,14 @@ export const addJobApplication = async (user_id: string, job_id: string, status:
         INSERT INTO job_applications (job_id, user_id, status)
         VALUES ($1, $2, $3::application_status)
         ON CONFLICT (job_id, user_id)
-        DO UPDATE SET applied_at = NOW(),
+        DO UPDATE SET applied_at = NOW(), status = EXCLUDED.status
         RETURNING *;
       `,
       [job_id, user_id, status]
     );
     if (!result.rows[0]) throw new AppError(409, 'Application already exists for this job/user.');
+    // Stats are now stale for this user; drop the cache so the next read recomputes.
+    await redis.del(statsCacheKey(user_id)).catch(() => {});
     return result.rows[0];
   } catch (error) {
     if (error instanceof AppError) throw error;
@@ -33,6 +42,15 @@ export const addJobApplication = async (user_id: string, job_id: string, status:
  * @param user_id - User whose stats to aggregate
  */
 export const getUserApplicationStats = async (user_id: string) => {
+
+  const cacheKey = statsCacheKey(user_id);
+
+  // serve from cache when possible, otherwise fall back to db
+  try {
+    const cached = await redis.get(cacheKey);
+    if (cached) return JSON.parse(cached);
+  } catch {}
+
   try {
     const result = await pool.query(
       `
@@ -53,7 +71,7 @@ export const getUserApplicationStats = async (user_id: string) => {
       [user_id]
     );
     const row = result.rows?.[0] ?? {};
-    return {
+    const stats = {
       total:      Number(row.total          ?? 0),
       today:      Number(row.today_count    ?? 0),
       week:       Number(row.week_count     ?? 0),
@@ -65,6 +83,9 @@ export const getUserApplicationStats = async (user_id: string) => {
       pending:    Number(row.pending_count  ?? 0),
       external:   Number(row.external_count ?? 0),
     };
+    // Cache for STATS_CACHE_TTL; invalidated early by addJobApplication on insert.
+    await redis.set(cacheKey, JSON.stringify(stats), 'EX', STATS_CACHE_TTL).catch(() => {});
+    return stats;
   } catch (error) {
     if (error instanceof AppError) throw error;
     throw new AppError(500, 'Error fetching application stats.');
@@ -129,6 +150,8 @@ export const updateApplicationStatus = async (user_id: string, application_id: s
       [user_id, application_id, status.toLowerCase()]
     );
     if (!result.rowCount) throw new AppError(404, 'Application not found for user.');
+    // Status change shifts the stats breakdown; drop the cache so the next read recomputes.
+    await redis.del(statsCacheKey(user_id)).catch(() => {});
     return result.rows[0];
   } catch (error) {
     if (error instanceof AppError) throw error;
