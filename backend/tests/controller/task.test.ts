@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { app } from '../../app.ts';
+import { app } from '../../src/app.ts';
 
 jest.mock('../services/task.service.ts', () => ({
   addTask: jest.fn(),

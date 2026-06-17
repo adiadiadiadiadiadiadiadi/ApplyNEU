@@ -5,8 +5,8 @@ export type SendJobDescriptionRequest = Request<
   unknown,
   {
     job_description: string;
-    company?: string;
-    title?: string;
+    company: string;
+    title: string;
   }
 >;
 
