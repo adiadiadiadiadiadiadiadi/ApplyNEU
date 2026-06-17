@@ -15,6 +15,7 @@ import { FetchErrorProvider, FetchErrorBanner } from './components/common/FetchE
 import { setNavigate } from './lib/navigation'
 import Unauthorized from './components/NotFound/unauthorized'
 import NotFound from './components/NotFound/notfound'
+import ServerError from './components/NotFound/servererror'
 
 function SideNav() {
   return (
@@ -79,6 +80,7 @@ function AuthRoutes({ authError }: { authError: string | null }) {
       <Route path="/signup" element={<Signup onNavigateToLogin={() => navigate('/login')} />} />
       <Route path="/401" element={<Unauthorized />} />
       <Route path="/404" element={<NotFound />} />
+      <Route path="/500" element={<ServerError />} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   )
@@ -90,6 +92,7 @@ function OnboardingRoutes({ onComplete }: { onComplete: () => void }) {
       <Route path="/onboarding" element={<Onboarding onComplete={onComplete} />} />
       <Route path="/401" element={<Unauthorized />} />
       <Route path="/404" element={<NotFound />} />
+      <Route path="/500" element={<ServerError />} />
       <Route path="*" element={<Navigate to="/onboarding" replace />} />
     </Routes>
   )
@@ -108,6 +111,7 @@ function AppRoutes() {
       </Route>
       <Route path="/401" element={<Unauthorized />} />
       <Route path="/404" element={<NotFound />} />
+      <Route path="/500" element={<ServerError />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   )

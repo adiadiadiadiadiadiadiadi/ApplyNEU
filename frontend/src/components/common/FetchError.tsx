@@ -37,7 +37,7 @@ export const FetchErrorProvider = ({ children }: { children: React.ReactNode }) 
         }
         return res
       } catch (err) {
-        navigateTo('/404')
+        navigateTo('/500')
         throw err
       }
     }

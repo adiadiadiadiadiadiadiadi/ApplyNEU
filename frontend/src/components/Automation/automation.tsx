@@ -731,7 +731,7 @@ export default function Automation() {
                   .split('\\n')
                   .map(t => t.trim())
                   .find(t => t.length > 0) || '';
-                if (!firstLine) return 'Untitled job';
+                if (!firstLine) return '';
                 // If the line contains multiple fields jammed together, split on two or more spaces.
                 const splitSpaces = firstLine.split(/\\s{2,}/).find(t => t.length > 0);
                 return (splitSpaces || firstLine).trim();
@@ -825,8 +825,14 @@ export default function Automation() {
             // Send description to backend for decision and optionally apply
             try {
               const companyName = (clickJobResult.company || '').trim()
-              const jobTitle = (titleStr || '').trim()
+              const jobTitle = (clickJobResult.title || '').trim()
               const jobDescription = (descResult || '').toString()
+
+              if (!companyName || !jobTitle || !jobDescription.trim()) {
+                consecutiveDoNotApply = 0
+                addLog('Error: missing information. Skipping...')
+                continue
+              }
 
               const addJobResp = await fetch(`http://localhost:8080/jobs/add`, {
                 method: 'POST',
@@ -1775,6 +1781,9 @@ export default function Automation() {
                     consecutiveDoNotApply = 0
                     addLog('Decision unknown; skipping.')
                   }
+                } else if (resp.status === 400) {
+                  consecutiveDoNotApply = 0
+                  addLog('Error: missing information. Skipping...')
                 } else {
                   consecutiveDoNotApply = 0
                   addLog('Decision request failed; skipping.')
