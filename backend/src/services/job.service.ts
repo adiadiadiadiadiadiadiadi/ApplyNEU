@@ -44,7 +44,7 @@ const normalizeEmployerInstructions = (input: any): EmployerInstruction[] => {
  * @param title - Job title for prompt context
  * @returns AI decision and normalized list of required employer instructions
  */
-export const sendJobDescription = async (user_id: string, job_description: string, company?: string, title?: string) => {
+export const sendJobDescription = async (user_id: string, job_description: string, company: string, title: string) => {
   try {
     const resumeResult = await pool.query(
       `SELECT * FROM resumes WHERE user_id::text = $1 ORDER BY created_at DESC LIMIT 1;`,
@@ -72,8 +72,8 @@ export const sendJobDescription = async (user_id: string, job_description: strin
         content: `
           You are a job application filter. Your task: Decide whether the USER should apply to the JOB.
 
-          COMPANY: ${company || 'company unknown'}
-          TITLE: ${title || 'title unknown'}
+          COMPANY: ${company}
+          TITLE: ${title}
 
           MATCH SENSITIVITY: ${jobMatchSensitivity.toUpperCase()}
           - LOW (not strict): Be lenient and favor APPLY if the resume plausibly covers several required skills/responsibilities; only DO_NOT_APPLY for clear mismatches.
@@ -91,7 +91,7 @@ export const sendJobDescription = async (user_id: string, job_description: strin
           EMPLOYER INSTRUCTIONS:
           Extract tasks that are REQUIRED to complete the application, especially actions outside NUWorks.
           Include only explicit must-do actions from the posting.
-          Always include the company name ("${company || 'company unknown'}") in the instruction text when present.
+          Always include the company name ("${company}") in the instruction text when present.
 
           NEVER include:
           - Resume / cover letter / transcript / portfolio / references upload instructions

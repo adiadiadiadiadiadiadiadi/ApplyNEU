@@ -14,7 +14,7 @@ module.exports = {
   },
   moduleFileExtensions: ['ts', 'js', 'json'],
   collectCoverageFrom: [
-    'controller/**/*.ts',
-    'services/**/*.ts',
+    'src/controller/**/*.ts',
+    'src/services/**/*.ts',
   ],
 }
