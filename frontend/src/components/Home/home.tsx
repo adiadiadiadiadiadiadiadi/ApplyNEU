@@ -1,5 +1,6 @@
 import './home.css'
 import { supabase } from '../../lib/supabase'
+import { api } from '../../lib/api'
 import { ApplicationStatus } from '../../lib/types'
 import React, { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -184,7 +185,7 @@ export default function Home() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setLoadingTasks(false); return }
     try {
-      const resp = await fetch(`http://localhost:8080/tasks/${user.id}?includeCompleted=true`)
+      const resp = await api.get(`/tasks/${user.id}?includeCompleted=true`)
       if (resp.ok) {
         const data = await resp.json()
         const parsed: Task[] = Array.isArray(data)
@@ -208,7 +209,7 @@ export default function Home() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setLoadingStats(false); return }
     try {
-      const resp = await fetch(`http://localhost:8080/users/${user.id}/application-stats`)
+      const resp = await api.get(`/users/${user.id}/application-stats`)
       if (resp.ok) {
         const d = await resp.json()
         setStats({
@@ -233,7 +234,7 @@ export default function Home() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setLoadingApps(false); return }
     try {
-      const resp = await fetch(`http://localhost:8080/applications/${user.id}`)
+      const resp = await api.get(`/applications/${user.id}`)
       if (resp.ok) {
         const data = await resp.json()
         setApplications(Array.isArray(data) ? data : [])
@@ -249,11 +250,7 @@ export default function Home() {
     if (!user) return
     setUpdatingStatusId(applicationId)
     try {
-      const resp = await fetch(`http://localhost:8080/applications/${user.id}/${applicationId}/status`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: nextStatus }),
-      })
+      const resp = await api.put(`/applications/${user.id}/${applicationId}/status`, { status: nextStatus })
       if (resp.ok) {
         const updated = await resp.json().catch(() => ({}))
         const newStatus = (updated?.status ?? nextStatus) as string
@@ -312,7 +309,7 @@ export default function Home() {
       setActiveTasks(prev => [{ ...completedMatch, completed: false }, ...prev])
     }
     try {
-      await fetch(`http://localhost:8080/tasks/${taskId}/complete`, { method: 'PUT' })
+      await api.put(`/tasks/${taskId}/complete`)
     } catch { /* swallow */ }
     finally { setToggling(null) }
   }

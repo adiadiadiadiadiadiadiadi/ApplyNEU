@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { api } from '../../lib/api'
 import { useAppSelector } from '../../store'
 import './profile.css'
 
@@ -72,7 +73,7 @@ export default function ProfileSettings() {
       const emailFromAuth = (user.email ?? '').trim()
 
       try {
-        const resp = await fetch(`http://localhost:8080/users/${user.id}`)
+        const resp = await api.get(`/users/${user.id}`)
         if (resp.ok) {
           const userRow = await resp.json()
           const first = (userRow.first_name ?? '').toString()
@@ -93,7 +94,7 @@ export default function ProfileSettings() {
             email: (userRow.email ?? '').toString(),
           })
           try {
-            const latestResumeResp = await fetch(`http://localhost:8080/resumes/${user.id}/latest`)
+            const latestResumeResp = await api.get(`/resumes/${user.id}/latest`)
             if (latestResumeResp.ok) {
               const latest = await latestResumeResp.json()
               setCurrentResumeName((latest.file_name ?? '').toString())
@@ -164,15 +165,11 @@ export default function ProfileSettings() {
     }
 
     try {
-      const resp = await fetch(`http://localhost:8080/users/${userId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          first_name: finalFirst,
-          last_name: finalLast,
-          email: finalEmail,
-          grad_year: gradYearNumber,
-        }),
+      const resp = await api.put(`/users/${userId}`, {
+        first_name: finalFirst,
+        last_name: finalLast,
+        email: finalEmail,
+        grad_year: gradYearNumber,
       })
 
       if (!resp.ok) {
@@ -303,14 +300,10 @@ export default function ProfileSettings() {
     setUploadError(null)
 
     try {
-      const presignResp = await fetch(`http://localhost:8080/resumes/upload/${userId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          file_name: file.name,
-          file_type: file.type,
-          file_size: file.size,
-        }),
+      const presignResp = await api.post(`/resumes/upload/${userId}`, {
+        file_name: file.name,
+        file_type: file.type,
+        file_size: file.size,
       })
 
       if (!presignResp.ok) {
@@ -331,16 +324,12 @@ export default function ProfileSettings() {
         throw new Error('Upload failed')
       }
 
-      const saveResp = await fetch('http://localhost:8080/resumes/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          resume_id: resumeId,
-          key,
-          user_id: userId,
-          file_name: file.name,
-          file_size_bytes: file.size,
-        }),
+      const saveResp = await api.post('/resumes/save', {
+        resume_id: resumeId,
+        key,
+        user_id: userId,
+        file_name: file.name,
+        file_size_bytes: file.size,
       })
 
       if (!saveResp.ok) {
@@ -349,7 +338,7 @@ export default function ProfileSettings() {
 
       let interests: string[] = []
       try {
-        const interestsResp = await fetch(`http://localhost:8080/resumes/${resumeId}/possible-interests`)
+        const interestsResp = await api.get(`/resumes/${resumeId}/possible-interests`)
         if (interestsResp.ok) {
           interests = await interestsResp.json()
         }

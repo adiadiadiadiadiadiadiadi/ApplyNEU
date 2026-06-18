@@ -8,6 +8,7 @@ import {
 } from './automationHelpers'
 import type { EmployerInstruction } from './automationHelpers'
 import { getUserId } from '../../lib/supabase'
+import { api } from '../../lib/api'
 import { ApplicationStatus } from '../../lib/types'
 
 export default function Automation() {
@@ -15,6 +16,8 @@ export default function Automation() {
   const [logs, setLogs] = useState<string[]>([])
   const [isPanelOpen, setIsPanelOpen] = useState(false)
   const [searchTerms, setSearchTerms] = useState<string[]>([])
+  // null = still checking, false = none yet (enrichment pending), true = ready.
+  const [searchTermsReady, setSearchTermsReady] = useState<boolean | null>(null)
   const [awaitingInput, setAwaitingInput] = useState(false)
   const [approvalPrompt, setApprovalPrompt] = useState<{ jobTitle: string; company: string } | null>(null)
   const logsEndRef = useRef<HTMLDivElement>(null)
@@ -45,7 +48,7 @@ export default function Automation() {
     const userId = await getUserId()
     if (!userId) return waitForApprovalRef.current
     try {
-      const resp = await fetch(`http://localhost:8080/preferences/${userId}`)
+      const resp = await api.get(`/preferences/${userId}`)
       if (resp.ok) {
         const data = await resp.json().catch(() => ({}))
         waitForApprovalRef.current = toBool(data.wait_for_approval ?? data.waitForApproval, true)
@@ -103,11 +106,7 @@ export default function Automation() {
     )
     const key = buildTaskKey(text, applicationId)
     if (!existingTasksRef.current.has(key)) {
-      const resp = await fetch(`http://localhost:8080/tasks/${userId}/new`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, description, application_id: applicationId ?? undefined })
-      })
+      const resp = await api.post(`/tasks/${userId}/new`, { text, description, application_id: applicationId ?? undefined })
       if (!resp.ok) {
         addLog('Error occured while creating task.')
       } else {
@@ -119,54 +118,57 @@ export default function Automation() {
     }
   }
 
-  useEffect(() => {
-    const fetchSearchTerms = async () => {
-      try {
-        const userId = await getUserId()
-        if (!userId) {
-          addLog('Error occured: no user found. Retrying...')
-          return
-        }
-        try {
-          const tasksResp = await fetch(`http://localhost:8080/tasks/${userId}`)
-          if (tasksResp.ok) {
-            const tasksData = await tasksResp.json().catch(() => [])
-            const taskKeys = Array.isArray(tasksData)
-              ? tasksData
-                  .map((t: any) => {
-                    const text = String(t?.text ?? '').trim()
-                    const appId = t?.application_id ? String(t.application_id) : 'global'
-                    if (!text) return null
-                    return `${appId}::${text.toLowerCase()}`
-                  })
-                  .filter(Boolean) as string[]
-              : []
-            existingTasksRef.current = new Set(taskKeys)
-          }
-        } catch (err) {}
-
-        const latestResumeResp = await fetch(`http://localhost:8080/resumes/${userId}/latest`)
-        if (!latestResumeResp.ok) { addLog('Error occured. Could not fetch resume. Retrying...'); return; }
-        const latestResume = await latestResumeResp.json()
-        const resumeId = latestResume?.resume_id
-        if (!resumeId) { addLog('No resume found. Retrying...'); return; }
-
-        const response = await fetch(`http://localhost:8080/resumes/${resumeId}/search-terms`)
-        if (!response.ok) { addLog('Error occured. Could not fetch search terms. Retrying...'); return; }
-
-        const data = await response.json()
-        const terms = Array.isArray(data?.search_terms) ? data.search_terms : []
-        setSearchTerms(terms)
-        searchTermsRef.current = new Set(
-          terms
-            .map((t: any) => String(t ?? '').trim().toLowerCase())
-            .filter(Boolean)
-        )
-      } catch (error) {
-        addLog('Error occured. Could not get search terms.')
+  const fetchSearchTerms = async (isPoll = false) => {
+    try {
+      const userId = await getUserId()
+      if (!userId) {
+        if (!isPoll) addLog('Error occured: no user found. Retrying...')
+        return
       }
-    }
+      try {
+        const tasksResp = await api.get(`/tasks/${userId}`)
+        if (tasksResp.ok) {
+          const tasksData = await tasksResp.json().catch(() => [])
+          const taskKeys = Array.isArray(tasksData)
+            ? tasksData
+                .map((t: any) => {
+                  const text = String(t?.text ?? '').trim()
+                  const appId = t?.application_id ? String(t.application_id) : 'global'
+                  if (!text) return null
+                  return `${appId}::${text.toLowerCase()}`
+                })
+                .filter(Boolean) as string[]
+            : []
+          existingTasksRef.current = new Set(taskKeys)
+        }
+      } catch (err) {}
 
+      const latestResumeResp = await api.get(`/resumes/${userId}/latest`)
+      if (!latestResumeResp.ok) { if (!isPoll) addLog('Error occured. Could not fetch resume. Retrying...'); return; }
+      const latestResume = await latestResumeResp.json()
+      const resumeId = latestResume?.resume_id
+      if (!resumeId) { if (!isPoll) addLog('No resume found. Retrying...'); return; }
+
+      const response = await api.get(`/resumes/${resumeId}/search-terms`)
+      if (!response.ok) { if (!isPoll) addLog('Error occured. Could not fetch search terms. Retrying...'); return; }
+
+      const data = await response.json()
+      const terms = Array.isArray(data?.search_terms) ? data.search_terms : []
+      setSearchTerms(terms)
+      // Enrichment is async: an empty list means the worker hasn't written search
+      // terms yet, so the screen stays "not ready" and automation stays disabled.
+      setSearchTermsReady(terms.length > 0)
+      searchTermsRef.current = new Set(
+        terms
+          .map((t: any) => String(t ?? '').trim().toLowerCase())
+          .filter(Boolean)
+      )
+    } catch (error) {
+      if (!isPoll) addLog('Error occured. Could not get search terms.')
+    }
+  }
+
+  useEffect(() => {
     fetchSearchTerms()
     loadUserPreferences().catch(() => {})
 
@@ -185,6 +187,14 @@ export default function Automation() {
       }
     }
   }, [])
+
+  // Until search terms exist, poll so the screen unlocks automatically once the
+  // resume-enrichment worker finishes (a few seconds after onboarding submit).
+  useEffect(() => {
+    if (searchTermsReady === true) return
+    const id = setInterval(() => { fetchSearchTerms(true) }, 4000)
+    return () => clearInterval(id)
+  }, [searchTermsReady])
 
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -218,14 +228,10 @@ export default function Automation() {
           const key = buildTaskKey(text, applicationId)
           if (!key || existingTasksRef.current.has(key)) return true
 
-          const resp = await fetch(`http://localhost:8080/tasks/${userId}/new`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              text,
-              description: withTitleSuffix(jobTitle, description || text),
-              application_id: applicationId ?? undefined
-            })
+          const resp = await api.post(`/tasks/${userId}/new`, {
+            text,
+            description: withTitleSuffix(jobTitle, description || text),
+            application_id: applicationId ?? undefined
           })
           if (!resp.ok) {
             const msg = await resp.text().catch(() => '')
@@ -243,9 +249,7 @@ export default function Automation() {
 
   const clearTasksForApplication = async (userId: string, applicationId: string) => {
     try {
-      await fetch(`http://localhost:8080/tasks/${userId}/application/${applicationId}`, {
-        method: 'DELETE'
-      })
+      await api.del(`/tasks/${userId}/application/${applicationId}`)
       existingTasksRef.current = new Set(
         Array.from(existingTasksRef.current).filter(key => !key.startsWith(`${applicationId}::`))
       )
@@ -255,6 +259,10 @@ export default function Automation() {
   }
 
   const handlePlayClick = async () => {
+    if (searchTermsReady !== true) {
+      addLog('Setting up your job search. Please wait a moment...')
+      return
+    }
     setStatus('running')
     setAwaitingInput(false)
     addLog('Beginning automation...')
@@ -372,7 +380,7 @@ export default function Automation() {
       const userId = await getUserId();
       if (!userId) { addLog('Unable to fetch job types (no user).'); return }
       try {
-        const resp = await fetch(`http://localhost:8080/preferences/${userId}/job-types`)
+        const resp = await api.get(`/preferences/${userId}/job-types`)
         if (!resp.ok) { addLog('Failed to fetch job types.'); return }
         const data = await resp.json()
         const jobTypes: string[] = Array.isArray(data?.job_types) ? data.job_types : []
@@ -828,14 +836,16 @@ export default function Automation() {
               const jobTitle = (titleStr || '').trim()
               const jobDescription = (descResult || '').toString()
 
-              const addJobResp = await fetch(`http://localhost:8080/jobs/add`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  company: companyName,
-                  title: jobTitle,
-                  description: jobDescription
-                })
+              if (!companyName || !jobTitle || !jobDescription.trim()) {
+                consecutiveDoNotApply = 0
+                addLog('Error: missing information. Skipping...')
+                continue
+              }
+
+              const addJobResp = await api.post(`/jobs/add`, {
+                company: companyName,
+                title: jobTitle,
+                description: jobDescription
               })
               let addedJobId: string | null = null
               if (!addJobResp.ok) {
@@ -849,14 +859,10 @@ export default function Automation() {
                 addLog('Decision skipped (no user).')
               } else {
                 addLog(`Reviewing ${titleStr}...`)
-                const resp = await fetch(`http://localhost:8080/jobs/analyze/${userId}`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    job_description: descResult || '',
-                    company: companyName,
-                    title: jobTitle
-                  })
+                const resp = await api.post(`/jobs/analyze/${userId}`, {
+                  job_description: descResult || '',
+                  company: companyName,
+                  title: jobTitle
                 })
                 if (resp.ok) {
                   const data = await resp.json()
@@ -882,11 +888,7 @@ export default function Automation() {
                         status
                       }
                       try {
-                        const resp = await fetch(`http://localhost:8080/applications/${userIdForApplication}/new`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify(applicationPayload)
-                        })
+                        const resp = await api.post(`/applications/${userIdForApplication}/new`, applicationPayload)
                         if (resp.ok) {
                           const data = await resp.json().catch(() => ({}))
                           const applicationId =
@@ -1657,15 +1659,11 @@ export default function Automation() {
                           const userId = await getUserId()
                           if (instructionsText && userId) {
                             needsExternalAction = true
-                            await fetch(`http://localhost:8080/tasks/${userId}/add-instructions`, {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                employer_instructions: instructionsText,
-                                application_id: currentJobApplicationIdRef.current ?? undefined,
-                                company: (clickJobResult.company || '').trim() || 'company unknown',
-                                title: (titleStr || '').trim() || 'title unknown'
-                              })
+                            await api.post(`/tasks/${userId}/add-instructions`, {
+                              employer_instructions: instructionsText,
+                              application_id: currentJobApplicationIdRef.current ?? undefined,
+                              company: (clickJobResult.company || '').trim() || 'company unknown',
+                              title: (titleStr || '').trim() || 'title unknown'
                             })
                           }
                         } catch (err) {}
@@ -1733,15 +1731,11 @@ export default function Automation() {
                   if (!documentsMissing && pendingModalInstructionText && userId) {
                     try {
                       needsExternalAction = true
-                      await fetch(`http://localhost:8080/tasks/${userId}/add-instructions`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          employer_instructions: pendingModalInstructionText,
-                          application_id: currentJobApplicationIdRef.current ?? undefined,
-                          company: (clickJobResult.company || '').trim() || 'company unknown',
-                          title: (titleStr || '').trim() || 'title unknown'
-                        })
+                      await api.post(`/tasks/${userId}/add-instructions`, {
+                        employer_instructions: pendingModalInstructionText,
+                        application_id: currentJobApplicationIdRef.current ?? undefined,
+                        company: (clickJobResult.company || '').trim() || 'company unknown',
+                        title: (titleStr || '').trim() || 'title unknown'
                       })
                     } catch (err) { /* ignore */ }
                   }
@@ -1862,7 +1856,13 @@ export default function Automation() {
               </svg>
             </button>
           ) : (
-            <button className="automation-play-btn" title="Play" onClick={handlePlayClick}>
+            <button
+              className="automation-play-btn"
+              title={searchTermsReady === true ? 'Play' : 'Preparing your job search…'}
+              onClick={handlePlayClick}
+              disabled={searchTermsReady !== true}
+              style={searchTermsReady !== true ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
+            >
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polygon points="5 3 19 12 5 21 5 3"></polygon>
               </svg>
@@ -1877,6 +1877,14 @@ export default function Automation() {
           </button>
         </div>
       </div>
+      {searchTermsReady !== true && (
+        <div className="automation-preparing-banner" role="status" aria-live="polite"
+          style={{ padding: '12px 16px', margin: '8px 0', borderRadius: 8, background: 'rgba(0,0,0,0.05)', fontSize: 14 }}>
+          {searchTermsReady === null
+            ? 'Checking your job search setup…'
+            : 'Setting up your job search — analyzing your resume. Automation will unlock in a moment.'}
+        </div>
+      )}
       {approvalPrompt && (
         <div className="approval-banner" role="alert" aria-live="assertive">
           <div className="approval-text">
