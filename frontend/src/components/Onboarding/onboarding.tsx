@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { api } from '../../lib/api'
 import './onboarding.css'
 
 interface OnboardingProps {
@@ -22,7 +23,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
   const fetchInterests = async (resumeId: string) => {
     try {
-      const response = await fetch(`http://localhost:8080/resumes/${resumeId}/possible-interests`)
+      const response = await api.get(`/resumes/${resumeId}/possible-interests`)
       if (response.ok) {
         const data = await response.json()
         setInterests(data)
@@ -50,15 +51,10 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
   const saveInterests = async (resumeId: string): Promise<boolean> => {
     try {
-      const response = await fetch(`http://localhost:8080/resumes/${resumeId}/interests`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ interests: selectedInterests })
-      })
-      if (response.ok) {
-        return await updateSearchTerms(resumeId)
-      }
-      return false
+      // Saving interests also kicks off resume enrichment server-side (the worker
+      // caches the short resume and generates search terms from these interests).
+      const response = await api.put(`/resumes/${resumeId}/interests`, { interests: selectedInterests })
+      return response.ok
     } catch (error) {
       console.error('Error saving interests:', error)
       return false
@@ -67,31 +63,12 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
   const updateJobTypes = async (userId: string): Promise<boolean> => {
     try {
-      const response = await fetch(`http://localhost:8080/preferences/${userId}/job-types`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          job_types: selectedJobTypes
-        })
+      const response = await api.put(`/preferences/${userId}/job-types`, {
+        job_types: selectedJobTypes
       })
       return response.ok
     } catch (error) {
       console.error('Error updating job types:', error)
-      return false
-    }
-  }
-
-  const updateSearchTerms = async (resumeId: string): Promise<boolean> => {
-    try {
-      const response = await fetch(`http://localhost:8080/resumes/${resumeId}/search-terms`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-      })
-      return response.ok
-    } catch (error) {
-      console.error('Error updating search terms:', error)
       return false
     }
   }
@@ -150,16 +127,10 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       }
 
       try {
-        const response = await fetch(`http://localhost:8080/resumes/upload/${user.id}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            file_name: uploadedFile.name,
-            file_type: uploadedFile.type,
-            file_size: uploadedFile.size
-          })
+        const response = await api.post(`/resumes/upload/${user.id}`, {
+          file_name: uploadedFile.name,
+          file_type: uploadedFile.type,
+          file_size: uploadedFile.size
         })
 
         if (response.ok) {
@@ -172,16 +143,12 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           })
 
           if (uploadResponse.ok) {
-            const saveResponse = await fetch('http://localhost:8080/resumes/save', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                resume_id: newResumeId,
-                key: key,
-                user_id: user.id,
-                file_name: uploadedFile.name,
-                file_size_bytes: uploadedFile.size
-              })
+            const saveResponse = await api.post('/resumes/save', {
+              resume_id: newResumeId,
+              key: key,
+              user_id: user.id,
+              file_name: uploadedFile.name,
+              file_size_bytes: uploadedFile.size
             })
 
             if (saveResponse.ok) {
