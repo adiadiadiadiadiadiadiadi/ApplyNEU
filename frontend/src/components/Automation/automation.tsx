@@ -10,9 +10,17 @@ import type { EmployerInstruction } from './automationHelpers'
 import { getUserId } from '../../lib/supabase'
 import { api } from '../../lib/api'
 import { ApplicationStatus } from '../../lib/types'
+import { setErrorRedirectSuppressed } from '../../lib/fetchErrorControl'
 
 export default function Automation() {
   const [status, setStatus] = useState<'idle' | 'running' | 'paused' | 'error'>('idle')
+
+  // Automation logs its own fetch failures, so suppress the global redirect-to-/error
+  // fallback while this screen is mounted (errors stay in the console/logs here).
+  useEffect(() => {
+    setErrorRedirectSuppressed(true)
+    return () => setErrorRedirectSuppressed(false)
+  }, [])
   const [logs, setLogs] = useState<string[]>([])
   const [isPanelOpen, setIsPanelOpen] = useState(false)
   const [searchTerms, setSearchTerms] = useState<string[]>([])
