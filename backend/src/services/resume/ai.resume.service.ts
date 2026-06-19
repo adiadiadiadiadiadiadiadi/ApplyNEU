@@ -81,6 +81,7 @@ export const cacheShortResume = async (resume_id: string) => {
         return updated.rows[0];
     } catch (error) {
         if (error instanceof AppError) throw error;
+        console.error(`[cacheShortResume] unexpected error for resume_id=${resume_id}:`, error);
         throw new AppError(500, 'Error caching shortened resume.');
     }
 };
