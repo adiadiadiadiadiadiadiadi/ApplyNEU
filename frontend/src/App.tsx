@@ -11,11 +11,13 @@ import Profile from './components/Profile/profile'
 import ProfileSettings from './components/Profile/profileSettings'
 import ProfileInterests from './components/Profile/profileInterests'
 import Settings from './components/Settings/settings'
-import { FetchErrorProvider, FetchErrorBanner } from './components/common/FetchError'
+import { FetchErrorProvider } from './components/common/FetchError'
 import { setNavigate } from './lib/navigation'
 import { api } from './lib/api'
 import Unauthorized from './components/NotFound/unauthorized'
 import NotFound from './components/NotFound/notfound'
+import ServerError from './components/NotFound/servererror'
+import RequestError from './components/NotFound/requesterror'
 
 function SideNav() {
   return (
@@ -64,7 +66,6 @@ function SideNav() {
 function AuthenticatedLayout() {
   return (
     <>
-      <FetchErrorBanner />
       <SideNav />
       <Outlet />
     </>
@@ -80,6 +81,8 @@ function AuthRoutes({ authError }: { authError: string | null }) {
       <Route path="/signup" element={<Signup onNavigateToLogin={() => navigate('/login')} />} />
       <Route path="/401" element={<Unauthorized />} />
       <Route path="/404" element={<NotFound />} />
+      <Route path="/500" element={<ServerError />} />
+      <Route path="/error" element={<RequestError />} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   )
@@ -91,6 +94,8 @@ function OnboardingRoutes({ onComplete }: { onComplete: () => void }) {
       <Route path="/onboarding" element={<Onboarding onComplete={onComplete} />} />
       <Route path="/401" element={<Unauthorized />} />
       <Route path="/404" element={<NotFound />} />
+      <Route path="/500" element={<ServerError />} />
+      <Route path="/error" element={<RequestError />} />
       <Route path="*" element={<Navigate to="/onboarding" replace />} />
     </Routes>
   )
@@ -109,6 +114,8 @@ function AppRoutes() {
       </Route>
       <Route path="/401" element={<Unauthorized />} />
       <Route path="/404" element={<NotFound />} />
+      <Route path="/500" element={<ServerError />} />
+      <Route path="/error" element={<RequestError />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   )

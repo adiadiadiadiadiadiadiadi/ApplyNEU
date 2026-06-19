@@ -1,30 +1,34 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { useEffect } from 'react'
 import { navigateTo } from '../../lib/navigation'
+import { isErrorRedirectSuppressed } from '../../lib/fetchErrorControl'
 import { supabase } from '../../lib/supabase'
 
-type FetchErrorState = {
-  message: string | null
-  retry?: (() => void) | null
+// Only our own backend calls get the global error handling. Third-party fetches
+// (Supabase auth, external URLs) manage their own retries/errors, so a transient
+// network blip during e.g. getUser() must not hijack the whole app to /error.
+const API_BASE = 'http://localhost:8080'
+
+const requestUrl = (input: unknown): string => {
+  if (typeof input === 'string') return input
+  if (input instanceof URL) return input.href
+  if (input instanceof Request) return input.url
+  return ''
 }
 
-type FetchErrorContextValue = {
-  state: FetchErrorState
-  setError: (msg: string | null, retry?: (() => void) | null) => void
-  clear: () => void
+// Avoid stacking duplicate redirects when a burst of requests all fail at once.
+const isOnErrorPage = () => {
+  const hash = window.location.hash
+  return hash.startsWith('#/error') || hash.startsWith('#/401')
 }
-
-const FetchErrorContext = createContext<FetchErrorContextValue>({
-  state: { message: null, retry: null },
-  setError: () => {},
-  clear: () => {}
-})
 
 export const FetchErrorProvider = ({ children }: { children: React.ReactNode }) => {
-  const [state, setState] = useState<FetchErrorState>({ message: null, retry: null })
-
   useEffect(() => {
     const originalFetch = window.fetch.bind(window)
     window.fetch = async (...args) => {
+      // Leave non-backend requests (Supabase, external) completely untouched.
+      if (!requestUrl(args[0]).startsWith(API_BASE)) {
+        return originalFetch(...args)
+      }
       try {
         const res = await originalFetch(...args)
         if (res.status === 401) {
@@ -32,12 +36,16 @@ export const FetchErrorProvider = ({ children }: { children: React.ReactNode }) 
           navigateTo('/401')
           return res
         }
-        if (!res.ok) {
-          setState({ message: 'Failed to fetch. Please try again.', retry: () => window.location.reload() })
+        if (!res.ok && !isOnErrorPage() && !isErrorRedirectSuppressed()) {
+          // Show a full-page fallback with the received error instead of a banner.
+          // Suppressed screens (e.g. Automation) handle/log their own errors.
+          navigateTo('/error', { state: { status: res.status, statusText: res.statusText } })
         }
         return res
       } catch (err) {
-        navigateTo('/404')
+        if (!isOnErrorPage() && !isErrorRedirectSuppressed()) {
+          navigateTo('/error', { state: { message: 'Could not reach the server.' } })
+        }
         throw err
       }
     }
@@ -47,49 +55,5 @@ export const FetchErrorProvider = ({ children }: { children: React.ReactNode }) 
     }
   }, [])
 
-  const clear = () => setState({ message: null, retry: null })
-  const setError = (msg: string | null, retry?: (() => void) | null) => setState({ message: msg, retry: retry ?? null })
-
-  const value = useMemo(
-    () => ({
-      state,
-      setError,
-      clear
-    }),
-    [state]
-  )
-
-  return <FetchErrorContext.Provider value={value}>{children}</FetchErrorContext.Provider>
-}
-
-export const useFetchError = () => useContext(FetchErrorContext)
-
-export const FetchErrorBanner = () => {
-  const { state, clear } = useFetchError()
-  const { message, retry } = state
-
-  if (!message) return null
-
-  return (
-    <div className="fetch-error-banner" role="alert" aria-live="assertive">
-      <span className="fetch-error-text">{message}</span>
-      <div className="fetch-error-actions">
-        {retry ? (
-          <button
-            type="button"
-            className="fetch-error-retry"
-            onClick={() => {
-              retry()
-              clear()
-            }}
-          >
-            retry
-          </button>
-        ) : null}
-        <button type="button" className="fetch-error-dismiss" onClick={clear} aria-label="Dismiss fetch error">
-        dismiss
-      </button>
-      </div>
-    </div>
-  )
+  return <>{children}</>
 }
