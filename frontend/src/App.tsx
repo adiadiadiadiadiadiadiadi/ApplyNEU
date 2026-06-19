@@ -11,11 +11,13 @@ import Profile from './components/Profile/profile'
 import ProfileSettings from './components/Profile/profileSettings'
 import ProfileInterests from './components/Profile/profileInterests'
 import Settings from './components/Settings/settings'
-import { FetchErrorProvider, FetchErrorBanner } from './components/common/FetchError'
+import { FetchErrorProvider } from './components/common/FetchError'
 import { setNavigate } from './lib/navigation'
+import { api } from './lib/api'
 import Unauthorized from './components/NotFound/unauthorized'
 import NotFound from './components/NotFound/notfound'
 import ServerError from './components/NotFound/servererror'
+import RequestError from './components/NotFound/requesterror'
 
 function SideNav() {
   return (
@@ -64,7 +66,6 @@ function SideNav() {
 function AuthenticatedLayout() {
   return (
     <>
-      <FetchErrorBanner />
       <SideNav />
       <Outlet />
     </>
@@ -81,6 +82,7 @@ function AuthRoutes({ authError }: { authError: string | null }) {
       <Route path="/401" element={<Unauthorized />} />
       <Route path="/404" element={<NotFound />} />
       <Route path="/500" element={<ServerError />} />
+      <Route path="/error" element={<RequestError />} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   )
@@ -93,6 +95,7 @@ function OnboardingRoutes({ onComplete }: { onComplete: () => void }) {
       <Route path="/401" element={<Unauthorized />} />
       <Route path="/404" element={<NotFound />} />
       <Route path="/500" element={<ServerError />} />
+      <Route path="/error" element={<RequestError />} />
       <Route path="*" element={<Navigate to="/onboarding" replace />} />
     </Routes>
   )
@@ -112,30 +115,25 @@ function AppRoutes() {
       <Route path="/401" element={<Unauthorized />} />
       <Route path="/404" element={<NotFound />} />
       <Route path="/500" element={<ServerError />} />
+      <Route path="/error" element={<RequestError />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   )
 }
 
-const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
-
 async function ensureBackendUser(user: { id: string; email?: string; user_metadata?: Record<string, string> }) {
-  const existing = await fetch(`${API_BASE}/users/${user.id}`)
+  const existing = await api.get(`/users/${user.id}`)
   if (existing.status !== 404) return
   const fullName: string = user.user_metadata?.full_name ?? user.user_metadata?.name ?? ''
   const spaceIdx = fullName.indexOf(' ')
   const firstName = spaceIdx >= 0 ? fullName.slice(0, spaceIdx) : fullName
   const lastName = spaceIdx >= 0 ? fullName.slice(spaceIdx + 1) : ''
-  await fetch(`${API_BASE}/users/new`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      user_id: user.id,
-      first_name: firstName,
-      last_name: lastName,
-      email: user.email ?? '',
-      grad_year: 0,
-    }),
+  await api.post(`/users/new`, {
+    user_id: user.id,
+    first_name: firstName,
+    last_name: lastName,
+    email: user.email ?? '',
+    grad_year: 0,
   })
 }
 

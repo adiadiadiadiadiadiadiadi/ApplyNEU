@@ -1,9 +1,11 @@
-let _navigate: ((path: string) => void) | null = null
+type NavOptions = { state?: unknown; replace?: boolean }
 
-export const setNavigate = (fn: (path: string) => void) => {
+let _navigate: ((path: string, options?: NavOptions) => void) | null = null
+
+export const setNavigate = (fn: (path: string, options?: NavOptions) => void) => {
   _navigate = fn
 }
 
-export const navigateTo = (path: string) => {
-  _navigate?.(path)
+export const navigateTo = (path: string, options?: NavOptions) => {
+  _navigate?.(path, options)
 }

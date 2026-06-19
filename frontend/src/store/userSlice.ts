@@ -1,5 +1,6 @@
 import { createAsyncThunk, createSlice } from '@reduxjs/toolkit'
 import { supabase } from '../lib/supabase'
+import { api } from '../lib/api'
 
 type UserProfile = {
   id: string
@@ -43,7 +44,7 @@ export const fetchUserProfile = createAsyncThunk<UserProfile, void, { rejectValu
       }
 
       const user = data.user
-      const response = await fetch(`http://localhost:8080/users/${user.id}`)
+      const response = await api.get(`/users/${user.id}`)
 
       if (!response.ok) {
         let backendMessage = 'failed to fetch profile from backend'
@@ -66,7 +67,7 @@ export const fetchUserProfile = createAsyncThunk<UserProfile, void, { rejectValu
 
       let prefsRow: Record<string, unknown> = {}
       try {
-        const prefsResp = await fetch(`http://localhost:8080/preferences/${user.id}`)
+        const prefsResp = await api.get(`/preferences/${user.id}`)
         if (prefsResp.ok) prefsRow = await prefsResp.json()
       } catch { /* proceed with defaults */ }
 
@@ -102,16 +103,12 @@ export const saveUserPreferences = createAsyncThunk<
   if (!userId) return rejectWithValue('No user loaded')
 
   try {
-    const response = await fetch(`http://localhost:8080/preferences/${userId}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        wait_for_approval: prefs.waitForApproval,
-        recent_jobs: prefs.recent_jobs,
-        job_match: prefs.job_match,
-        unpaid_roles: prefs.unpaid_roles,
-        email_notifications: prefs.email_notifications,
-      }),
+    const response = await api.put(`/preferences/${userId}`, {
+      wait_for_approval: prefs.waitForApproval,
+      recent_jobs: prefs.recent_jobs,
+      job_match: prefs.job_match,
+      unpaid_roles: prefs.unpaid_roles,
+      email_notifications: prefs.email_notifications,
     })
 
     if (!response.ok) {
