@@ -22,7 +22,7 @@ const generateSearchTerms = async (resume_id: string) => {
         if (!result.rows.length) throw new AppError(404, 'Resume not found.');
 
         const resumeText: string = result.rows[0].resume_text ?? '';
-        const interests: string[] = result.rows[0].interests;
+        const interests: string[] = result.rows[0].interests ?? [];
         if (!resumeText) throw new AppError(404, 'Resume text not found.');
 
         const message = await withRetry(() => anthropic.messages.create({
@@ -82,6 +82,7 @@ const generateSearchTerms = async (resume_id: string) => {
         return search_terms;
     } catch (error) {
         if (error instanceof AppError) throw error;
+        console.error(`[generateSearchTerms] unexpected error for resume_id=${resume_id}:`, error);
         throw new AppError(500, 'Error extracting topics.');
     }
 };
@@ -102,6 +103,7 @@ export const getSearchTerms = async (resume_id: string) => {
         return result.rows[0];
     } catch (error) {
         if (error instanceof AppError) throw error;
+        console.error(`[getSearchTerms] failed to persist search terms for resume_id=${resume_id}:`, error);
         throw new AppError(500, 'Error updating search terms.');
     }
 };

@@ -3,23 +3,23 @@ import request from 'supertest';
 
 // Native ESM: mocks must be registered with unstable_mockModule and the modules
 // under test pulled in via dynamic import() afterwards so the mocks take effect.
-jest.unstable_mockModule('../../services/preference.service.ts', () => ({
+jest.unstable_mockModule('../../src/services/preference.service.ts', () => ({
   getUserPreferences: jest.fn(),
   updateUserPreferences: jest.fn(),
   getJobTypes: jest.fn(),
   updateJobType: jest.fn(),
 }));
 
-jest.unstable_mockModule('../../controller/middleware/requireUser.ts', () => ({
+jest.unstable_mockModule('../../src/controller/middleware/requireUser.ts', () => ({
   // Default passthrough; individual tests override this to simulate an unknown user.
   requireUser: jest.fn((_req: unknown, _res: unknown, next: () => void) => next()),
 }));
 
 const { getUserPreferences, updateUserPreferences, getJobTypes, updateJobType } = await import(
-  '../../services/preference.service.ts'
+  '../../src/services/preference.service.ts'
 );
-const { requireUser } = await import('../../controller/middleware/requireUser.ts');
-const { app } = await import('../../app.ts');
+const { requireUser } = await import('../../src/controller/middleware/requireUser.ts');
+const { app } = await import('../../src/app.ts');
 
 const USER_ID = 'test-user-id';
 

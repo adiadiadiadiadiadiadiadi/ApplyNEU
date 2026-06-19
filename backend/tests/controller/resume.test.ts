@@ -11,10 +11,7 @@ const getResumeInterests = jest.fn<(resume_id: string) => Promise<any>>();
 const updateResumeInterests = jest.fn<(resume_id: string, interests: string[]) => Promise<any>>();
 const getResumeSearchTerms = jest.fn<(resume_id: string) => Promise<any>>();
 
-// generateSearchTerms (aliased from user.ai.service) is used directly by the
-// PUT /search-terms route AND fired fire-and-forget after a save; cacheShortResume
-// is only fired after a save. Both default to resolving so the post-save tasks
-// don't surface as unhandled rejections during tests.
+// Both default to resolving.
 const generateSearchTerms = jest.fn<(resume_id: string) => Promise<any>>();
 const cacheShortResume = jest.fn<(resume_id: string) => Promise<any>>();
 
