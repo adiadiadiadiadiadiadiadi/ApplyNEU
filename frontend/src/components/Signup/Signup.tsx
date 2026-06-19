@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { api } from '../../lib/api'
 import './signup.css'
 
 interface SignupProps {
@@ -20,7 +21,6 @@ export default function Signup({ onNavigateToLogin }: SignupProps) {
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [step, setStep] = useState<'signup' | 'verify'>('signup')
-    const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
 
     const handleSignup = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -71,18 +71,12 @@ export default function Signup({ onNavigateToLogin }: SignupProps) {
             
             if (userId) {
                 try {
-                    const response = await fetch(`${API_BASE}/users/new`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            user_id: userId,
-                            first_name: firstName,
-                            last_name: lastName,
-                            email: email,
-                            grad_year: parseInt(graduationYear)
-                        })
+                    const response = await api.post(`/users/new`, {
+                        user_id: userId,
+                        first_name: firstName,
+                        last_name: lastName,
+                        email: email,
+                        grad_year: parseInt(graduationYear)
                     })
                     
                     if (!response.ok) {

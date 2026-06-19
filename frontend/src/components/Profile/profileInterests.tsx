@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { api } from '../../lib/api'
 import './profile.css'
 import '../Onboarding/onboarding.css'
 
@@ -29,20 +30,10 @@ export default function ProfileInterests() {
     setLoading(true)
     setError(null)
     try {
-      const saveResp = await fetch(`http://localhost:8080/resumes/${resumeId}/interests`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ interests: selectedInterests }),
-      })
+      // Saving interests also regenerates search terms server-side (atomic).
+      const saveResp = await api.put(`/resumes/${resumeId}/interests`, { interests: selectedInterests })
       if (!saveResp.ok) {
         throw new Error('Unable to save interests')
-      }
-      const searchResp = await fetch(`http://localhost:8080/resumes/${resumeId}/search-terms`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-      })
-      if (!searchResp.ok) {
-        throw new Error('Unable to update search terms')
       }
       navigate('/profile-settings')
     } catch (err) {
