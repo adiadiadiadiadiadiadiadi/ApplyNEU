@@ -59,7 +59,7 @@ if (process.env.NODE_ENV !== 'test') {
   try {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = dirname(__filename);
-    const swaggerDocument = JSON.parse(readFileSync(join(__dirname, 'swagger_output.json'), 'utf8'));
+    const swaggerDocument = JSON.parse(readFileSync(join(__dirname, '..', 'swagger_output.json'), 'utf8'));
     app.use('/api-docs', ...swaggerUi.serve, swaggerUi.setup(swaggerDocument));
     console.log(`Swagger UI at http://localhost:${PORT}/api-docs`);
   } catch {

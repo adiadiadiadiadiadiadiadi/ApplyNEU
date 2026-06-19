@@ -12,13 +12,15 @@ const handleValidation = (req: Request, res: Response, next: NextFunction) => {
 
 export const validateSendJobDescription = [
     param('user_id').notEmpty().withMessage('user_id is required.'),
-    body('job_description').notEmpty().withMessage('job_description is required.'),
+    body('job_description').trim().notEmpty().withMessage('job_description is required.'),
+    body('company').trim().notEmpty().withMessage('company is required.'),
+    body('title').trim().notEmpty().withMessage('title is required.'),
     handleValidation,
 ];
 
 export const validateAddJob = [
-    body('company').notEmpty().withMessage('company is required.'),
-    body('title').notEmpty().withMessage('title is required.'),
-    body('description').notEmpty().withMessage('description is required.'),
+    body('company').trim().notEmpty().withMessage('company is required.'),
+    body('title').trim().notEmpty().withMessage('title is required.'),
+    body('description').trim().notEmpty().withMessage('description is required.'),
     handleValidation,
 ];
