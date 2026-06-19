@@ -7,11 +7,11 @@ import type {
 } from '../types/resumes.ts';
 import { getUploadUrl, completeResumeUpload, getPossibleInterests, getLatestResume, getResumeSearchTerms, getResumeInterests, updateResumeInterests } from '../services/resume/resume.service.ts';
 import { getSearchTerms as generateSearchTerms } from '../services/user/user.ai.service.ts';
-import { cacheShortResume } from '../services/resume/ai.resume.service.ts';
 import { validateUploadUrl, validateSaveResume, validateUserIdParam, validateResumeIdParam, validateUpdateResumeInterests } from './middleware/validators/resume.validate.ts';
 import type { Request } from 'express';
 import { requireUser } from './middleware/requireUser.ts';
 import asyncHandler from './middleware/handlers/asyncHandler.ts';
+import { resumeEnrichmentQueue } from '../queues/resumeEnrichmentQueue.ts';
 
 const resumeController = (): express.Router => {
     const router = express.Router();
@@ -29,11 +29,6 @@ const resumeController = (): express.Router => {
         const { resume_id, key, user_id } = req.body;
         const resume = await completeResumeUpload(resume_id, key, user_id);
         res.status(200).json(resume);
-        Promise.all([generateSearchTerms(resume_id), 
-            cacheShortResume(resume_id)])
-            .catch((err) => console.error(
-                'Post-upload AI tasks failed:', err)
-            );
     };
 
     /** GET /:user_id/possible-interests — derive interest tags from the user's latest resume via AI. */
@@ -57,11 +52,31 @@ const resumeController = (): express.Router => {
         res.status(200).json(result);
     };
 
-    /** PUT /:resume_id/interests — replace the interest tags on a specific resume. */
+    /**
+     * PUT /:resume_id/interests — save the user's selected interest tags, then kick
+     * off resume enrichment. Once interests are persisted the worker caches the short
+     * resume and generates search terms from those interests (one AI pass, no re-runs).
+     */
     const updateResumeInterestsRoute = async (req: Request<{ resume_id: string }, unknown, { interests: string[] }>, res: Response) => {
         const { resume_id } = req.params;
         const { interests } = req.body;
         const result = await updateResumeInterests(resume_id, interests);
+
+        // Enqueue after interests are saved (the worker reads them) and before
+        // responding, so a queue outage fails the request and the user can retry
+        // rather than finishing onboarding with a resume that never gets enriched.
+        await resumeEnrichmentQueue.add(
+            'enrich',
+            { resume_id },
+            {
+                jobId: resume_id,
+                attempts: 3,
+                backoff: { type: 'exponential', delay: 5000 },
+                removeOnComplete: 1000,
+                removeOnFail: 5000,
+            }
+        );
+
         res.status(200).json(result);
     };
 
@@ -81,14 +96,10 @@ const resumeController = (): express.Router => {
 
     router.post('/upload/:user_id', validateUploadUrl, requireUser, asyncHandler(getUploadUrlRoute));
     router.post('/save', validateSaveResume, asyncHandler(completeResumeUploadRoute));
-
     router.get('/:resume_id/possible-interests', validateResumeIdParam, asyncHandler(getInterestsRoute));
-    
     router.get('/:user_id/latest', validateUserIdParam, requireUser, asyncHandler(getLatestResumeRoute));
-
     router.get('/:resume_id/interests', validateResumeIdParam, asyncHandler(getResumeInterestsRoute));
     router.put('/:resume_id/interests', validateUpdateResumeInterests, asyncHandler(updateResumeInterestsRoute));
-
     router.get('/:resume_id/search-terms', validateResumeIdParam, asyncHandler(getSearchTermsRoute));
     router.put('/:resume_id/search-terms', validateResumeIdParam, asyncHandler(updateSearchTermsRoute));
 

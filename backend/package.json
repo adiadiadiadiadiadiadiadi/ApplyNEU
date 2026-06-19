@@ -8,7 +8,9 @@
   },
   "scripts": {
     "test": "NODE_ENV=test NODE_OPTIONS='--experimental-vm-modules' jest --runInBand",
-    "dev": "nodemon --exec tsx src/app.ts"
+    "dev": "nodemon --exec tsx src/app.ts",
+    "worker": "nodemon --exec tsx src/workers/resumeEnrichmentWorker.ts",
+    "db:reset": "tsx scripts/reset-db.ts"
   },
   "keywords": [],
   "author": "",
@@ -17,6 +19,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
     "anthropic-ai": "^0.0.10",
+    "bullmq": "^5.78.1",
     "convertapi": "^1.15.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",

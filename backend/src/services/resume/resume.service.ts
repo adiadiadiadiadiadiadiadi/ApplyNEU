@@ -142,6 +142,24 @@ export const completeResumeUpload = async (resume_id: string, key: string, user_
             `UPDATE resumes SET upload_complete = true, resume_text = $1 WHERE resume_id = $2 RETURNING *`,
             [resume_text, resume_id]
         );
+
+        // Now that a new resume exists, prune this user's earlier orphaned resumes:
+        // ones with neither search terms nor a short resume were never enriched
+        // (abandoned uploads or onboarding quit before the interests step), so they
+        // are never used. Best-effort — a cleanup failure must not fail the upload.
+        try {
+            await pool.query(
+                `DELETE FROM resumes
+                 WHERE user_id::text = $1
+                   AND resume_id <> $2
+                   AND search_terms IS NULL
+                   AND short_resume IS NULL`,
+                [user_id, resume_id]
+            );
+        } catch (cleanupError) {
+            console.error('Failed to prune orphaned resumes:', cleanupError);
+        }
+
         return result.rows[0];
     } catch (error) {
         if (error instanceof AppError) throw error;
@@ -227,6 +245,9 @@ export const getResumeInterests = async (resume_id: string) => {
 
 /**
  * Replaces the interest tags on a specific resume.
+ * Search terms are derived from these interests, but that generation is handled
+ * asynchronously by the resume-enrichment worker (enqueued by the route after
+ * this save), so it is not done here.
  * @param resume_id - ID of the resume
  * @param interests - Full replacement array of interest topic strings
  */
