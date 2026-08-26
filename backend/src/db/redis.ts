@@ -1,14 +1,11 @@
 import { Redis } from 'ioredis';
 
 export const redis = new Redis(process.env.REDIS_URL ?? 'redis://127.0.0.1:6379', {
-  // Fail commands immediately when not connected instead of queueing them while
-  // ioredis reconnects — otherwise a down Redis adds latency to every request
-  // before falling back to the DB.
   enableOfflineQueue: false,
   maxRetriesPerRequest: 1,
   connectTimeout: 1000,
-  // Cap reconnect backoff so we don't spin tightly, but keep trying.
   retryStrategy: (times) => Math.min(times * 200, 5000),
+  lazyConnect: process.env.NODE_ENV === 'test',
 });
 
 redis.on('connect', () => {

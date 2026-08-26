@@ -11,7 +11,7 @@ import { validateUploadUrl, validateSaveResume, validateUserIdParam, validateRes
 import type { Request } from 'express';
 import { requireUser } from './middleware/requireUser.ts';
 import asyncHandler from './middleware/handlers/asyncHandler.ts';
-import { resumeEnrichmentQueue } from '../queues/resumeEnrichmentQueue.ts';
+import { getResumeEnrichmentQueue } from '../queues/resumeEnrichmentQueue.ts';
 
 const resumeController = (): express.Router => {
     const router = express.Router();
@@ -65,7 +65,7 @@ const resumeController = (): express.Router => {
         // Enqueue after interests are saved (the worker reads them) and before
         // responding, so a queue outage fails the request and the user can retry
         // rather than finishing onboarding with a resume that never gets enriched.
-        await resumeEnrichmentQueue.add(
+        await getResumeEnrichmentQueue().add(
             'enrich',
             { resume_id },
             {
