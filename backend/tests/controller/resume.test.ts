@@ -15,6 +15,8 @@ const getResumeSearchTerms = jest.fn<(resume_id: string) => Promise<any>>();
 const generateSearchTerms = jest.fn<(resume_id: string) => Promise<any>>();
 const cacheShortResume = jest.fn<(resume_id: string) => Promise<any>>();
 
+const queueAdd = jest.fn<(...args: any[]) => Promise<any>>();
+
 const requireUser = jest.fn((_req: any, _res: any, next: any) => next());
 
 jest.unstable_mockModule('../../src/services/resume/resume.service.ts', () => ({
@@ -33,6 +35,11 @@ jest.unstable_mockModule('../../src/services/user/user.ai.service.ts', () => ({
 
 jest.unstable_mockModule('../../src/services/resume/ai.resume.service.ts', () => ({
   cacheShortResume,
+}));
+
+// Enrichment is enqueued, not run inline; mock the queue so tests need no Redis.
+jest.unstable_mockModule('../../src/queues/resumeEnrichmentQueue.ts', () => ({
+  getResumeEnrichmentQueue: () => ({ add: queueAdd }),
 }));
 
 jest.unstable_mockModule('../../src/controller/middleware/requireUser.ts', () => ({
@@ -60,6 +67,7 @@ beforeEach(() => {
   getResumeSearchTerms.mockReset();
   generateSearchTerms.mockReset();
   cacheShortResume.mockReset();
+  queueAdd.mockReset();
   requireUser.mockReset();
   requireUser.mockImplementation((_req: any, _res: any, next: any) => next());
   // Keep post-save AI tasks quiet by default.
@@ -156,14 +164,15 @@ describe('POST /resumes/save', () => {
     expect(completeResumeUpload).toHaveBeenCalledWith(RESUME_ID, KEY, USER_ID);
   });
 
-  it('kicks off the post-upload AI tasks after a successful save', async () => {
+  it('does not start enrichment on save (deferred until interests are chosen)', async () => {
     completeResumeUpload.mockResolvedValue({ resume_id: RESUME_ID, upload_complete: true });
 
     const res = await request(app).post(url).send(validBody);
 
     expect(res.status).toBe(200);
-    expect(generateSearchTerms).toHaveBeenCalledWith(RESUME_ID);
-    expect(cacheShortResume).toHaveBeenCalledWith(RESUME_ID);
+    expect(queueAdd).not.toHaveBeenCalled();
+    expect(generateSearchTerms).not.toHaveBeenCalled();
+    expect(cacheShortResume).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -303,12 +312,30 @@ describe('PUT /resumes/:resume_id/interests', () => {
     expect(updateResumeInterests).toHaveBeenCalledWith(RESUME_ID, interests);
   });
 
+  it('enqueues enrichment once interests are saved', async () => {
+    updateResumeInterests.mockResolvedValue({ resume_id: RESUME_ID, interests });
+
+    const res = await request(app).put(url).send({ interests });
+
+    expect(res.status).toBe(200);
+    // Handed off to the worker rather than run inline, keyed by resume_id so a
+    // repeated save does not queue duplicate work.
+    expect(queueAdd).toHaveBeenCalledWith(
+      'enrich',
+      { resume_id: RESUME_ID },
+      expect.objectContaining({ jobId: RESUME_ID, attempts: 3 }),
+    );
+    expect(generateSearchTerms).not.toHaveBeenCalled();
+    expect(cacheShortResume).not.toHaveBeenCalled();
+  });
+
   it('returns 400 when interests is missing', async () => {
     const res = await request(app).put(url).send({});
 
     expect(res.status).toBe(400);
     expect(res.body.message).toBe('interests is required.');
     expect(updateResumeInterests).not.toHaveBeenCalled();
+    expect(queueAdd).not.toHaveBeenCalled();
   });
 
   it('propagates a 404 AppError when the resume does not exist', async () => {
