@@ -16,8 +16,8 @@ const userController = () => {
 
   /** POST /new — register a new user account. */
   const addUserRoute = async (req: PostUserRequest, res: Response) => {
-    const { user_id, first_name, last_name, email, grad_year } = req.body;
-    const user = await addUser(user_id, first_name, last_name, email, grad_year);
+    const { user_id, first_name, last_name, grad_year } = req.body;
+    const user = await addUser(user_id, first_name, last_name, grad_year);
     res.status(200).json(user);
   };
 
@@ -31,8 +31,8 @@ const userController = () => {
   /** PUT /:user_id — update a user's basic profile fields. */
   const updateUserRoute = async (req: PutUserRequest, res: Response) => {
     const { user_id } = req.params;
-    const { first_name, last_name, email, grad_year } = req.body;
-    const user = await updateUser(user_id, first_name, last_name, email, grad_year);
+    const { first_name, last_name, grad_year } = req.body;
+    const user = await updateUser(user_id, first_name, last_name, grad_year);
     res.status(200).json(user);
   };
 

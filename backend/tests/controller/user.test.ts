@@ -2,9 +2,9 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import request from 'supertest';
 import { AppError } from '../../src/errors/AppError.ts';
 
-const addUser = jest.fn<(user_id: string, first_name: string, last_name: string, email: string, grad_year: number) => Promise<any>>();
+const addUser = jest.fn<(user_id: string, first_name: string, last_name: string, grad_year: number) => Promise<any>>();
 const getUser = jest.fn<(user_id: string) => Promise<any>>();
-const updateUser = jest.fn<(user_id: string, first_name: string, last_name: string, email: string, grad_year: number) => Promise<any>>();
+const updateUser = jest.fn<(user_id: string, first_name: string, last_name: string, grad_year: number) => Promise<any>>();
 const getUserApplicationStats = jest.fn<(user_id: string) => Promise<any>>();
 
 const requireUser = jest.fn((_req: any, _res: any, next: any) => next());
@@ -34,7 +34,6 @@ const validUserBody = {
   user_id: USER_ID,
   first_name: 'Ada',
   last_name: 'Lovelace',
-  email: 'ada@northeastern.edu',
   grad_year: 2026,
 };
 
@@ -61,7 +60,7 @@ describe('POST /users/new', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual(created);
-    expect(addUser).toHaveBeenCalledWith(USER_ID, 'Ada', 'Lovelace', 'ada@northeastern.edu', 2026);
+    expect(addUser).toHaveBeenCalledWith(USER_ID, 'Ada', 'Lovelace', 2026);
   });
 
   it('ignores extra body fields and only forwards the known fields', async () => {
@@ -72,10 +71,10 @@ describe('POST /users/new', () => {
       .send({ ...validUserBody, role: 'admin', extra: true });
 
     expect(res.status).toBe(200);
-    expect(addUser).toHaveBeenCalledWith(USER_ID, 'Ada', 'Lovelace', 'ada@northeastern.edu', 2026);
+    expect(addUser).toHaveBeenCalledWith(USER_ID, 'Ada', 'Lovelace', 2026);
   });
 
-  it.each(['user_id', 'first_name', 'last_name', 'email', 'grad_year'])(
+  it.each(['user_id', 'first_name', 'last_name', 'grad_year'])(
     'returns 400 when %s is missing',
     async (field) => {
       const body: Record<string, unknown> = { ...validUserBody };
@@ -161,7 +160,6 @@ describe('PUT /users/:user_id', () => {
   const updateBody = {
     first_name: 'Grace',
     last_name: 'Hopper',
-    email: 'grace@northeastern.edu',
     grad_year: 2027,
   };
 
@@ -173,10 +171,10 @@ describe('PUT /users/:user_id', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual(updated);
-    expect(updateUser).toHaveBeenCalledWith(USER_ID, 'Grace', 'Hopper', 'grace@northeastern.edu', 2027);
+    expect(updateUser).toHaveBeenCalledWith(USER_ID, 'Grace', 'Hopper', 2027);
   });
 
-  it.each(['first_name', 'last_name', 'email', 'grad_year'])(
+  it.each(['first_name', 'last_name', 'grad_year'])(
     'returns 400 when %s is missing',
     async (field) => {
       const body: Record<string, unknown> = { ...updateBody };
