@@ -1,0 +1,56 @@
+# Local dev stack: API + BullMQ worker + Redis.
+#
+#   docker compose up -d --build
+#
+# Postgres is not here on purpose: both dev and prod live in Supabase, and the schema
+# depends on auth.users, which a plain Postgres container cannot provide. DB_* in
+# backend/.env points at the Supabase pooler. Redis stays local -- Supabase has no
+# Redis, and BullMQ plus the stats cache both need one.
+
+services:
+  api:
+    build: ./backend
+    init: true
+    env_file: ./backend/.env
+    environment:
+      # Only Redis is overridden: inside the compose network it is reachable by service
+      # name. Everything else (DB_*, SUPABASE_URL) comes from backend/.env as-is --
+      # deliberately no DB_HOST here, since `environment` beats `env_file` and would
+      # silently override the Supabase host.
+      REDIS_URL: redis://redis:6379
+    ports:
+      - '8080:8080'
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Same image as the api, different entrypoint -- so the worker can be scaled and
+  # redeployed independently of the HTTP server.
+  worker:
+    build: ./backend
+    init: true
+    command: ['node', '--import', 'tsx', 'src/workers/resumeEnrichmentWorker.ts']
+    env_file: ./backend/.env
+    environment:
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    ports:
+      - '6379:6379'
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  redisdata:
