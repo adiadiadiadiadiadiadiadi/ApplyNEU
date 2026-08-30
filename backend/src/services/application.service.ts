@@ -49,7 +49,9 @@ export const getUserApplicationStats = async (user_id: string) => {
   try {
     const cached = await redis.get(cacheKey);
     if (cached) return JSON.parse(cached);
-  } catch {}
+  } catch {
+    // cache miss or error; fall through to db query
+  }
 
   try {
     const result = await pool.query(

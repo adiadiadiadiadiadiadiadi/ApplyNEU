@@ -165,7 +165,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           setStepError('could not prepare resume upload. please try again.')
           return
         }
-      } catch (error) {
+      } catch (_error) {
         setLoading(false)
         setStepError('could not upload resume. please try again.')
         return

@@ -1,9 +1,6 @@
 import { pool } from '../../db/index.ts';
 import { AppError } from '../../errors/AppError.ts';
 
-const NON_REQUIRED_TASK_PATTERN =
-    /\b(ad[\s-]?block(?:er)?|pop[\s-]?up(?: blocker)?|clear (?:your )?cache|cookies?|switch (?:to )?(?:another|different) browser|disable (?:browser )?extensions?|enable javascript|incognito|private mode|vpn|proxy|firewall|antivirus|troubleshoot|workaround|tip|optional|recommended|preference)\b/i;
-
 /**
  * Inserts a single task for a user, optionally linked to a job application.
  * @param user_id - Owning user ID

@@ -1,6 +1,6 @@
 /* eslint no-console: "off" */
 import 'dotenv/config';
-import express, { application } from 'express';
+import express from 'express';
 import * as http from 'http';
 import cors from 'cors';
 import swaggerUi from 'swagger-ui-express';
