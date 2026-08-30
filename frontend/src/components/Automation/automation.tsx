@@ -63,7 +63,7 @@ export default function Automation() {
         recentJobsRef.current = toBool(data.recent_jobs ?? data.recentJobs, true)
         unpaidRolesRef.current = toBool(data.unpaid_roles ?? data.upaid_roles, false)
       }
-    } catch (err) {
+    } catch (_err) {
       // ignore preference fetch errors
     } finally {
       preferencesLoadedRef.current = true
@@ -91,6 +91,13 @@ export default function Automation() {
     if (approvalResolverRef.current) {
       approvalResolverRef.current(approved)
     }
+  }
+
+  // Defined before its first use below (handleMissingDocument calls it), since
+  // it's a const, not a hoisted function declaration.
+  const addLog = (message: string) => {
+    const timestamp = new Date().toLocaleTimeString()
+    setLogs(prev => [...prev, `[${timestamp}] ${message}`])
   }
 
   async function handleMissingDocument(
@@ -149,7 +156,9 @@ export default function Automation() {
             : []
           existingTasksRef.current = new Set(taskKeys)
         }
-      } catch (err) {}
+      } catch (_err) {
+        // ignore
+      }
 
       const latestResumeResp = await api.get(`/resumes/${userId}/latest`)
       if (!latestResumeResp.ok) { if (!isPoll) addLog('Error occured. Could not fetch resume. Retrying...'); return; }
@@ -171,7 +180,7 @@ export default function Automation() {
           .map((t: any) => String(t ?? '').trim().toLowerCase())
           .filter(Boolean)
       )
-    } catch (error) {
+    } catch (_error) {
       if (!isPoll) addLog('Error occured. Could not get search terms.')
     }
   }
@@ -207,11 +216,6 @@ export default function Automation() {
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [logs])
-
-  const addLog = (message: string) => {
-    const timestamp = new Date().toLocaleTimeString()
-    setLogs(prev => [...prev, `[${timestamp}] ${message}`])
-  }
 
   useEffect(() => {
     ;(window as any).__automationLog = (msg: any) => addLog(String(msg ?? ''))
@@ -249,7 +253,7 @@ export default function Automation() {
           return true
         })
       )
-    } catch (err) {
+    } catch (_err) {
       addLog('Error occured.')
     }
   }
@@ -261,7 +265,7 @@ export default function Automation() {
       existingTasksRef.current = new Set(
         Array.from(existingTasksRef.current).filter(key => !key.startsWith(`${applicationId}::`))
       )
-    } catch (err) {
+    } catch (_err) {
       addLog('Unable to clear existing tasks for this application.')
     }
   }
@@ -427,7 +431,7 @@ export default function Automation() {
             return { matched, applied: !!applyBtn };
           })();
         `)
-      } catch (err) {
+      } catch (_err) {
         addLog('Error applying job type filters.')
       }
     })()
@@ -913,7 +917,9 @@ export default function Automation() {
                             clearedTasksForApplicationRef.current = true
                           }
                         }
-                      } catch (err) {}
+                      } catch (_err) {
+        // ignore
+      }
                       return currentJobApplicationIdRef.current
                     }
                     await recordApplication(ApplicationStatus.DRAFT)
@@ -1674,7 +1680,9 @@ export default function Automation() {
                               title: (titleStr || '').trim() || 'title unknown'
                             })
                           }
-                        } catch (err) {}
+                        } catch (_err) {
+        // ignore
+      }
                         await recordApplication(submitClickedForApplication && needsExternalAction ? ApplicationStatus.EXTERNAL : ApplicationStatus.DRAFT)
                         await closeModalIfPresent(webview, preferHeadlessClose)
                         // Wait for the "One more thing..." modal to appear, click through, then continue.
@@ -1745,7 +1753,7 @@ export default function Automation() {
                         company: (clickJobResult.company || '').trim() || 'company unknown',
                         title: (titleStr || '').trim() || 'title unknown'
                       })
-                    } catch (err) { /* ignore */ }
+                    } catch (_err) { /* ignore */ }
                   }
                     if (!documentsMissing && instructions.length) {
                       await addEmployerTasks(instructions, userId as string, currentJobApplicationIdRef.current, titleStr)
@@ -1785,7 +1793,7 @@ export default function Automation() {
                   addLog('Decision request failed; skipping.')
                 }
               }
-            } catch (e) {
+            } catch (_e) {
               consecutiveDoNotApply = 0
             }
           } else if (clickJobResult?.status === 'skipped') {
