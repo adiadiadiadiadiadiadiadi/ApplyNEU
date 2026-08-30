@@ -495,7 +495,7 @@ export default function Home() {
                 <div className="apps-scroll">
                   <div className="apps-list">
                     {applications.map(app => {
-                      const statusKey = normalizeStatusKey(app.status ?? '')
+                      const statusKey = normalizeStatusKey(app.status ?? '') as ApplicationStatus
                       const cfg: StatusCfg = STATUS_CONFIG[statusKey] ?? {
                         label: app.status,
                         colorClass: 'status--pending',

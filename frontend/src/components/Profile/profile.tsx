@@ -50,7 +50,10 @@ export default function Profile() {
     year: 0,
   })
   const [weeklyData, setWeeklyData] = useState<Array<{ week: string; applications: number; responses: number }>>([])
+  // TODO: computed but never rendered — either wire into a "top companies" chart
+  // or remove this state and its computation below (see spawned cleanup task).
   const [companyData, setCompanyData] = useState<Array<{ company: string; count: number }>>([])
+  void companyData
   const [funnel, setFunnel] = useState([
     { label: 'Apply → Response', value: 0 },
     { label: 'Response → Interview', value: 0 },
@@ -196,7 +199,7 @@ export default function Profile() {
           const done = Array.isArray(tasks) ? tasks.filter((t) => t.completed).length : 0
           setTasksSummary({ done, total })
         }
-      } catch (err) {
+      } catch (_err) {
         if (!cancelled) {
           setMetricsError('Could not load metrics')
         }
