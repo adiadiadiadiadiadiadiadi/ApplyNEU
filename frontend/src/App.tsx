@@ -13,7 +13,6 @@ import ProfileInterests from './components/Profile/profileInterests'
 import Settings from './components/Settings/settings'
 import { FetchErrorProvider } from './components/common/FetchError'
 import { setNavigate } from './lib/navigation'
-import { api } from './lib/api'
 import Unauthorized from './components/NotFound/unauthorized'
 import NotFound from './components/NotFound/notfound'
 import ServerError from './components/NotFound/servererror'
@@ -121,22 +120,6 @@ function AppRoutes() {
   )
 }
 
-async function ensureBackendUser(user: { id: string; email?: string; user_metadata?: Record<string, string> }) {
-  const existing = await api.get(`/users/${user.id}`)
-  if (existing.status !== 404) return
-  const fullName: string = user.user_metadata?.full_name ?? user.user_metadata?.name ?? ''
-  const spaceIdx = fullName.indexOf(' ')
-  const firstName = spaceIdx >= 0 ? fullName.slice(0, spaceIdx) : fullName
-  const lastName = spaceIdx >= 0 ? fullName.slice(spaceIdx + 1) : ''
-  await api.post(`/users/new`, {
-    user_id: user.id,
-    first_name: firstName,
-    last_name: lastName,
-    email: user.email ?? '',
-    grad_year: 0,
-  })
-}
-
 function App() {
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -161,7 +144,8 @@ function App() {
             setAuthError('please use a valid @northeastern.edu email address')
             return
           }
-          await ensureBackendUser(data.user)
+          // users/profile/preferences rows are created by a database trigger the
+          // moment Supabase Auth creates this user -- no separate API call needed.
         }
       }
     })
