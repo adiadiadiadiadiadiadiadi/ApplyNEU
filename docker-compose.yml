@@ -1,0 +1,47 @@
+# Local dev stack: API + BullMQ worker + Redis.
+#
+#   docker compose up -d --build
+#
+# Postgres is not here on purpose because both dev and prod live in Supabase.
+
+services:
+  api:
+    build: ./backend
+    init: true
+    env_file: ./backend/.env
+    environment:
+      REDIS_URL: redis://redis:6379
+    ports:
+      - '8080:8080'
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build: ./backend
+    init: true
+    command: ['node', '--import', 'tsx', 'src/workers/resumeEnrichmentWorker.ts']
+    env_file: ./backend/.env
+    environment:
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine
+    ports:
+      - '6379:6379'
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  redisdata:

@@ -1,0 +1,12 @@
+# Never bake host node_modules (wrong platform binaries) or secrets into the image.
+node_modules
+.env
+.env.*
+
+# Not needed at runtime.
+coverage
+tests
+jest.config.cjs
+Dockerfile
+.dockerignore
+npm-debug.log*
