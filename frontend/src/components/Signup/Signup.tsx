@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { supabase } from '../../lib/supabase'
-import { api } from '../../lib/api'
 import './signup.css'
 
 interface SignupProps {
@@ -52,7 +51,7 @@ export default function Signup({ onNavigateToLogin }: SignupProps) {
             return
         }
 
-        const { data, error } = await supabase.auth.signUp({
+        const { error } = await supabase.auth.signUp({
             email,
             password,
             options: {
@@ -67,26 +66,8 @@ export default function Signup({ onNavigateToLogin }: SignupProps) {
         if (error) {
             setError(formatError(error.message))
         } else {
-            const userId = data.user?.id
-            
-            if (userId) {
-                try {
-                    const response = await api.post(`/users/new`, {
-                        user_id: userId,
-                        first_name: firstName,
-                        last_name: lastName,
-                        email: email,
-                        grad_year: parseInt(graduationYear)
-                    })
-                    
-                    if (!response.ok) {
-                        console.error('Failed to create user in database')
-                    }
-                } catch (err) {
-                    console.error('Error creating user in database:', err)
-                }
-            }
-            
+            // The users/profile/preferences rows are created by a database trigger
+            // the moment Supabase Auth creates this user -- no separate API call needed.
             setStep('verify')
         }
         setLoading(false)
