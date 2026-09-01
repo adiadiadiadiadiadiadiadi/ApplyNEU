@@ -14,7 +14,6 @@ export const validateAddUser = [
     body('user_id').notEmpty().withMessage('user_id is required.'),
     body('first_name').notEmpty().withMessage('first_name is required.'),
     body('last_name').notEmpty().withMessage('last_name is required.'),
-    body('email').notEmpty().withMessage('email is required.'),
     body('grad_year').notEmpty().withMessage('grad_year is required.'),
     handleValidation,
 ];
@@ -28,7 +27,6 @@ export const validateUpdateUser = [
     param('user_id').notEmpty().withMessage('user_id is required.'),
     body('first_name').notEmpty().withMessage('first_name is required.'),
     body('last_name').notEmpty().withMessage('last_name is required.'),
-    body('email').notEmpty().withMessage('email is required.'),
     body('grad_year').notEmpty().withMessage('grad_year is required.'),
     handleValidation,
 ];
