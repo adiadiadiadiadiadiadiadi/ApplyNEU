@@ -3,10 +3,11 @@ import './automation.css'
 import {
   waitForSelector, waitForLegend, waitForSearchBar, playAlertSound,
   withTitleSuffix, toBool, buildTaskKey,
-  normalizeEmployerInstructions, closeModalIfPresent,
-  waitForDividerSubmissionAndClose, waitForModalOpen, applyPanelFilters,
+  normalizeEmployerInstructions,
 } from './automationHelpers'
 import type { EmployerInstruction } from './automationHelpers'
+import { closeModalIfPresent, waitForDividerSubmissionAndClose, waitForModalOpen } from './symplicity/submission'
+import { applyPanelFilters } from './symplicity/filters'
 import { getUserId } from '../../lib/supabase'
 import { api } from '../../lib/api'
 import { ApplicationStatus } from '../../lib/types'

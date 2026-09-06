@@ -2,11 +2,11 @@ import { useEffect } from 'react'
 import { navigateTo } from '../../lib/navigation'
 import { isErrorRedirectSuppressed } from '../../lib/fetchErrorControl'
 import { supabase } from '../../lib/supabase'
+import { API_BASE } from '../../lib/api'
 
 // Only our own backend calls get the global error handling. Third-party fetches
 // (Supabase auth, external URLs) manage their own retries/errors, so a transient
 // network blip during e.g. getUser() must not hijack the whole app to /error.
-const API_BASE = 'http://localhost:8080'
 
 const requestUrl = (input: unknown): string => {
   if (typeof input === 'string') return input
