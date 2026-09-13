@@ -10,6 +10,7 @@ import { getSearchTerms as generateSearchTerms } from '../services/user/user.ai.
 import { validateUploadUrl, validateSaveResume, validateUserIdParam, validateResumeIdParam, validateUpdateResumeInterests } from './middleware/validators/resume.validate.ts';
 import type { Request } from 'express';
 import { requireUser } from './middleware/requireUser.ts';
+import { authenticate } from './middleware/authenticate.ts';
 import asyncHandler from './middleware/handlers/asyncHandler.ts';
 import { getResumeEnrichmentQueue } from '../queues/resumeEnrichmentQueue.ts';
 
@@ -26,15 +27,15 @@ const resumeController = (): express.Router => {
 
     /** POST /save-resume — finalize a resume upload by persisting its S3 key and metadata to the DB. */
     const completeResumeUploadRoute = async (req: ResumeSaveRequest, res: Response) => {
-        const { resume_id, key, user_id } = req.body;
-        const resume = await completeResumeUpload(resume_id, key, user_id);
+        const { resume_id, key } = req.body;
+        const resume = await completeResumeUpload(resume_id, key, req.auth!.userId);
         res.status(200).json(resume);
     };
 
     /** GET /:user_id/possible-interests — derive interest tags from the user's latest resume via AI. */
     const getInterestsRoute = async (req: PossibleInterestsRequest, res: Response) => {
         const { resume_id } = req.params;
-        const result = await getPossibleInterests(resume_id);
+        const result = await getPossibleInterests(resume_id, req.auth!.userId);
         res.status(200).json(result);
     };
 
@@ -48,7 +49,7 @@ const resumeController = (): express.Router => {
     /** GET /:resume_id/interests — return the interest tags stored on a specific resume. */
     const getResumeInterestsRoute = async (req: Request<{ resume_id: string }>, res: Response) => {
         const { resume_id } = req.params;
-        const result = await getResumeInterests(resume_id);
+        const result = await getResumeInterests(resume_id, req.auth!.userId);
         res.status(200).json(result);
     };
 
@@ -60,7 +61,7 @@ const resumeController = (): express.Router => {
     const updateResumeInterestsRoute = async (req: Request<{ resume_id: string }, unknown, { interests: string[] }>, res: Response) => {
         const { resume_id } = req.params;
         const { interests } = req.body;
-        const result = await updateResumeInterests(resume_id, interests);
+        const result = await updateResumeInterests(resume_id, interests, req.auth!.userId);
 
         // Enqueue after interests are saved (the worker reads them) and before
         // responding, so a queue outage fails the request and the user can retry
@@ -83,25 +84,25 @@ const resumeController = (): express.Router => {
     /** GET /:resume_id/search-terms — return the stored search terms for a specific resume. */
     const getSearchTermsRoute = async (req: Request<{ resume_id: string }>, res: Response) => {
         const { resume_id } = req.params;
-        const result = await getResumeSearchTerms(resume_id);
+        const result = await getResumeSearchTerms(resume_id, req.auth!.userId);
         res.status(200).json(result);
     };
 
     /** PUT /:resume_id/search-terms — re-run AI to regenerate and store search terms for a specific resume. */
     const updateSearchTermsRoute = async (req: Request<{ resume_id: string }>, res: Response) => {
         const { resume_id } = req.params;
-        const result = await generateSearchTerms(resume_id);
+        const result = await generateSearchTerms(resume_id, req.auth!.userId);
         res.status(200).json(result);
     };
 
     router.post('/upload/:user_id', validateUploadUrl, requireUser, asyncHandler(getUploadUrlRoute));
-    router.post('/save', validateSaveResume, asyncHandler(completeResumeUploadRoute));
-    router.get('/:resume_id/possible-interests', validateResumeIdParam, asyncHandler(getInterestsRoute));
+    router.post('/save', validateSaveResume, authenticate, asyncHandler(completeResumeUploadRoute));
+    router.get('/:resume_id/possible-interests', validateResumeIdParam, authenticate, asyncHandler(getInterestsRoute));
     router.get('/:user_id/latest', validateUserIdParam, requireUser, asyncHandler(getLatestResumeRoute));
-    router.get('/:resume_id/interests', validateResumeIdParam, asyncHandler(getResumeInterestsRoute));
-    router.put('/:resume_id/interests', validateUpdateResumeInterests, asyncHandler(updateResumeInterestsRoute));
-    router.get('/:resume_id/search-terms', validateResumeIdParam, asyncHandler(getSearchTermsRoute));
-    router.put('/:resume_id/search-terms', validateResumeIdParam, asyncHandler(updateSearchTermsRoute));
+    router.get('/:resume_id/interests', validateResumeIdParam, authenticate, asyncHandler(getResumeInterestsRoute));
+    router.put('/:resume_id/interests', validateUpdateResumeInterests, authenticate, asyncHandler(updateResumeInterestsRoute));
+    router.get('/:resume_id/search-terms', validateResumeIdParam, authenticate, asyncHandler(getSearchTermsRoute));
+    router.put('/:resume_id/search-terms', validateResumeIdParam, authenticate, asyncHandler(updateSearchTermsRoute));
 
     return router;
 };

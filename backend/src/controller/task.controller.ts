@@ -9,6 +9,7 @@ import type {
 import { addTask, toggleTask, getTasks, deleteTasksForApplication } from '../services/task/task.service.ts';
 import { validateAddTask, validateAddInstructions, validateTaskIdParam, validateUserIdParam, validateClearTasks } from './middleware/validators/task.validate.ts';
 import { requireUser } from './middleware/requireUser.ts';
+import { authenticate } from './middleware/authenticate.ts';
 import asyncHandler from './middleware/handlers/asyncHandler.ts';
 import { addInstructions } from '../services/task/ai.task.service.ts';
 
@@ -31,10 +32,10 @@ const taskController = () => {
     res.status(200).json(task);
   };
 
-  /** PUT /:task_id/complete — toggle the completed state of a task. */
+  /** PUT /:task_id/complete — toggle the completed state of a task the caller owns. */
   const toggleTaskRoute = async (req: ToggleTaskRequest, res: Response) => {
     const { task_id } = req.params;
-    const task = await toggleTask(task_id);
+    const task = await toggleTask(task_id, req.auth!.userId);
     res.status(200).json(task);
   };
 
@@ -56,7 +57,7 @@ const taskController = () => {
   router.post('/:user_id/new', validateAddTask, requireUser, asyncHandler(addTaskRoute));
   router.post('/:user_id/add-instructions', validateAddInstructions, requireUser, asyncHandler(addInstructionsRoute));
   router.delete('/:user_id/application/:application_id', validateClearTasks, requireUser, asyncHandler(clearTasksForApplicationRoute));
-  router.put('/:task_id/complete', validateTaskIdParam, asyncHandler(toggleTaskRoute));
+  router.put('/:task_id/complete', validateTaskIdParam, authenticate, asyncHandler(toggleTaskRoute));
   router.get('/:user_id', validateUserIdParam, requireUser, asyncHandler(getTasksRoute));
 
   return router;

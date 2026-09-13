@@ -14,4 +14,9 @@ export const getUserId = async () => {
   return user?.id
 }
 
+export const getAccessToken = async () => {
+  const { data: { session } } = await supabase.auth.getSession()
+  return session?.access_token
+}
+
 

@@ -123,10 +123,11 @@ const saveResume = async (resume_id: string, key: string, user_id: string, file_
 
 /**
  * Marks a resume upload as complete and re-extracts text now that the file is fully in S3.
- * Requires the resume to exist and not already be marked complete, preventing duplicate completions.
+ * Requires the resume to exist, belong to the caller, and not already be marked complete,
+ * preventing duplicate completions.
  * @param resume_id - ID of the resume to complete
  * @param key - S3 key used as an additional ownership check
- * @param user_id - Owning user ID
+ * @param user_id - Caller's authenticated user ID
  */
 export const completeResumeUpload = async (resume_id: string, key: string, user_id: string) => {
     try {
@@ -170,14 +171,15 @@ export const completeResumeUpload = async (resume_id: string, key: string, user_
 /**
  * Uses Claude Haiku to derive 50 job-related interest topics from the user's latest resume.
  * 15 of the topics are intentionally outside the resume to surface adjacent interests.
- * @param user_id - ID of the user whose resume is analyzed
+ * @param resume_id - ID of the resume to analyze
+ * @param user_id - Caller's authenticated user ID; must own the resume
  * @returns Array of 50 topic strings
  */
-export const getPossibleInterests = async (resume_id: string) => {
+export const getPossibleInterests = async (resume_id: string, user_id: string) => {
     try {
         const result = await pool.query(
-            `SELECT resume_text FROM resumes WHERE resume_id = $1 LIMIT 1;`,
-            [resume_id]
+            `SELECT resume_text FROM resumes WHERE resume_id = $1 AND user_id::text = $2 LIMIT 1;`,
+            [resume_id, user_id]
         );
         if (!result.rows.length) throw new AppError(404, 'Resume not found.');
         const resumeText = result.rows[0].resume_text;
@@ -228,12 +230,13 @@ export const getPossibleInterests = async (resume_id: string) => {
 /**
  * Retrieves the interest tags stored on a specific resume.
  * @param resume_id - ID of the resume
+ * @param user_id - Caller's authenticated user ID; must own the resume
  */
-export const getResumeInterests = async (resume_id: string) => {
+export const getResumeInterests = async (resume_id: string, user_id: string) => {
     try {
         const result = await pool.query(
-            `SELECT interests FROM resumes WHERE resume_id = $1;`,
-            [resume_id]
+            `SELECT interests FROM resumes WHERE resume_id = $1 AND user_id::text = $2;`,
+            [resume_id, user_id]
         );
         if (result.rows.length === 0) throw new AppError(404, 'Resume not found.');
         return result.rows[0];
@@ -250,12 +253,13 @@ export const getResumeInterests = async (resume_id: string) => {
  * this save), so it is not done here.
  * @param resume_id - ID of the resume
  * @param interests - Full replacement array of interest topic strings
+ * @param user_id - Caller's authenticated user ID; must own the resume
  */
-export const updateResumeInterests = async (resume_id: string, interests: string[]) => {
+export const updateResumeInterests = async (resume_id: string, interests: string[], user_id: string) => {
     try {
         const result = await pool.query(
-            `UPDATE resumes SET interests = $1 WHERE resume_id = $2 RETURNING *;`,
-            [interests, resume_id]
+            `UPDATE resumes SET interests = $1 WHERE resume_id = $2 AND user_id::text = $3 RETURNING *;`,
+            [interests, resume_id, user_id]
         );
         if (result.rows.length === 0) throw new AppError(404, 'Resume not found.');
         return result.rows[0];
@@ -268,12 +272,13 @@ export const updateResumeInterests = async (resume_id: string, interests: string
 /**
  * Retrieves the search terms stored on a specific resume.
  * @param resume_id - ID of the resume
+ * @param user_id - Caller's authenticated user ID; must own the resume
  */
-export const getResumeSearchTerms = async (resume_id: string) => {
+export const getResumeSearchTerms = async (resume_id: string, user_id: string) => {
     try {
         const result = await pool.query(
-            `SELECT search_terms FROM resumes WHERE resume_id = $1;`,
-            [resume_id]
+            `SELECT search_terms FROM resumes WHERE resume_id = $1 AND user_id::text = $2;`,
+            [resume_id, user_id]
         );
         if (result.rows.length === 0) throw new AppError(404, 'Resume not found.');
         return result.rows[0];
