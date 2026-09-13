@@ -18,7 +18,6 @@ export interface ResumeSaveRequest extends Request {
   body: {
     resume_id: string;
     key: string;
-    user_id: string;
   };
 }
 

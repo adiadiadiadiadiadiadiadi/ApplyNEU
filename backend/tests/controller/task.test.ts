@@ -3,12 +3,16 @@ import request from 'supertest';
 import { AppError } from '../../src/errors/AppError.ts';
 
 const addTask = jest.fn<(user_id: string, text: string, description: string, application_id: string) => Promise<any>>();
-const toggleTask = jest.fn<(task_id: string) => Promise<any>>();
+const toggleTask = jest.fn<(task_id: string, user_id: string) => Promise<any>>();
 const getTasks = jest.fn<(user_id: string, includeCompleted: boolean) => Promise<any>>();
 const deleteTasksForApplication = jest.fn<(user_id: string, application_id: string) => Promise<any>>();
 const addInstructions = jest.fn<(user_id: string, employer_instructions: string, application_id: string, company?: string, title?: string) => Promise<any>>();
 
 const requireUser = jest.fn((_req: any, _res: any, next: any) => next());
+const authenticate = jest.fn((req: any, _res: any, next: any) => {
+  req.auth = { userId: USER_ID };
+  next();
+});
 
 jest.unstable_mockModule('../../src/services/task/task.service.ts', () => ({
   addTask,
@@ -25,6 +29,10 @@ jest.unstable_mockModule('../../src/controller/middleware/requireUser.ts', () =>
   requireUser: (req: any, res: any, next: any) => requireUser(req, res, next),
 }));
 
+jest.unstable_mockModule('../../src/controller/middleware/authenticate.ts', () => ({
+  authenticate: (req: any, res: any, next: any) => authenticate(req, res, next),
+}));
+
 const { app } = await import('../../src/app.ts');
 
 const USER_ID = 'test-user-id';
@@ -36,6 +44,11 @@ const rejectUser = () =>
     res.status(401).json({ message: 'Unauthorized.' })
   );
 
+const rejectAuth = () =>
+  authenticate.mockImplementation((_req: any, res: any) =>
+    res.status(401).json({ message: 'Unauthorized.' })
+  );
+
 beforeEach(() => {
   addTask.mockReset();
   toggleTask.mockReset();
@@ -44,6 +57,11 @@ beforeEach(() => {
   addInstructions.mockReset();
   requireUser.mockReset();
   requireUser.mockImplementation((_req: any, _res: any, next: any) => next());
+  authenticate.mockReset();
+  authenticate.mockImplementation((req: any, _res: any, next: any) => {
+    req.auth = { userId: USER_ID };
+    next();
+  });
 });
 
 describe('POST /tasks/:user_id/new', () => {
@@ -260,18 +278,18 @@ describe('PUT /tasks/:task_id/complete', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual(toggled);
-    expect(toggleTask).toHaveBeenCalledWith(TASK_ID);
+    expect(toggleTask).toHaveBeenCalledWith(TASK_ID, USER_ID);
   });
 
-  it('does not require an existing user (requireUser is not applied to this route)', async () => {
-    rejectUser();
+  it('does not use requireUser (no :user_id param on this route), but does require authentication', async () => {
+    rejectAuth();
     toggleTask.mockResolvedValue({ task_id: TASK_ID, completed: false });
 
     const res = await request(app).put(`/tasks/${TASK_ID}/complete`);
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(401);
     expect(requireUser).not.toHaveBeenCalled();
-    expect(toggleTask).toHaveBeenCalledWith(TASK_ID);
+    expect(toggleTask).not.toHaveBeenCalled();
   });
 
   it('propagates a 404 AppError when the task is not found', async () => {

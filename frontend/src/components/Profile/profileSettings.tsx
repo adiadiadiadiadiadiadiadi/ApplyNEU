@@ -327,7 +327,6 @@ export default function ProfileSettings() {
       const saveResp = await api.post('/resumes/save', {
         resume_id: resumeId,
         key,
-        user_id: userId,
         file_name: file.name,
         file_size_bytes: file.size,
       })
