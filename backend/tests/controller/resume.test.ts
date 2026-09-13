@@ -5,19 +5,25 @@ import { AppError } from '../../src/errors/AppError.ts';
 const getUploadUrl =
   jest.fn<(user_id: string, file_name: string, file_type: string, file_size: number) => Promise<any>>();
 const completeResumeUpload = jest.fn<(resume_id: string, key: string, user_id: string) => Promise<any>>();
-const getPossibleInterests = jest.fn<(resume_id: string) => Promise<any>>();
+const getPossibleInterests = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
 const getLatestResume = jest.fn<(user_id: string) => Promise<any>>();
-const getResumeInterests = jest.fn<(resume_id: string) => Promise<any>>();
-const updateResumeInterests = jest.fn<(resume_id: string, interests: string[]) => Promise<any>>();
-const getResumeSearchTerms = jest.fn<(resume_id: string) => Promise<any>>();
+const getResumeInterests = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
+const updateResumeInterests = jest.fn<(resume_id: string, interests: string[], user_id: string) => Promise<any>>();
+const getResumeSearchTerms = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
 
 // Both default to resolving.
-const generateSearchTerms = jest.fn<(resume_id: string) => Promise<any>>();
+const generateSearchTerms = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
 const cacheShortResume = jest.fn<(resume_id: string) => Promise<any>>();
 
 const queueAdd = jest.fn<(...args: any[]) => Promise<any>>();
 
+const USER_ID = 'test-user-id';
+
 const requireUser = jest.fn((_req: any, _res: any, next: any) => next());
+const authenticate = jest.fn((req: any, _res: any, next: any) => {
+  req.auth = { userId: USER_ID };
+  next();
+});
 
 jest.unstable_mockModule('../../src/services/resume/resume.service.ts', () => ({
   getUploadUrl,
@@ -46,14 +52,22 @@ jest.unstable_mockModule('../../src/controller/middleware/requireUser.ts', () =>
   requireUser: (req: any, res: any, next: any) => requireUser(req, res, next),
 }));
 
+jest.unstable_mockModule('../../src/controller/middleware/authenticate.ts', () => ({
+  authenticate: (req: any, res: any, next: any) => authenticate(req, res, next),
+}));
+
 const { app } = await import('../../src/app.ts');
 
-const USER_ID = 'test-user-id';
 const RESUME_ID = 'resume-123';
 const KEY = 'resumes/abc123.pdf';
 
 const rejectUser = () =>
   requireUser.mockImplementation((_req: any, res: any) =>
+    res.status(401).json({ message: 'Unauthorized.' })
+  );
+
+const rejectAuth = () =>
+  authenticate.mockImplementation((_req: any, res: any) =>
     res.status(401).json({ message: 'Unauthorized.' })
   );
 
@@ -70,6 +84,11 @@ beforeEach(() => {
   queueAdd.mockReset();
   requireUser.mockReset();
   requireUser.mockImplementation((_req: any, _res: any, next: any) => next());
+  authenticate.mockReset();
+  authenticate.mockImplementation((req: any, _res: any, next: any) => {
+    req.auth = { userId: USER_ID };
+    next();
+  });
   // Keep post-save AI tasks quiet by default.
   generateSearchTerms.mockResolvedValue(undefined);
   cacheShortResume.mockResolvedValue(undefined);
@@ -151,7 +170,7 @@ describe('POST /resumes/upload/:user_id', () => {
 
 describe('POST /resumes/save', () => {
   const url = '/resumes/save';
-  const validBody = { resume_id: RESUME_ID, key: KEY, user_id: USER_ID };
+  const validBody = { resume_id: RESUME_ID, key: KEY };
 
   it('returns 200 and the completed resume on valid input', async () => {
     const resume = { resume_id: RESUME_ID, key: KEY, user_id: USER_ID, upload_complete: true };
@@ -176,14 +195,22 @@ describe('POST /resumes/save', () => {
   });
 
   it.each([
-    ['resume_id', { key: KEY, user_id: USER_ID }, 'resume_id is required.'],
-    ['key', { resume_id: RESUME_ID, user_id: USER_ID }, 'key is required.'],
-    ['user_id', { resume_id: RESUME_ID, key: KEY }, 'user_id is required.'],
+    ['resume_id', { key: KEY }, 'resume_id is required.'],
+    ['key', { resume_id: RESUME_ID }, 'key is required.'],
   ])('returns 400 when %s is missing', async (_label, body, message) => {
     const res = await request(app).post(url).send(body);
 
     expect(res.status).toBe(400);
     expect(res.body.message).toBe(message);
+    expect(completeResumeUpload).not.toHaveBeenCalled();
+  });
+
+  it('returns 401 when the caller is not authenticated', async () => {
+    rejectAuth();
+
+    const res = await request(app).post(url).send(validBody);
+
+    expect(res.status).toBe(401);
     expect(completeResumeUpload).not.toHaveBeenCalled();
   });
 
@@ -219,10 +246,10 @@ describe('GET /resumes/:resume_id/possible-interests', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual(interests);
-    expect(getPossibleInterests).toHaveBeenCalledWith(RESUME_ID);
+    expect(getPossibleInterests).toHaveBeenCalledWith(RESUME_ID, USER_ID);
   });
 
-  it('propagates a 404 AppError when the resume does not exist', async () => {
+  it('propagates a 404 AppError when the resume does not exist or is not owned by the caller', async () => {
     getPossibleInterests.mockRejectedValue(new AppError(404, 'Resume not found.'));
 
     const res = await request(app).get(url);
@@ -238,6 +265,15 @@ describe('GET /resumes/:resume_id/possible-interests', () => {
 
     expect(res.status).toBe(500);
     expect(res.body.message).toBe('Internal server error.');
+  });
+
+  it('returns 401 when the caller is not authenticated', async () => {
+    rejectAuth();
+
+    const res = await request(app).get(url);
+
+    expect(res.status).toBe(401);
+    expect(getPossibleInterests).not.toHaveBeenCalled();
   });
 });
 
@@ -284,16 +320,25 @@ describe('GET /resumes/:resume_id/interests', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ interests: ['Python', 'React'] });
-    expect(getResumeInterests).toHaveBeenCalledWith(RESUME_ID);
+    expect(getResumeInterests).toHaveBeenCalledWith(RESUME_ID, USER_ID);
   });
 
-  it('propagates a 404 AppError when the resume does not exist', async () => {
+  it('propagates a 404 AppError when the resume does not exist or is not owned by the caller', async () => {
     getResumeInterests.mockRejectedValue(new AppError(404, 'Resume not found.'));
 
     const res = await request(app).get(url);
 
     expect(res.status).toBe(404);
     expect(res.body.message).toBe('Resume not found.');
+  });
+
+  it('returns 401 when the caller is not authenticated', async () => {
+    rejectAuth();
+
+    const res = await request(app).get(url);
+
+    expect(res.status).toBe(401);
+    expect(getResumeInterests).not.toHaveBeenCalled();
   });
 });
 
@@ -309,7 +354,7 @@ describe('PUT /resumes/:resume_id/interests', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual(updated);
-    expect(updateResumeInterests).toHaveBeenCalledWith(RESUME_ID, interests);
+    expect(updateResumeInterests).toHaveBeenCalledWith(RESUME_ID, interests, USER_ID);
   });
 
   it('enqueues enrichment once interests are saved', async () => {
@@ -338,13 +383,23 @@ describe('PUT /resumes/:resume_id/interests', () => {
     expect(queueAdd).not.toHaveBeenCalled();
   });
 
-  it('propagates a 404 AppError when the resume does not exist', async () => {
+  it('propagates a 404 AppError when the resume does not exist or is not owned by the caller', async () => {
     updateResumeInterests.mockRejectedValue(new AppError(404, 'Resume not found.'));
 
     const res = await request(app).put(url).send({ interests });
 
     expect(res.status).toBe(404);
     expect(res.body.message).toBe('Resume not found.');
+  });
+
+  it('returns 401 when the caller is not authenticated', async () => {
+    rejectAuth();
+
+    const res = await request(app).put(url).send({ interests });
+
+    expect(res.status).toBe(401);
+    expect(updateResumeInterests).not.toHaveBeenCalled();
+    expect(queueAdd).not.toHaveBeenCalled();
   });
 });
 
@@ -358,16 +413,25 @@ describe('GET /resumes/:resume_id/search-terms', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ search_terms: ['software engineer', 'backend'] });
-    expect(getResumeSearchTerms).toHaveBeenCalledWith(RESUME_ID);
+    expect(getResumeSearchTerms).toHaveBeenCalledWith(RESUME_ID, USER_ID);
   });
 
-  it('propagates a 404 AppError when the resume does not exist', async () => {
+  it('propagates a 404 AppError when the resume does not exist or is not owned by the caller', async () => {
     getResumeSearchTerms.mockRejectedValue(new AppError(404, 'Resume not found.'));
 
     const res = await request(app).get(url);
 
     expect(res.status).toBe(404);
     expect(res.body.message).toBe('Resume not found.');
+  });
+
+  it('returns 401 when the caller is not authenticated', async () => {
+    rejectAuth();
+
+    const res = await request(app).get(url);
+
+    expect(res.status).toBe(401);
+    expect(getResumeSearchTerms).not.toHaveBeenCalled();
   });
 });
 
@@ -382,7 +446,7 @@ describe('PUT /resumes/:resume_id/search-terms', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual(terms);
-    expect(generateSearchTerms).toHaveBeenCalledWith(RESUME_ID);
+    expect(generateSearchTerms).toHaveBeenCalledWith(RESUME_ID, USER_ID);
   });
 
   it('returns 500 when the service throws a non-AppError', async () => {
@@ -392,6 +456,15 @@ describe('PUT /resumes/:resume_id/search-terms', () => {
 
     expect(res.status).toBe(500);
     expect(res.body.message).toBe('Internal server error.');
+  });
+
+  it('returns 401 when the caller is not authenticated', async () => {
+    rejectAuth();
+
+    const res = await request(app).put(url).send({});
+
+    expect(res.status).toBe(401);
+    expect(generateSearchTerms).not.toHaveBeenCalled();
   });
 });
 

@@ -10,13 +10,18 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
  * and stored interests. Terms are intentionally broad to maximize search results on
  * platforms like NUworks. Results are ordered by relevance priority.
  * @param resume_id - ID of the specific resume to generate terms for
+ * @param user_id - Caller's authenticated user ID; must own the resume. Omitted only by the
+ *   trusted resume-enrichment worker, whose resume_id was already ownership-checked when the
+ *   enrichment job was enqueued from the HTTP route.
  * @returns Array of up to 10 search term strings
  */
-const generateSearchTerms = async (resume_id: string) => {
+const generateSearchTerms = async (resume_id: string, user_id?: string) => {
     try {
         const result = await pool.query(
-            `SELECT resume_text, interests FROM resumes WHERE resume_id = $1;`,
-            [resume_id]
+            user_id
+                ? `SELECT resume_text, interests FROM resumes WHERE resume_id = $1 AND user_id::text = $2;`
+                : `SELECT resume_text, interests FROM resumes WHERE resume_id = $1;`,
+            user_id ? [resume_id, user_id] : [resume_id]
         );
 
         if (!result.rows.length) throw new AppError(404, 'Resume not found.');
@@ -90,14 +95,18 @@ const generateSearchTerms = async (resume_id: string) => {
 /**
  * Persists search terms to the specified resume row.
  * @param resume_id - ID of the resume to store search terms for
+ * @param user_id - Caller's authenticated user ID; must own the resume. See generateSearchTerms
+ *   for why this is optional (the resume-enrichment worker omits it).
  */
-export const getSearchTerms = async (resume_id: string) => {
-    const search_terms = await generateSearchTerms(resume_id);
+export const getSearchTerms = async (resume_id: string, user_id?: string) => {
+    const search_terms = await generateSearchTerms(resume_id, user_id);
 
     try {
         const result = await pool.query(
-            `UPDATE resumes SET search_terms = $1 WHERE resume_id = $2 RETURNING *;`,
-            [search_terms, resume_id]
+            user_id
+                ? `UPDATE resumes SET search_terms = $1 WHERE resume_id = $2 AND user_id::text = $3 RETURNING *;`
+                : `UPDATE resumes SET search_terms = $1 WHERE resume_id = $2 RETURNING *;`,
+            user_id ? [search_terms, resume_id, user_id] : [search_terms, resume_id]
         );
         if (result.rows.length === 0) throw new AppError(404, 'Resume not found.');
         return result.rows[0];

@@ -26,7 +26,6 @@ export const validateViewUrl = [
 export const validateSaveResume = [
     body('resume_id').notEmpty().withMessage('resume_id is required.'),
     body('key').notEmpty().withMessage('key is required.'),
-    body('user_id').notEmpty().withMessage('user_id is required.'),
     handleValidation,
 ];
 
