@@ -1,3 +1,5 @@
+import { getAccessToken } from './supabase'
+
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8080'
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
@@ -25,6 +27,10 @@ async function request(method: HttpMethod, path: string, body?: unknown, init?: 
   // Serialize plain-object/array bodies to JSON and set the header unless the
   // caller passed their own headers/body via `init`.
   const headers = new Headers(init?.headers)
+  if (!headers.has('Authorization')) {
+    const token = await getAccessToken()
+    if (token) headers.set('Authorization', `Bearer ${token}`)
+  }
   let payload: BodyInit | undefined = init?.body as BodyInit | undefined
   if (body !== undefined && payload === undefined) {
     if (typeof body === 'string' || body instanceof FormData || body instanceof Blob) {

@@ -146,7 +146,6 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
             const saveResponse = await api.post('/resumes/save', {
               resume_id: newResumeId,
               key: key,
-              user_id: user.id,
               file_name: uploadedFile.name,
               file_size_bytes: uploadedFile.size
             })

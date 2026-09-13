@@ -31,15 +31,16 @@ export const addTask = async (user_id: string, text: string, description: string
  * application status from 'external' to 'applied'. Status promotion errors are swallowed
  * to avoid breaking the toggle response.
  * @param task_id - UUID of the task to toggle
+ * @param user_id - Caller's authenticated user ID; the toggle only applies if they own the task
  */
-export const toggleTask = async (task_id: string) => {
+export const toggleTask = async (task_id: string, user_id: string) => {
     try {
         const result = await pool.query(
             `
-            UPDATE tasks SET completed = NOT completed WHERE task_id = $1
+            UPDATE tasks SET completed = NOT completed WHERE task_id = $1 AND user_id = $2
             RETURNING *;
             `,
-            [task_id]
+            [task_id, user_id]
         );
         if (result.rows.length === 0) throw new AppError(404, 'Task not found.');
 
