@@ -26,7 +26,7 @@ export const HOME_URL = 'https://northeastern-csm.symplicity.com/students/app/ho
  * user) rather than a false positive that sends the job loop off a cliff.
  */
 export const isHome = async (webview: any): Promise<boolean> => {
-  let url = ''
+  let url: string
   try {
     url = webview.getURL?.() ?? ''
   } catch {
