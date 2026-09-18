@@ -6,6 +6,7 @@ const errorHandler = (err: unknown, _req: Request, res: Response, _next: NextFun
         res.status(err.status).json({ message: err.message });
         return;
     }
+    console.error('[errorHandler] unhandled error:', err);
     res.status(500).json({ message: 'Internal server error.' });
 };
 

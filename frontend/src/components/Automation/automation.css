@@ -572,3 +572,58 @@
   }
 }
 
+
+
+.automation-loading-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  background-color: #000000;
+  z-index: 1200;
+}
+
+.automation-loading-spinner {
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  border-top-color: rgba(255, 255, 255, 0.8);
+  border-radius: 50%;
+  animation: automation-loading-spin 0.9s linear infinite;
+}
+
+@keyframes automation-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .automation-loading-spinner {
+    animation-duration: 2.5s;
+  }
+}
+
+.automation-loading-title {
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.8);
+  margin: 0;
+  font-weight: normal;
+}
+
+.automation-loading-detail {
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.45);
+  margin: 0;
+  text-align: center;
+  max-width: 22rem;
+  line-height: 1.5;
+}

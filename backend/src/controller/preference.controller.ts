@@ -47,6 +47,7 @@ const preferenceController = () => {
   const updateJobTypeRoute = async (req: UpdateJobTypesRequest, res: Response) => {
     const { user_id } = req.params;
     const { job_types } = req.body;
+    console.log(user_id, job_types);
     const result = await updateJobType(user_id, job_types);
     res.status(200).json(result);
   };

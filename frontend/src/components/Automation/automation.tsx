@@ -1897,11 +1897,18 @@ export default function Automation() {
         </div>
       </div>
       {searchTermsReady !== true && (
-        <div className="automation-preparing-banner" role="status" aria-live="polite"
-          style={{ padding: '12px 16px', margin: '8px 0', borderRadius: 8, background: 'rgba(0,0,0,0.05)', fontSize: 14 }}>
-          {searchTermsReady === null
-            ? 'Checking your job search setup…'
-            : 'Setting up your job search — analyzing your resume. Automation will unlock in a moment.'}
+        <div className="automation-loading-screen" role="status" aria-live="polite">
+          <div className="automation-loading-spinner" aria-hidden="true" />
+          <p className="automation-loading-title">
+            {searchTermsReady === null
+              ? 'checking your job search setup'
+              : 'setting up your job search'}
+          </p>
+          <p className="automation-loading-detail">
+            {searchTermsReady === null
+              ? 'One moment…'
+              : 'Analyzing your resume. Automation will unlock in a moment.'}
+          </p>
         </div>
       )}
       {approvalPrompt && (
