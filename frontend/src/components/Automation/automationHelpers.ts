@@ -1,29 +1,65 @@
 export const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
 
-export const waitForSelector = async (webview: any, selector: string): Promise<void> => {
-  while (true) {
+/**
+ * Polls for a selector. Unbounded by default; pass timeoutMs to get a false return
+ * instead of spinning forever when the page isn't what we expected.
+ */
+export const waitForSelector = async (webview: any, selector: string, timeoutMs?: number): Promise<boolean> => {
+  const deadline = timeoutMs === undefined ? Infinity : Date.now() + timeoutMs
+  while (Date.now() < deadline) {
     const found = await webview.executeJavaScript(`!!document.querySelector(${JSON.stringify(selector)})`)
-    if (found) return;
+    if (found) return true;
     await sleep(200);
   }
+  return false
 }
 
-export const waitForLegend = async (webview: any, prefix: string): Promise<void> => {
-  while (true) {
-    const found = await webview.executeJavaScript(`
-      (() => {
-        const legend = Array.from(document.querySelectorAll('legend'))
-          .find(el => el.innerText && el.innerText.trim().startsWith(${JSON.stringify(prefix)}))
-        return !!legend;
-      })();
-    `)
-    if (found) return;
-    await sleep(200);
+export const HOME_URL = 'https://northeastern-csm.symplicity.com/students/app/home'
+
+/**
+ * True when the webview is sitting on the authenticated NUWorks dashboard.
+ *
+ * Checks the URL first, then the dashboard's quick-search box. Either signal alone
+ * can lie: Symplicity can keep us under /students/app/ while showing an SSO
+ * interstitial, and the selector can match on a stale page mid-navigation. Requiring
+ * both means a change to either one degrades to "not home" (so we wait or ask the
+ * user) rather than a false positive that sends the job loop off a cliff.
+ */
+export const isHome = async (webview: any): Promise<boolean> => {
+  let url = ''
+  try {
+    url = webview.getURL?.() ?? ''
+  } catch {
+    return false
   }
+  if (!url.startsWith(HOME_URL) && !url.includes('/students/app/')) return false
+  if (url.includes('signin')) return false
+  return webview.executeJavaScript(`!!document.querySelector('input#quicksearch-field')`)
 }
 
-export const waitForSearchBar = async (webview: any): Promise<void> => {
-  await waitForSelector(webview, 'input#quicksearch-field');
+/**
+ * Polls until the webview reaches the dashboard. Unbounded by default, matching the
+ * previous waitForSearchBar behaviour; pass timeoutMs to get a false return instead
+ * of waiting forever.
+ */
+export const waitForHome = async (webview: any, timeoutMs?: number): Promise<boolean> => {
+  const deadline = timeoutMs === undefined ? Infinity : Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (await isHome(webview)) return true
+    await sleep(200)
+  }
+  return false
+}
+
+/** Logs every URL the webview lands on, so a NUWorks navigation change is visible. */
+export const logNavigation = (webview: any, log: (message: string) => void) => {
+  const handler = (event: any) => log(`Navigated: ${event?.url ?? webview.getURL?.() ?? 'unknown'}`)
+  webview.addEventListener('did-navigate', handler)
+  webview.addEventListener('did-navigate-in-page', handler)
+  return () => {
+    webview.removeEventListener('did-navigate', handler)
+    webview.removeEventListener('did-navigate-in-page', handler)
+  }
 }
 
 export const playAlertSound = () => {
