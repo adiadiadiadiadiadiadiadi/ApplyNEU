@@ -111,6 +111,9 @@ function AppRoutes() {
         <Route path="/profile-settings/interests" element={<ProfileInterests />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
+      {/* Onboarding completion flips this route tree in before navigate('/') runs,
+          so /onboarding has to resolve to home rather than the catch-all 404. */}
+      <Route path="/onboarding" element={<Navigate to="/" replace />} />
       <Route path="/401" element={<Unauthorized />} />
       <Route path="/404" element={<NotFound />} />
       <Route path="/500" element={<ServerError />} />

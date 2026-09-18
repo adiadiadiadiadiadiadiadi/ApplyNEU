@@ -223,6 +223,7 @@ export const getPossibleInterests = async (resume_id: string, user_id: string) =
         return JSON.parse(message.content[0].text);
     } catch (error) {
         if (error instanceof AppError) throw error;
+        console.error('[getPossibleInterests] unexpected error:', error);
         throw new AppError(500, 'Error extracting interests from resume.');
     }
 };
