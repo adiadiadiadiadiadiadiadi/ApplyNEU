@@ -1,16 +1,24 @@
 import type { Request, Response, NextFunction } from 'express';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
-const supabaseUrl = process.env.NODE_ENV === 'production'
-  ? process.env.PROD_SUPABASE_URL
-  : process.env.DEV_SUPABASE_URL;
+// createRemoteJWKSet caches the fetched key set (and re-fetches on unknown kid), so
+// one instance per process is enough. Built on first use rather than at import time so
+// the environment doesn't have to be loaded before this module is pulled in.
+let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
 
-// createRemoteJWKSet caches the fetched key set (and re-fetches on unknown kid),
-// so one instance per process is enough.
-const jwks = supabaseUrl ? createRemoteJWKSet(new URL(`${supabaseUrl}/auth/v1/.well-known/jwks.json`)) : null;
+const getJwks = () => {
+  if (jwks) return jwks;
+  const supabaseUrl = process.env.NODE_ENV === 'production'
+    ? process.env.PROD_SUPABASE_URL
+    : process.env.DEV_SUPABASE_URL;
+  if (!supabaseUrl) return null;
+  jwks = createRemoteJWKSet(new URL(`${supabaseUrl}/auth/v1/.well-known/jwks.json`));
+  return jwks;
+};
 
 export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
-  if (!jwks) {
+  const keys = getJwks();
+  if (!keys) {
     res.status(500).json({ message: 'Server misconfigured.' });
     return;
   }
@@ -23,7 +31,7 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
   }
 
   try {
-    const { payload } = await jwtVerify(token, jwks, { algorithms: ['ES256'] });
+    const { payload } = await jwtVerify(token, keys, { algorithms: ['ES256'] });
     const callerId = typeof payload.sub === 'string' ? payload.sub : undefined;
     if (!callerId) {
       res.status(401).json({ message: 'Unauthorized.' });
