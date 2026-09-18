@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import './automation.css'
 import {
-  waitForSelector, waitForLegend, waitForSearchBar, playAlertSound,
+  waitForSelector, playAlertSound,
+  HOME_URL, isHome, waitForHome, waitForWebViewLoad,
   withTitleSuffix, toBool, buildTaskKey,
   normalizeEmployerInstructions, closeModalIfPresent,
   waitForDividerSubmissionAndClose, waitForModalOpen, applyPanelFilters,
@@ -11,6 +12,11 @@ import { getUserId } from '../../lib/supabase'
 import { api } from '../../lib/api'
 import { ApplicationStatus } from '../../lib/types'
 import { setErrorRedirectSuppressed } from '../../lib/fetchErrorControl'
+
+// Zoom level for the embedded NUWorks browser. Lower fits more of the page in the
+// pane; below ~0.6 the job cards get too small for the selectors' scrollIntoView to
+// land usefully.
+const WEBVIEW_ZOOM_FACTOR = 0.8
 
 export default function Automation() {
   const [status, setStatus] = useState<'idle' | 'running' | 'paused' | 'error'>('idle')
@@ -28,6 +34,8 @@ export default function Automation() {
   const [searchTermsReady, setSearchTermsReady] = useState<boolean | null>(null)
   const [awaitingInput, setAwaitingInput] = useState(false)
   const [approvalPrompt, setApprovalPrompt] = useState<{ jobTitle: string; company: string } | null>(null)
+  // Set when the applier has given up on finding something and needs a human.
+  const [handoffPrompt, setHandoffPrompt] = useState<{ reason: string } | null>(null)
   const logsEndRef = useRef<HTMLDivElement>(null)
   const statusRef = useRef<'idle' | 'running' | 'paused' | 'error'>('idle')
   const initializedRef = useRef(false)
@@ -36,6 +44,8 @@ export default function Automation() {
   const currentJobApplicationIdRef = useRef<string | null>(null)
   const clearedTasksForApplicationRef = useRef<boolean>(false)
   const approvalResolverRef = useRef<((approved: boolean) => void) | null>(null)
+  const handoffResolverRef = useRef<(() => void) | null>(null)
+  const pausedByHandoffRef = useRef<boolean>(false)
   const waitForApprovalRef = useRef<boolean>(false)
   const recentJobsRef = useRef<boolean>(true)
   const unpaidRolesRef = useRef<boolean>(false)
@@ -85,6 +95,59 @@ export default function Automation() {
         resolve(approved)
       }
     })
+  }
+
+  /**
+   * Called when the applier can't find what it needs on the page. Pauses, drops the
+   * interaction blocker so the user can drive the webview, and resolves once they say
+   * they're done — at which point the caller retries the step it was stuck on.
+   */
+  const requestHumanHelp = (reason: string) => {
+    playAlertSound()
+    addLog(`Page not recognized; waiting for user... (${reason})`)
+    return new Promise<void>((resolve) => {
+      setHandoffPrompt({ reason })
+      setAwaitingInput(true)
+      if (statusRef.current === 'running') {
+        pausedByHandoffRef.current = true
+        setStatus('paused')
+      }
+      handoffResolverRef.current = () => {
+        setHandoffPrompt(null)
+        setAwaitingInput(false)
+        if (pausedByHandoffRef.current) {
+          pausedByHandoffRef.current = false
+          setStatus('running')
+        }
+        handoffResolverRef.current = null
+        resolve()
+      }
+    })
+  }
+
+  const handleHandoffContinue = () => {
+    if (handoffResolverRef.current) handoffResolverRef.current()
+  }
+
+  /**
+   * Runs `attempt` for up to timeoutMs. If it never succeeds, asks the user to sort the
+   * page out and then tries again, indefinitely. Never gives up silently and never
+   * continues as though the step had worked — the two failure modes that previously
+   * produced bogus application records.
+   */
+  const withHumanFallback = async (
+    reason: string,
+    attempt: () => Promise<boolean>,
+    timeoutMs = 5000
+  ): Promise<void> => {
+    for (;;) {
+      const deadline = Date.now() + timeoutMs
+      while (Date.now() < deadline) {
+        if (await attempt()) return
+        await new Promise(r => setTimeout(r, 100))
+      }
+      await requestHumanHelp(reason)
+    }
   }
 
   const handleApprovalChoice = (approved: boolean) => {
@@ -199,8 +262,21 @@ export default function Automation() {
         addLog(`Error: ${event.errorDescription || 'failed to load'}. Retrying...`)
       }
       webview.addEventListener('did-fail-load', handleLoadError)
+
+      // Zoom out so more of the NUWorks page fits in the embedded pane. Reapplied on
+      // every dom-ready because navigation can reset the factor.
+      const applyZoom = () => {
+        try {
+          (webview as any).setZoomFactor?.(WEBVIEW_ZOOM_FACTOR)
+        } catch {
+          // webview not attached yet; the next dom-ready will catch it
+        }
+      }
+      webview.addEventListener('dom-ready', applyZoom)
+
       return () => {
         webview.removeEventListener('did-fail-load', handleLoadError)
+        webview.removeEventListener('dom-ready', applyZoom)
       }
     }
   }, [])
@@ -284,23 +360,46 @@ export default function Automation() {
       setStatus('error')
       return
     }
-    webview.src = 'https://northeastern-csm.symplicity.com/students/?signin_tab=0'
+    // logNavigation(webview, addLog)
 
-    const dashboardLoaded = await webview.executeJavaScript("!!document.querySelector('input#quicksearch-field')")
-    if (dashboardLoaded) {
+    // Ask for home, never the login form. Requesting the form directly while a session
+    // is still live replays a stale SAML request, and the IdP answers with its "you used
+    // the Back button" notice page instead of signing us in. Going to home lets NUWorks
+    // decide: it either serves the dashboard or redirects us to sign-in itself.
+    webview.src = HOME_URL
+
+    // Assigning src only starts the load, so the old page is still mounted here.
+    // Without this await the dashboard check below inspects the previous page.
+    await waitForWebViewLoad(webview)
+
+    if (await isHome(webview)) {
+      addLog('Already signed in.')
       await handleAutomationFromDashboard(webview)
       return
     }
 
-    await waitForSelector(webview, 'input.input-button.btn.btn_primary.full_width.btn_multi_line')
-    await webview.executeJavaScript(`document.querySelector('input.input-button.btn.btn_primary.full_width.btn_multi_line').click()`)
-    addLog('Navigating to login...')
+    // Not home, so we need a sign-in. Clicking the button is a convenience only: on a
+    // notice or interstitial page it won't be there, and that's fine — the human is
+    // about to take over regardless.
+    const signInClicked = await waitForSelector(
+      webview,
+      'input.input-button.btn.btn_primary.full_width.btn_multi_line',
+      5000
+    )
+    if (signInClicked) {
+      await webview.executeJavaScript(`document.querySelector('input.input-button.btn.btn_primary.full_width.btn_multi_line').click()`)
+      addLog('Navigating to login...')
+    }
 
-    await waitForLegend(webview, 'Login to Shibboleth')
+    // Hand over as soon as sign-in is clicked, without waiting to recognise the
+    // identity provider. Northeastern SSO has moved between Shibboleth and Microsoft
+    // Entra, and the IdP can insert MFA or consent screens at will; the only thing we
+    // assert is the end state. Unblocking before the redirect also matters, because the
+    // interaction-blocker overlay would otherwise lock the user out of the login form.
     playAlertSound()
     setAwaitingInput(true)
-    addLog('Waiting for user input...')
-    await waitForSearchBar(webview)
+    addLog('Waiting for user to sign in...')
+    await waitForHome(webview)
 
     addLog('Continuing...')
     setAwaitingInput(false)
@@ -320,23 +419,18 @@ export default function Automation() {
     }
 
     // Wait for and click the top-nav "Jobs" link
-    await (async () => {
-      for (let i = 0; i < 30; i++) {
-        const clicked = await webview.executeJavaScript(`
-          (() => {
-            const link = Array.from(document.querySelectorAll('a'))
-              .find(a => (a.textContent || '').trim() === 'Jobs');
-            if (!link) return 'missing';
-            link.click();
-            return 'clicked';
-          })();
-        `)
-        if (clicked === 'clicked') {
-          return
-        }
-        await sleep(100)
-      }
-    })()
+    await withHumanFallback('could not find the Jobs link', async () => {
+      const clicked = await webview.executeJavaScript(`
+        (() => {
+          const link = Array.from(document.querySelectorAll('a'))
+            .find(a => (a.textContent || '').trim() === 'Jobs');
+          if (!link) return 'missing';
+          link.click();
+          return 'clicked';
+        })();
+      `)
+      return clicked === 'clicked'
+    })
 
     // Select "Jobs I Qualify For" in the Show Me filter before applying job types
     await (async () => {
@@ -696,7 +790,10 @@ export default function Automation() {
 
         // Apply panel filters only on first page
         if (pageIndex === 1) {
-          await applyPanelFilters(webview)
+          await withHumanFallback(
+            'could not apply the "exclude jobs I have applied for" filter',
+            () => applyPanelFilters(webview)
+          )
         }
 
         // Recount after panel filters
@@ -983,7 +1080,10 @@ export default function Automation() {
                       let submitClickedForApplication = false
 
                       if (dividerExists) {
-                        await waitForModalOpen(webview)
+                        await withHumanFallback(
+                          'the job application modal did not open',
+                          () => waitForModalOpen(webview)
+                        )
                         const { text } = await webview.executeJavaScript(`
                           (() => {
                             const modals = Array.from(document.querySelectorAll('div.modal-content, div[role="dialog"], .modal, .job-success-modal'));
@@ -1911,6 +2011,22 @@ export default function Automation() {
           </p>
         </div>
       )}
+      {handoffPrompt && (
+        <div className="handoff-banner" role="alert" aria-live="assertive">
+          <div className="approval-text">
+            <p className="approval-label">your help needed</p>
+            <p className="approval-job">Page not recognized</p>
+            <p className="approval-company">{handoffPrompt.reason}</p>
+          </div>
+          <button
+            type="button"
+            className="handoff-btn"
+            onClick={handleHandoffContinue}
+          >
+            continue
+          </button>
+        </div>
+      )}
       {approvalPrompt && (
         <div className="approval-banner" role="alert" aria-live="assertive">
           <div className="approval-text">
@@ -1967,13 +2083,13 @@ export default function Automation() {
         <div className="browser-display">
           <div className="browser-content">
             <webview
-              src="https://northeastern-csm.symplicity.com/students/?signin_tab=0"
+              src={HOME_URL}
               className="browser-iframe"
               partition="persist:nuworks"
               allowpopups="true"
             ></webview>
           </div>
-          {(!awaitingInput || approvalPrompt) && (
+          {(!awaitingInput || approvalPrompt) && !handoffPrompt && (
             <div className={`interaction-blocker${approvalPrompt ? ' interaction-blocker--transparent' : ''}`} />
           )}
         </div>

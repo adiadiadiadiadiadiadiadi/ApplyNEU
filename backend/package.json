@@ -11,6 +11,7 @@
     "dev": "nodemon --exec tsx src/app.ts",
     "worker": "nodemon --exec tsx src/workers/resumeEnrichmentWorker.ts",
     "db:reset": "tsx scripts/reset-db.ts",
+    "typecheck": "tsc --noEmit",
     "lint": "eslint src tests",
     "lint:fix": "eslint src tests --fix"
   },
