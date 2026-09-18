@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import './automation.css'
 import {
-  waitForSelector, waitForLegend, waitForSearchBar, playAlertSound,
+  waitForSelector, playAlertSound,
+  HOME_URL, isHome, waitForHome, waitForWebViewLoad,
   withTitleSuffix, toBool, buildTaskKey,
   normalizeEmployerInstructions, closeModalIfPresent,
   waitForDividerSubmissionAndClose, waitForModalOpen, applyPanelFilters,
@@ -11,6 +12,11 @@ import { getUserId } from '../../lib/supabase'
 import { api } from '../../lib/api'
 import { ApplicationStatus } from '../../lib/types'
 import { setErrorRedirectSuppressed } from '../../lib/fetchErrorControl'
+
+// Zoom level for the embedded NUWorks browser. Lower fits more of the page in the
+// pane; below ~0.6 the job cards get too small for the selectors' scrollIntoView to
+// land usefully.
+const WEBVIEW_ZOOM_FACTOR = 0.8
 
 export default function Automation() {
   const [status, setStatus] = useState<'idle' | 'running' | 'paused' | 'error'>('idle')
@@ -199,8 +205,21 @@ export default function Automation() {
         addLog(`Error: ${event.errorDescription || 'failed to load'}. Retrying...`)
       }
       webview.addEventListener('did-fail-load', handleLoadError)
+
+      // Zoom out so more of the NUWorks page fits in the embedded pane. Reapplied on
+      // every dom-ready because navigation can reset the factor.
+      const applyZoom = () => {
+        try {
+          (webview as any).setZoomFactor?.(WEBVIEW_ZOOM_FACTOR)
+        } catch {
+          // webview not attached yet; the next dom-ready will catch it
+        }
+      }
+      webview.addEventListener('dom-ready', applyZoom)
+
       return () => {
         webview.removeEventListener('did-fail-load', handleLoadError)
+        webview.removeEventListener('dom-ready', applyZoom)
       }
     }
   }, [])
@@ -284,23 +303,46 @@ export default function Automation() {
       setStatus('error')
       return
     }
-    webview.src = 'https://northeastern-csm.symplicity.com/students/?signin_tab=0'
+    // logNavigation(webview, addLog)
 
-    const dashboardLoaded = await webview.executeJavaScript("!!document.querySelector('input#quicksearch-field')")
-    if (dashboardLoaded) {
+    // Ask for home, never the login form. Requesting the form directly while a session
+    // is still live replays a stale SAML request, and the IdP answers with its "you used
+    // the Back button" notice page instead of signing us in. Going to home lets NUWorks
+    // decide: it either serves the dashboard or redirects us to sign-in itself.
+    webview.src = HOME_URL
+
+    // Assigning src only starts the load, so the old page is still mounted here.
+    // Without this await the dashboard check below inspects the previous page.
+    await waitForWebViewLoad(webview)
+
+    if (await isHome(webview)) {
+      addLog('Already signed in.')
       await handleAutomationFromDashboard(webview)
       return
     }
 
-    await waitForSelector(webview, 'input.input-button.btn.btn_primary.full_width.btn_multi_line')
-    await webview.executeJavaScript(`document.querySelector('input.input-button.btn.btn_primary.full_width.btn_multi_line').click()`)
-    addLog('Navigating to login...')
+    // Not home, so we need a sign-in. Clicking the button is a convenience only: on a
+    // notice or interstitial page it won't be there, and that's fine — the human is
+    // about to take over regardless.
+    const signInClicked = await waitForSelector(
+      webview,
+      'input.input-button.btn.btn_primary.full_width.btn_multi_line',
+      5000
+    )
+    if (signInClicked) {
+      await webview.executeJavaScript(`document.querySelector('input.input-button.btn.btn_primary.full_width.btn_multi_line').click()`)
+      addLog('Navigating to login...')
+    }
 
-    await waitForLegend(webview, 'Login to Shibboleth')
+    // Hand over as soon as sign-in is clicked, without waiting to recognise the
+    // identity provider. Northeastern SSO has moved between Shibboleth and Microsoft
+    // Entra, and the IdP can insert MFA or consent screens at will; the only thing we
+    // assert is the end state. Unblocking before the redirect also matters, because the
+    // interaction-blocker overlay would otherwise lock the user out of the login form.
     playAlertSound()
     setAwaitingInput(true)
-    addLog('Waiting for user input...')
-    await waitForSearchBar(webview)
+    addLog('Waiting for user to sign in...')
+    await waitForHome(webview)
 
     addLog('Continuing...')
     setAwaitingInput(false)
@@ -1960,7 +2002,7 @@ export default function Automation() {
         <div className="browser-display">
           <div className="browser-content">
             <webview
-              src="https://northeastern-csm.symplicity.com/students/?signin_tab=0"
+              src={HOME_URL}
               className="browser-iframe"
               partition="persist:nuworks"
               allowpopups="true"
