@@ -1,14 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
-// Verifies the Supabase-issued access token attached to the request and, if valid,
-// attaches the authenticated caller's id as req.auth.userId. Verifies against the
-// Supabase project's public JWKS (asymmetric signing keys) rather than a shared
-// secret, so this keeps working across Supabase's own key rotations without
-// needing a matching secret copied into this service's config. Does not check
-// ownership of any resource in the URL — callers that need that should layer it
-// on top (see requireUser.ts for the :user_id case, or check ownership against a
-// DB row for other id shapes).
 const supabaseUrl = process.env.NODE_ENV === 'production'
   ? process.env.PROD_SUPABASE_URL
   : process.env.DEV_SUPABASE_URL;
