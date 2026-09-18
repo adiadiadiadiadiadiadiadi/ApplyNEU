@@ -214,7 +214,7 @@ export const waitForModalOpen = async (webview: any) => {
   return false
 }
 
-export const applyPanelFilters = async (webview: any) => {
+export const applyPanelFilters = async (webview: any): Promise<boolean> => {
   const moreClicked = await webview.executeJavaScript(`
     (() => {
       const el = Array.from(document.querySelectorAll('span.filter-text, button, a')).find(node => {
@@ -229,7 +229,7 @@ export const applyPanelFilters = async (webview: any) => {
     })();
   `)
   if (!moreClicked) {
-    return
+    return false
   }
   for (let i = 0; i < 60; i++) {
     const panelVisible = await webview.executeJavaScript(`
@@ -290,8 +290,9 @@ export const applyPanelFilters = async (webview: any) => {
       })();
     `)
     if (applied === 'clicked') {
-      return
+      return true
     }
     await sleep(100)
   }
+  return false
 }
