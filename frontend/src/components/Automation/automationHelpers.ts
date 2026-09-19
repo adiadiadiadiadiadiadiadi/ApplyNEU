@@ -14,7 +14,24 @@ export const waitForSelector = async (webview: any, selector: string, timeoutMs?
   return false
 }
 
-export const HOME_URL = 'https://northeastern-csm.symplicity.com/students/app/home'
+export const NUWORKS_ORIGIN = 'https://northeastern-csm.symplicity.com'
+export const HOME_URL = `${NUWORKS_ORIGIN}/students/app/home`
+
+/**
+ * True when the webview has left NUWorks for the identity provider. Northeastern SSO
+ * spans several hosts and has moved between Shibboleth and Entra, so this asserts
+ * only "not NUWorks" rather than trying to enumerate them.
+ */
+export const isInAuthFlow = (url: string) => !!url && !url.startsWith(NUWORKS_ORIGIN)
+
+/** The webview's current URL, or '' if the guest isn't attached yet. */
+export const currentUrl = (webview: any): string => {
+  try {
+    return webview.getURL?.() ?? ''
+  } catch {
+    return ''
+  }
+}
 
 /**
  * True when the webview is sitting on the authenticated NUWorks dashboard.
@@ -76,13 +93,18 @@ export const playAlertSound = () => {
   oscillator.stop(audioContext.currentTime + 0.5)
 }
 
-export const waitForWebViewLoad = (webview: any): Promise<void> => {
+export const waitForWebViewLoad = (webview: any, timeoutMs = 30000): Promise<void> => {
   return new Promise(resolve => {
-    const handler = () => {
-      webview.removeEventListener('did-stop-loading', handler)
+    // Assigning src does not always start a navigation (same URL, or a guest that
+    // is not attached yet), in which case did-stop-loading never fires and the whole
+    // run would block here.
+    const timer = setTimeout(() => { done() }, timeoutMs)
+    const done = () => {
+      clearTimeout(timer)
+      webview.removeEventListener('did-stop-loading', done)
       resolve()
     }
-    webview.addEventListener('did-stop-loading', handler)
+    webview.addEventListener('did-stop-loading', done)
   })
 }
 

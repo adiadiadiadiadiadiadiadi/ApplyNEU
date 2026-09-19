@@ -1,6 +1,6 @@
 import {
   waitForSelector, playAlertSound,
-  HOME_URL, isHome, waitForHome, waitForWebViewLoad,
+  HOME_URL, isHome, waitForHome, waitForWebViewLoad, isInAuthFlow, currentUrl,
   withTitleSuffix, toBool, buildTaskKey,
   normalizeEmployerInstructions, closeModalIfPresent,
   waitForDividerSubmissionAndClose, waitForModalOpen, applyPanelFilters,
@@ -1934,20 +1934,32 @@ const runFromDashboard = async (webview: AutomationWebview) => {
 }
 
 const runFromHome = async (webview: AutomationWebview) => {
-  // Ask for home, never the login form. Requesting the form directly while a session
-  // is still live replays a stale SAML request, and the IdP answers with its "you used
-  // the Back button" notice page instead of signing us in. Going to home lets NUWorks
-  // decide: it either serves the dashboard or redirects us to sign-in itself.
-  webview.src = HOME_URL
-
-  // Assigning src only starts the load, so the old page is still mounted here.
-  // Without this await the dashboard check below inspects the previous page.
-  await waitForWebViewLoad(webview)
-
   if (await isHome(webview)) {
     addLog('Already signed in.')
     await runFromDashboard(webview)
     return
+  }
+
+  // The webview requested HOME_URL when it mounted, so by the time play is pressed it
+  // may already be partway through Northeastern's SSO chain with a SAML request
+  // outstanding. Navigating again abandons that request, and the IdP answers the
+  // retired request with its "you used the Back button" notice instead of a login
+  // form. NUWorks' own pages are safe to re-request -- no SAML request exists until
+  // its sign-in button is clicked -- so only a URL that has left NUWorks is off limits.
+  if (!isInAuthFlow(currentUrl(webview))) {
+    // Ask for home, never the login form: going to home lets NUWorks decide whether to
+    // serve the dashboard or redirect us to sign-in itself.
+    webview.src = HOME_URL
+
+    // Assigning src only starts the load, so the old page is still mounted here.
+    // Without this await the dashboard check below inspects the previous page.
+    await waitForWebViewLoad(webview)
+
+    if (await isHome(webview)) {
+      addLog('Already signed in.')
+      await runFromDashboard(webview)
+      return
+    }
   }
 
   // Not home, so we need a sign-in. Clicking the button is a convenience only: on a

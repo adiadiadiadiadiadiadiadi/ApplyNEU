@@ -1,7 +1,7 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import { useLocation } from 'react-router-dom'
 import './automation.css'
-import { HOME_URL } from './automationHelpers'
+import { HOME_URL, logNavigation } from './automationHelpers'
 import { setAutomationWebview } from './automationWebview'
 import type { AutomationWebview } from './automationWebview'
 import { getState, subscribe } from './automationRun'
@@ -46,9 +46,16 @@ export default function AutomationBrowser() {
     }
     webview.addEventListener('dom-ready', applyZoom)
 
+    // The SSO redirect chain is the usual suspect when a run stalls on a login or
+    // notice page, and it is invisible otherwise.
+    const stopLoggingNavigation = logNavigation(webview, message =>
+      console.debug('[automation]', message)
+    )
+
     return () => {
       webview.removeEventListener('did-fail-load', handleLoadError)
       webview.removeEventListener('dom-ready', applyZoom)
+      stopLoggingNavigation()
       setAutomationWebview(null)
     }
   }, [])
