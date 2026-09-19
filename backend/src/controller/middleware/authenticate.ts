@@ -1,15 +1,24 @@
 import type { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
+import { createRemoteJWKSet, jwtVerify } from 'jose';
 
-// Verifies the Supabase-issued access token attached to the request and, if valid,
-// attaches the authenticated caller's id as req.auth.userId. Local signature
-// verification (no call out to Supabase) keeps this stateless so any replica can
-// authenticate a request on its own. Does not check ownership of any resource in
-// the URL — callers that need that should layer it on top (see requireUser.ts for
-// the :user_id case, or check ownership against a DB row for other id shapes).
-export const authenticate = (req: Request, res: Response, next: NextFunction) => {
-  const jwtKey = process.env.SUPABASE_JWT_KEY;
-  if (!jwtKey) {
+// createRemoteJWKSet caches the fetched key set (and re-fetches on unknown kid), so
+// one instance per process is enough. Built on first use rather than at import time so
+// the environment doesn't have to be loaded before this module is pulled in.
+let jwks: ReturnType<typeof createRemoteJWKSet> | null = null;
+
+const getJwks = () => {
+  if (jwks) return jwks;
+  const supabaseUrl = process.env.NODE_ENV === 'production'
+    ? process.env.PROD_SUPABASE_URL
+    : process.env.DEV_SUPABASE_URL;
+  if (!supabaseUrl) return null;
+  jwks = createRemoteJWKSet(new URL(`${supabaseUrl}/auth/v1/.well-known/jwks.json`));
+  return jwks;
+};
+
+export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
+  const keys = getJwks();
+  if (!keys) {
     res.status(500).json({ message: 'Server misconfigured.' });
     return;
   }
@@ -22,15 +31,16 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
   }
 
   try {
-    const decoded = jwt.verify(token, jwtKey, { algorithms: ['HS256'] });
-    const callerId = typeof decoded === 'object' ? decoded.sub : undefined;
+    const { payload } = await jwtVerify(token, keys, { algorithms: ['ES256'] });
+    const callerId = typeof payload.sub === 'string' ? payload.sub : undefined;
     if (!callerId) {
       res.status(401).json({ message: 'Unauthorized.' });
       return;
     }
     req.auth = { userId: callerId };
     next();
-  } catch {
+  } catch (err) {
+    console.log('[authenticate] jwt verification failed:', err instanceof Error ? err.message : err);
     res.status(401).json({ message: 'Unauthorized.' });
   }
 };
