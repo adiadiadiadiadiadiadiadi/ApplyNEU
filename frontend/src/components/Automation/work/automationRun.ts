@@ -1,7 +1,6 @@
 import {
   waitForSelector, playAlertSound,
   HOME_URL, isHome, waitForHome, waitForWebViewLoad, isInAuthFlow, currentUrl,
-  toBool,
   normalizeEmployerInstructions, closeModalIfPresent,
   waitForDividerSubmissionAndClose, waitForModalOpen, applyPanelFilters,
 } from './automationHelpers'
@@ -14,17 +13,12 @@ import type { AutomationWebview } from './automationWebview'
 import {
   handleNoCoverLetter, handleNoWorkSample, handleNoPortfolio, handleNoTranscript,
 } from '../symplicity/documents'
-import { addEmployerTasks, clearTasksForApplication, setExistingTasks } from '../symplicity/tasks'
+import { addEmployerTasks, clearTasksForApplication } from '../symplicity/tasks'
+import { requestApprovalForJob, withHumanFallback } from './approval'
+import { loadUserPreferences, prefersRecentJobs, allowsUnpaidRoles } from './preferences'
 
 let currentJobApplicationId: string | null = null
 let clearedTasksForApplication = false
-let approvalResolver: ((approved: boolean) => void) | null = null
-let handoffResolver: (() => void) | null = null
-let pausedByHandoff = false
-let waitForApprovalPref = true
-let recentJobsPref = true
-let unpaidRolesPref = false
-let preferencesLoaded = false
 let greeted = false
 
 /** StrictMode mounts twice in dev; greet once. */
@@ -37,138 +31,6 @@ export const ensureGreeted = () => {
 const waitForResume = async () => {
   while (getState().status === 'paused') {
     await new Promise(res => setTimeout(res, 200))
-  }
-}
-
-async function loadUserPreferences() {
-  if (preferencesLoaded) return waitForApprovalPref
-  const userId = await getUserId()
-  if (!userId) return waitForApprovalPref
-  try {
-    const resp = await api.get(`/preferences/${userId}`)
-    if (resp.ok) {
-      const data = await resp.json().catch(() => ({}))
-      waitForApprovalPref = toBool(data.wait_for_approval ?? data.waitForApproval, true)
-      recentJobsPref = toBool(data.recent_jobs ?? data.recentJobs, true)
-      unpaidRolesPref = toBool(data.unpaid_roles ?? data.upaid_roles, false)
-    }
-  } catch (_err) {
-    // ignore preference fetch errors
-  } finally {
-    preferencesLoaded = true
-  }
-  return waitForApprovalPref
-}
-
-const requestApprovalForJob = (jobTitle: string, company: string) => {
-  playAlertSound()
-  return new Promise<boolean>((resolve) => {
-    setState({ approvalPrompt: { jobTitle, company }, awaitingInput: true })
-    setStatus('paused')
-    approvalResolver = (approved: boolean) => {
-      setState({ approvalPrompt: null, awaitingInput: false })
-      setStatus('running')
-      approvalResolver = null
-      resolve(approved)
-    }
-  })
-}
-
-/**
- * Called when the applier can't find what it needs on the page. Pauses, drops the
- * interaction blocker so the user can drive the webview, and resolves once they say
- * they're done — at which point the caller retries the step it was stuck on.
- */
-const requestHumanHelp = (reason: string) => {
-  playAlertSound()
-  addLog(`Page not recognized; waiting for user... (${reason})`)
-  return new Promise<void>((resolve) => {
-    setState({ handoffPrompt: { reason }, awaitingInput: true })
-    if (getState().status === 'running') {
-      pausedByHandoff = true
-      setStatus('paused')
-    }
-    handoffResolver = () => {
-      setState({ handoffPrompt: null, awaitingInput: false })
-      if (pausedByHandoff) {
-        pausedByHandoff = false
-        setStatus('running')
-      }
-      handoffResolver = null
-      resolve()
-    }
-  })
-}
-
-/**
- * Runs `attempt` for up to timeoutMs. If it never succeeds, asks the user to sort the
- * page out and then tries again, indefinitely. Never gives up silently and never
- * continues as though the step had worked — the two failure modes that previously
- * produced bogus application records.
- */
-const withHumanFallback = async (
-  reason: string,
-  attempt: () => Promise<boolean>,
-  timeoutMs = 5000
-): Promise<void> => {
-  for (;;) {
-    const deadline = Date.now() + timeoutMs
-    while (Date.now() < deadline) {
-      if (await attempt()) return
-      await new Promise(r => setTimeout(r, 100))
-    }
-    await requestHumanHelp(reason)
-  }
-}
-
-/**
- * Search terms plus the existing-task index a run dedupes against. The screen owns
- * the polling; the data lives here because a run keeps using it once the screen is
- * gone.
- */
-export const refreshSearchTerms = async (isPoll = false) => {
-  try {
-    const userId = await getUserId()
-    if (!userId) {
-      if (!isPoll) addLog('Error occured: no user found. Retrying...')
-      return
-    }
-    try {
-      const tasksResp = await api.get(`/tasks/${userId}`)
-      if (tasksResp.ok) {
-        const tasksData = await tasksResp.json().catch(() => [])
-        const taskKeys = Array.isArray(tasksData)
-          ? tasksData
-              .map((t: any) => {
-                const text = String(t?.text ?? '').trim()
-                const appId = t?.application_id ? String(t.application_id) : 'global'
-                if (!text) return null
-                return `${appId}::${text.toLowerCase()}`
-              })
-              .filter(Boolean) as string[]
-          : []
-        setExistingTasks(taskKeys)
-      }
-    } catch (_err) {
-      // ignore
-    }
-
-    const latestResumeResp = await api.get(`/resumes/${userId}/latest`)
-    if (!latestResumeResp.ok) { if (!isPoll) addLog('Error occured. Could not fetch resume. Retrying...'); return; }
-    const latestResume = await latestResumeResp.json()
-    const resumeId = latestResume?.resume_id
-    if (!resumeId) { if (!isPoll) addLog('No resume found. Retrying...'); return; }
-
-    const response = await api.get(`/resumes/${resumeId}/search-terms`)
-    if (!response.ok) { if (!isPoll) addLog('Error occured. Could not fetch search terms. Retrying...'); return; }
-
-    const data = await response.json()
-    const terms = Array.isArray(data?.search_terms) ? data.search_terms : []
-    // Enrichment is async: an empty list means the worker hasn't written search
-    // terms yet, so the screen stays "not ready" and automation stays disabled.
-    setState({ searchTerms: terms, searchTermsReady: terms.length > 0 })
-  } catch (_error) {
-    if (!isPoll) addLog('Error occured. Could not get search terms.')
   }
 }
 
@@ -355,7 +217,7 @@ const runFromDashboard = async (webview: AutomationWebview) => {
       await sleep(100)
     }
     // If user prefers recent jobs, select the "last 7 days" post date filter before applying.
-    if (recentJobsPref) {
+    if (prefersRecentJobs()) {
       for (let j = 0; j < 60; j++) {
         const radioResult = await webview.executeJavaScript(`
           (() => {
@@ -587,7 +449,7 @@ const runFromDashboard = async (webview: AutomationWebview) => {
         await waitForResume()
         const clickJobResult = await webview.executeJavaScript(`
           (() => {
-            const skipUnpaid = ${JSON.stringify(!unpaidRolesPref)};
+            const skipUnpaid = ${JSON.stringify(!allowsUnpaidRoles())};
             const cards = Array.from(document.querySelectorAll('div[id^="list-item-"]'));
             const card = cards[${idx}];
             if (!card) return { status: 'missing' };
@@ -1797,10 +1659,3 @@ export const pause = () => setStatus('paused')
 
 export const resume = () => setStatus('running')
 
-export const approve = (approved: boolean) => {
-  approvalResolver?.(approved)
-}
-
-export const continueAfterHandoff = () => {
-  handoffResolver?.()
-}
