@@ -1072,13 +1072,20 @@ const runFromDashboard = async (webview: AutomationWebview) => {
                         seenResume = true
                         docFieldFound = true
                         if (!transcriptChecked) {
-                          const transcriptExists = await webview.executeJavaScript(`
+                          const transcriptInfo = await webview.executeJavaScript(`
                             (() => {
                               const sel = document.querySelector('select[id*="transcript"]');
-                              return !!sel;
+                              const btn =
+                                document.querySelector('button[id*="transcript"]') ||
+                                Array.from(document.querySelectorAll('button')).find(b =>
+                                  (b.textContent || '').toLowerCase().includes('transcript')
+                                );
+                              return { hasSelect: !!sel, hasButton: !!btn };
                             })();
                           `)
-                          if (transcriptExists) {
+                          // Both can render together; the select is the only one that
+                          // can be filled, so it wins when present.
+                          if (transcriptInfo?.hasSelect) {
                             docFieldFound = true
                             let transcriptHandled = false
                             for (let t = 0; t < 10; t++) { // shorter wait to avoid long gaps
@@ -1125,6 +1132,11 @@ const runFromDashboard = async (webview: AutomationWebview) => {
                             await handleMissingDocument('transcript', clickJobResult.company, userId, currentJobApplicationId, titleStr)
                             skipJob = true
                             }
+                          } else if (transcriptInfo?.hasButton) {
+                            docFieldFound = true
+                            documentsMissing = true
+                            await handleMissingDocument('transcript', clickJobResult.company, userId, currentJobApplicationId, titleStr)
+                            skipJob = true
                           }
                           transcriptChecked = true
                         }
