@@ -6,11 +6,11 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  /* Deliberately not position: fixed -- that creates a stacking context, which would
+     trap the right panel's and banners' z-indexes inside this subtree and let the
+     browser layer (rendered outside it) paint over them. */
+  position: relative;
+  width: 100%;
 }
 
 .automation-header-row {
@@ -642,6 +642,8 @@
   border: 1px solid #d98324;
   border-radius: 10px;
   background: #fff8ef;
+  position: relative;
+  z-index: 1102;
 }
 
 .handoff-btn {
