@@ -1,16 +1,15 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import './automation.css'
 import { suppressErrorRedirect, releaseErrorRedirect } from '../../lib/fetchErrorControl'
+import { getState, subscribe } from './automationStore'
 import {
   approve,
   continueAfterHandoff,
   ensureGreeted,
-  getState,
   pause,
   refreshSearchTerms,
   resume,
   start,
-  subscribe,
 } from './automationRun'
 
 // A run holds its own key for as long as it lasts (see automationRun).

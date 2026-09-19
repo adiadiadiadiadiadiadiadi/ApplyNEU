@@ -1,77 +1,21 @@
 import {
   waitForSelector, playAlertSound,
   HOME_URL, isHome, waitForHome, waitForWebViewLoad, isInAuthFlow, currentUrl,
-  withTitleSuffix, toBool, buildTaskKey,
+  toBool,
   normalizeEmployerInstructions, closeModalIfPresent,
   waitForDividerSubmissionAndClose, waitForModalOpen, applyPanelFilters,
 } from './automationHelpers'
-import type { EmployerInstruction } from './automationHelpers'
 import { getUserId } from '../../lib/supabase'
 import { api } from '../../lib/api'
 import { ApplicationStatus } from '../../lib/types'
-import { suppressErrorRedirect, releaseErrorRedirect } from '../../lib/fetchErrorControl'
+import { addLog, getState, setState, setStatus } from './automationStore'
 import { getAutomationWebview } from './automationWebview'
 import type { AutomationWebview } from './automationWebview'
+import {
+  handleNoCoverLetter, handleNoWorkSample, handleNoPortfolio, handleNoTranscript,
+} from './symplicity/documents'
+import { addEmployerTasks, clearTasksForApplication, setExistingTasks } from './symplicity/tasks'
 
-// A run outlives the screen that started it. The loop used to close over the
-// Automation component's setters and refs, so navigating away left it writing into
-// a dead React tree; the screen is now only a subscriber.
-
-export type RunStatus = 'idle' | 'running' | 'paused' | 'error'
-
-export type AutomationState = {
-  status: RunStatus
-  logs: string[]
-  awaitingInput: boolean
-  approvalPrompt: { jobTitle: string; company: string } | null
-  handoffPrompt: { reason: string } | null
-  searchTerms: string[]
-  // null = still checking, false = none yet (enrichment pending), true = ready.
-  searchTermsReady: boolean | null
-}
-
-// Held for as long as a run is active, so a background run's fetch failures can't
-// hijack whatever page the user navigated to.
-const RUN_SUPPRESSOR = 'automation-run'
-
-let state: AutomationState = {
-  status: 'idle',
-  logs: [],
-  awaitingInput: false,
-  approvalPrompt: null,
-  handoffPrompt: null,
-  searchTerms: [],
-  searchTermsReady: null,
-}
-
-const listeners = new Set<() => void>()
-
-export const subscribe = (listener: () => void) => {
-  listeners.add(listener)
-  return () => { listeners.delete(listener) }
-}
-
-// useSyncExternalStore compares by reference, so setState must replace the object.
-export const getState = () => state
-
-const setState = (patch: Partial<AutomationState>) => {
-  state = { ...state, ...patch }
-  listeners.forEach(listener => listener())
-}
-
-const setStatus = (status: RunStatus) => {
-  setState({ status })
-  if (status === 'running' || status === 'paused') suppressErrorRedirect(RUN_SUPPRESSOR)
-  else releaseErrorRedirect(RUN_SUPPRESSOR)
-}
-
-const addLog = (message: string) => {
-  const timestamp = new Date().toLocaleTimeString()
-  setState({ logs: [...state.logs, `[${timestamp}] ${message}`] })
-}
-
-// Former useRefs. Module state now, so they survive the screen unmounting mid-run.
-let existingTasks: Set<string> = new Set()
 let currentJobApplicationId: string | null = null
 let clearedTasksForApplication = false
 let approvalResolver: ((approved: boolean) => void) | null = null
@@ -91,7 +35,7 @@ export const ensureGreeted = () => {
 }
 
 const waitForResume = async () => {
-  while (state.status === 'paused') {
+  while (getState().status === 'paused') {
     await new Promise(res => setTimeout(res, 200))
   }
 }
@@ -140,7 +84,7 @@ const requestHumanHelp = (reason: string) => {
   addLog(`Page not recognized; waiting for user... (${reason})`)
   return new Promise<void>((resolve) => {
     setState({ handoffPrompt: { reason }, awaitingInput: true })
-    if (state.status === 'running') {
+    if (getState().status === 'running') {
       pausedByHandoff = true
       setStatus('paused')
     }
@@ -177,157 +121,6 @@ const withHumanFallback = async (
   }
 }
 
-const createDocumentTask = async (
-  text: string,
-  description: string,
-  userId: string,
-  applicationId?: string | null
-) => {
-  const key = buildTaskKey(text, applicationId)
-  if (existingTasks.has(key)) return
-  const resp = await api.post(`/tasks/${userId}/new`, { text, description, application_id: applicationId ?? undefined })
-  if (!resp.ok) {
-    addLog('Error occured while creating task.')
-    return
-  }
-  existingTasks.add(key)
-}
-
-async function handleNoCoverLetter(
-  companyName: string,
-  userId: string | undefined,
-  applicationId?: string | null,
-  jobTitle?: string,
-  webview?: AutomationWebview
-) {
-  addLog(`No cover letter found for ${companyName}.`)
-  if (!userId) {
-    addLog(`Error occured.`)
-    return
-  }
-  await createDocumentTask(
-    `Upload ${companyName} cover letter`,
-    withTitleSuffix(
-      jobTitle,
-      `Upload your ${companyName} cover letter in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
-    ),
-    userId,
-    applicationId
-  )
-  if (webview) {
-    await closeModalIfPresent(webview)
-  }
-}
-
-async function handleNoWorkSample(
-  companyName: string,
-  userId: string | undefined,
-  applicationId?: string | null,
-  jobTitle?: string
-) {
-  addLog(`No work sample found for ${companyName}.`)
-  if (!userId) {
-    addLog(`Error occured.`)
-    return
-  }
-  await createDocumentTask(
-    `Upload ${companyName} work sample`,
-    withTitleSuffix(
-      jobTitle,
-      `Upload a work sample for ${companyName} in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
-    ),
-    userId,
-    applicationId
-  )
-}
-
-async function handleNoPortfolio(
-  companyName: string,
-  userId: string | undefined,
-  applicationId?: string | null,
-  jobTitle?: string
-) {
-  addLog(`No portfolio found for ${companyName}.`)
-  if (!userId) {
-    addLog(`Error occured.`)
-    return
-  }
-  await createDocumentTask(
-    `Upload ${companyName} portfolio`,
-    withTitleSuffix(
-      jobTitle,
-      `Upload a portfolio for ${companyName} in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
-    ),
-    userId,
-    applicationId
-  )
-}
-
-async function handleNoTranscript(
-  companyName: string,
-  userId: string | undefined,
-  applicationId?: string | null,
-  jobTitle?: string
-) {
-  addLog(`No transcript found for ${companyName}.`)
-  if (!userId) {
-    addLog(`Error occured.`)
-    return
-  }
-  await createDocumentTask(
-    `Upload ${companyName} transcript`,
-    withTitleSuffix(
-      jobTitle,
-      `Upload a transcript for ${companyName} in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
-    ),
-    userId,
-    applicationId
-  )
-}
-
-const addEmployerTasks = async (
-  instructions: EmployerInstruction[],
-  userId: string,
-  applicationId?: string | null,
-  jobTitle?: string
-) => {
-  const tasks = instructions.filter(inst => inst.text && inst.description)
-  if (!tasks.length) return
-  try {
-    await Promise.allSettled(
-      tasks.map(async ({ text, description }) => {
-        const key = buildTaskKey(text, applicationId)
-        if (!key || existingTasks.has(key)) return true
-
-        const resp = await api.post(`/tasks/${userId}/new`, {
-          text,
-          description: withTitleSuffix(jobTitle, description || text),
-          application_id: applicationId ?? undefined
-        })
-        if (!resp.ok) {
-          const msg = await resp.text().catch(() => '')
-          throw new Error(`status ${resp.status} ${msg}`)
-        }
-        existingTasks.add(key)
-        return true
-      })
-    )
-  } catch (_err) {
-    addLog('Error occured.')
-  }
-}
-
-const clearTasksForApplication = async (userId: string, applicationId: string) => {
-  try {
-    await api.del(`/tasks/${userId}/application/${applicationId}`)
-    existingTasks = new Set(
-      Array.from(existingTasks).filter(key => !key.startsWith(`${applicationId}::`))
-    )
-  } catch (_err) {
-    addLog('Unable to clear existing tasks for this application.')
-  }
-}
-
 /**
  * Search terms plus the existing-task index a run dedupes against. The screen owns
  * the polling; the data lives here because a run keeps using it once the screen is
@@ -354,7 +147,7 @@ export const refreshSearchTerms = async (isPoll = false) => {
               })
               .filter(Boolean) as string[]
           : []
-        existingTasks = new Set(taskKeys)
+        setExistingTasks(taskKeys)
       }
     } catch (_err) {
       // ignore
@@ -639,13 +432,13 @@ const runFromDashboard = async (webview: AutomationWebview) => {
     }
   })()
 
-  if (!state.searchTerms.length) {
+  if (!getState().searchTerms.length) {
     addLog('Error occured. Please try again later.')
     setStatus('idle')
     return
   }
 
-  const normalizedTerms = state.searchTerms
+  const normalizedTerms = getState().searchTerms
     .map(term => String(term ?? '').trim())
     .filter(Boolean)
 
@@ -1939,20 +1732,8 @@ const runFromHome = async (webview: AutomationWebview) => {
     await runFromDashboard(webview)
     return
   }
-
-  // The webview requested HOME_URL when it mounted, so by the time play is pressed it
-  // may already be partway through Northeastern's SSO chain with a SAML request
-  // outstanding. Navigating again abandons that request, and the IdP answers the
-  // retired request with its "you used the Back button" notice instead of a login
-  // form. NUWorks' own pages are safe to re-request -- no SAML request exists until
-  // its sign-in button is clicked -- so only a URL that has left NUWorks is off limits.
   if (!isInAuthFlow(currentUrl(webview))) {
-    // Ask for home, never the login form: going to home lets NUWorks decide whether to
-    // serve the dashboard or redirect us to sign-in itself.
     webview.src = HOME_URL
-
-    // Assigning src only starts the load, so the old page is still mounted here.
-    // Without this await the dashboard check below inspects the previous page.
     await waitForWebViewLoad(webview)
 
     if (await isHome(webview)) {
@@ -1962,9 +1743,6 @@ const runFromHome = async (webview: AutomationWebview) => {
     }
   }
 
-  // Not home, so we need a sign-in. Clicking the button is a convenience only: on a
-  // notice or interstitial page it won't be there, and that's fine — the human is
-  // about to take over regardless.
   const signInClicked = await waitForSelector(
     webview,
     'input.input-button.btn.btn_primary.full_width.btn_multi_line',
@@ -1975,11 +1753,6 @@ const runFromHome = async (webview: AutomationWebview) => {
     addLog('Navigating to login...')
   }
 
-  // Hand over as soon as sign-in is clicked, without waiting to recognise the
-  // identity provider. Northeastern SSO has moved between Shibboleth and Microsoft
-  // Entra, and the IdP can insert MFA or consent screens at will; the only thing we
-  // assert is the end state. Unblocking before the redirect also matters, because the
-  // interaction-blocker overlay would otherwise lock the user out of the login form.
   playAlertSound()
   setState({ awaitingInput: true })
   addLog('Waiting for user to sign in...')
@@ -1994,8 +1767,8 @@ const runFromHome = async (webview: AutomationWebview) => {
 
 export const start = async () => {
   // Guards a double-click and, in dev, a StrictMode double-mount re-firing this.
-  if (state.status === 'running' || state.status === 'paused') return
-  if (state.searchTermsReady !== true) {
+  if (getState().status === 'running' || getState().status === 'paused') return
+  if (getState().searchTermsReady !== true) {
     addLog('Setting up your job search. Please wait a moment...')
     return
   }
