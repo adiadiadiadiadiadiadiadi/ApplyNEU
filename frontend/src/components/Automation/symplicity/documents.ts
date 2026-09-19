@@ -1,6 +1,6 @@
-import { closeModalIfPresent, withTitleSuffix } from "../automationHelpers"
-import { addLog } from "../automationStore"
-import { AutomationWebview } from "../automationWebview"
+import { closeModalIfPresent, withTitleSuffix } from "../work/automationHelpers"
+import { addLog } from "../work/automationStore"
+import { AutomationWebview } from "../work/automationWebview"
 import { createDocumentTask } from "./tasks"
 
 export async function handleNoCoverLetter(

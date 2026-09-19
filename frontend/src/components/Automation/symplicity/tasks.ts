@@ -1,11 +1,8 @@
-import { buildTaskKey, withTitleSuffix } from "../automationHelpers"
-import type { EmployerInstruction } from "../automationHelpers"
+import { buildTaskKey, withTitleSuffix } from "../work/automationHelpers"
+import type { EmployerInstruction } from "../work/automationHelpers"
 import { api } from "../../../lib/api"
-import { addLog } from "../automationStore"
+import { addLog } from "../work/automationStore"
 
-// Task keys already on the server, so a run doesn't recreate a task it has already
-// raised for this application. Owned here rather than by the run: it is replaced
-// wholesale in two places, and an imported binding cannot be reassigned.
 let existingTasks = new Set<string>()
 
 export const setExistingTasks = (keys: Iterable<string>) => {

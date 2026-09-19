@@ -5,16 +5,16 @@ import {
   normalizeEmployerInstructions, closeModalIfPresent,
   waitForDividerSubmissionAndClose, waitForModalOpen, applyPanelFilters,
 } from './automationHelpers'
-import { getUserId } from '../../lib/supabase'
-import { api } from '../../lib/api'
-import { ApplicationStatus } from '../../lib/types'
+import { getUserId } from '../../../lib/supabase'
+import { api } from '../../../lib/api'
+import { ApplicationStatus } from '../../../lib/types'
 import { addLog, getState, setState, setStatus } from './automationStore'
 import { getAutomationWebview } from './automationWebview'
 import type { AutomationWebview } from './automationWebview'
 import {
   handleNoCoverLetter, handleNoWorkSample, handleNoPortfolio, handleNoTranscript,
-} from './symplicity/documents'
-import { addEmployerTasks, clearTasksForApplication, setExistingTasks } from './symplicity/tasks'
+} from '../symplicity/documents'
+import { addEmployerTasks, clearTasksForApplication, setExistingTasks } from '../symplicity/tasks'
 
 let currentJobApplicationId: string | null = null
 let clearedTasksForApplication = false
