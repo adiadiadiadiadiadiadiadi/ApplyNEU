@@ -7,6 +7,7 @@ import Home from './components/Home/home'
 import Onboarding from './components/Onboarding/onboarding'
 import './index.css'
 import Automation from './components/Automation/automation'
+import AutomationBrowser from './components/Automation/AutomationBrowser'
 import Profile from './components/Profile/profile'
 import ProfileSettings from './components/Profile/profileSettings'
 import ProfileInterests from './components/Profile/profileInterests'
@@ -203,7 +204,11 @@ function App() {
         showOnboarding ? (
           <OnboardingRoutes onComplete={handleOnboardingComplete} />
         ) : (
-          <AppRoutes />
+          <>
+            <AppRoutes />
+            {/* Outside the route tree so a run survives navigation. */}
+            <AutomationBrowser />
+          </>
         )
       ) : (
         <AuthRoutes authError={authError} />

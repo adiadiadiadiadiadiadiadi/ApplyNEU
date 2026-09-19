@@ -183,14 +183,19 @@
   line-height: 1.5;
 }
 
-.automation-content {
-  flex: 1;
+.automation-browser-layer {
+  position: fixed;
+  top: calc(7.5rem - 5px);
+  right: calc(3rem + 20px);
+  bottom: calc(2rem + 30px);
+  left: 156px;
   display: flex;
-  gap: 2rem;
-  padding: calc(7.5rem - 5px) calc(3rem + 20px) calc(2rem + 30px) 156px;
-  overflow: hidden;
-  min-height: 0;
-  height: 100%;
+  z-index: 1;
+}
+
+.automation-browser-layer--hidden {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .automation-sidebar {
