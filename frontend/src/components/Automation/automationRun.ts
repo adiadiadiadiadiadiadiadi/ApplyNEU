@@ -1,0 +1,1934 @@
+import {
+  waitForSelector, playAlertSound,
+  HOME_URL, isHome, waitForHome, waitForWebViewLoad,
+  withTitleSuffix, toBool, buildTaskKey,
+  normalizeEmployerInstructions, closeModalIfPresent,
+  waitForDividerSubmissionAndClose, waitForModalOpen, applyPanelFilters,
+} from './automationHelpers'
+import type { EmployerInstruction } from './automationHelpers'
+import { getUserId } from '../../lib/supabase'
+import { api } from '../../lib/api'
+import { ApplicationStatus } from '../../lib/types'
+import { suppressErrorRedirect, releaseErrorRedirect } from '../../lib/fetchErrorControl'
+import { getAutomationWebview } from './automationWebview'
+import type { AutomationWebview } from './automationWebview'
+
+// A run outlives the screen that started it. The loop used to close over the
+// Automation component's setters and refs, so navigating away left it writing into
+// a dead React tree; the screen is now only a subscriber.
+
+export type RunStatus = 'idle' | 'running' | 'paused' | 'error'
+
+export type AutomationState = {
+  status: RunStatus
+  logs: string[]
+  awaitingInput: boolean
+  approvalPrompt: { jobTitle: string; company: string } | null
+  handoffPrompt: { reason: string } | null
+  searchTerms: string[]
+  // null = still checking, false = none yet (enrichment pending), true = ready.
+  searchTermsReady: boolean | null
+}
+
+// Held for as long as a run is active, so a background run's fetch failures can't
+// hijack whatever page the user navigated to.
+const RUN_SUPPRESSOR = 'automation-run'
+
+let state: AutomationState = {
+  status: 'idle',
+  logs: [],
+  awaitingInput: false,
+  approvalPrompt: null,
+  handoffPrompt: null,
+  searchTerms: [],
+  searchTermsReady: null,
+}
+
+const listeners = new Set<() => void>()
+
+export const subscribe = (listener: () => void) => {
+  listeners.add(listener)
+  return () => { listeners.delete(listener) }
+}
+
+// useSyncExternalStore compares by reference, so setState must replace the object.
+export const getState = () => state
+
+const setState = (patch: Partial<AutomationState>) => {
+  state = { ...state, ...patch }
+  listeners.forEach(listener => listener())
+}
+
+const setStatus = (status: RunStatus) => {
+  setState({ status })
+  if (status === 'running' || status === 'paused') suppressErrorRedirect(RUN_SUPPRESSOR)
+  else releaseErrorRedirect(RUN_SUPPRESSOR)
+}
+
+const addLog = (message: string) => {
+  const timestamp = new Date().toLocaleTimeString()
+  setState({ logs: [...state.logs, `[${timestamp}] ${message}`] })
+}
+
+// Former useRefs. Module state now, so they survive the screen unmounting mid-run.
+let existingTasks: Set<string> = new Set()
+let currentJobApplicationId: string | null = null
+let clearedTasksForApplication = false
+let approvalResolver: ((approved: boolean) => void) | null = null
+let handoffResolver: (() => void) | null = null
+let pausedByHandoff = false
+let waitForApprovalPref = true
+let recentJobsPref = true
+let unpaidRolesPref = false
+let preferencesLoaded = false
+let greeted = false
+
+/** StrictMode mounts twice in dev; greet once. */
+export const ensureGreeted = () => {
+  if (greeted) return
+  greeted = true
+  addLog('Bot connected...')
+}
+
+const waitForResume = async () => {
+  while (state.status === 'paused') {
+    await new Promise(res => setTimeout(res, 200))
+  }
+}
+
+async function loadUserPreferences() {
+  if (preferencesLoaded) return waitForApprovalPref
+  const userId = await getUserId()
+  if (!userId) return waitForApprovalPref
+  try {
+    const resp = await api.get(`/preferences/${userId}`)
+    if (resp.ok) {
+      const data = await resp.json().catch(() => ({}))
+      waitForApprovalPref = toBool(data.wait_for_approval ?? data.waitForApproval, true)
+      recentJobsPref = toBool(data.recent_jobs ?? data.recentJobs, true)
+      unpaidRolesPref = toBool(data.unpaid_roles ?? data.upaid_roles, false)
+    }
+  } catch (_err) {
+    // ignore preference fetch errors
+  } finally {
+    preferencesLoaded = true
+  }
+  return waitForApprovalPref
+}
+
+const requestApprovalForJob = (jobTitle: string, company: string) => {
+  playAlertSound()
+  return new Promise<boolean>((resolve) => {
+    setState({ approvalPrompt: { jobTitle, company }, awaitingInput: true })
+    setStatus('paused')
+    approvalResolver = (approved: boolean) => {
+      setState({ approvalPrompt: null, awaitingInput: false })
+      setStatus('running')
+      approvalResolver = null
+      resolve(approved)
+    }
+  })
+}
+
+/**
+ * Called when the applier can't find what it needs on the page. Pauses, drops the
+ * interaction blocker so the user can drive the webview, and resolves once they say
+ * they're done — at which point the caller retries the step it was stuck on.
+ */
+const requestHumanHelp = (reason: string) => {
+  playAlertSound()
+  addLog(`Page not recognized; waiting for user... (${reason})`)
+  return new Promise<void>((resolve) => {
+    setState({ handoffPrompt: { reason }, awaitingInput: true })
+    if (state.status === 'running') {
+      pausedByHandoff = true
+      setStatus('paused')
+    }
+    handoffResolver = () => {
+      setState({ handoffPrompt: null, awaitingInput: false })
+      if (pausedByHandoff) {
+        pausedByHandoff = false
+        setStatus('running')
+      }
+      handoffResolver = null
+      resolve()
+    }
+  })
+}
+
+/**
+ * Runs `attempt` for up to timeoutMs. If it never succeeds, asks the user to sort the
+ * page out and then tries again, indefinitely. Never gives up silently and never
+ * continues as though the step had worked — the two failure modes that previously
+ * produced bogus application records.
+ */
+const withHumanFallback = async (
+  reason: string,
+  attempt: () => Promise<boolean>,
+  timeoutMs = 5000
+): Promise<void> => {
+  for (;;) {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      if (await attempt()) return
+      await new Promise(r => setTimeout(r, 100))
+    }
+    await requestHumanHelp(reason)
+  }
+}
+
+async function handleMissingDocument(
+  type: 'cover letter' | 'work sample' | 'portfolio' | 'transcript',
+  companyName: string,
+  userId: string | undefined,
+  applicationId?: string | null,
+  jobTitle?: string,
+  webview?: AutomationWebview
+) {
+  addLog(`No ${type} found for ${companyName}.`)
+  if (!userId) {
+    addLog(`Error occured.`)
+    return
+  }
+  const text = `Upload ${companyName} ${type}`
+  const article = type === 'cover letter' ? 'your' : 'a'
+  const description = withTitleSuffix(
+    jobTitle,
+    `Upload ${article} ${companyName} ${type} in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
+  )
+  const key = buildTaskKey(text, applicationId)
+  if (!existingTasks.has(key)) {
+    const resp = await api.post(`/tasks/${userId}/new`, { text, description, application_id: applicationId ?? undefined })
+    if (!resp.ok) {
+      addLog('Error occured while creating task.')
+    } else {
+      existingTasks.add(key)
+    }
+  }
+  if (webview) {
+    await closeModalIfPresent(webview)
+  }
+}
+
+const addEmployerTasks = async (
+  instructions: EmployerInstruction[],
+  userId: string,
+  applicationId?: string | null,
+  jobTitle?: string
+) => {
+  const tasks = instructions.filter(inst => inst.text && inst.description)
+  if (!tasks.length) return
+  try {
+    await Promise.allSettled(
+      tasks.map(async ({ text, description }) => {
+        const key = buildTaskKey(text, applicationId)
+        if (!key || existingTasks.has(key)) return true
+
+        const resp = await api.post(`/tasks/${userId}/new`, {
+          text,
+          description: withTitleSuffix(jobTitle, description || text),
+          application_id: applicationId ?? undefined
+        })
+        if (!resp.ok) {
+          const msg = await resp.text().catch(() => '')
+          throw new Error(`status ${resp.status} ${msg}`)
+        }
+        existingTasks.add(key)
+        return true
+      })
+    )
+  } catch (_err) {
+    addLog('Error occured.')
+  }
+}
+
+const clearTasksForApplication = async (userId: string, applicationId: string) => {
+  try {
+    await api.del(`/tasks/${userId}/application/${applicationId}`)
+    existingTasks = new Set(
+      Array.from(existingTasks).filter(key => !key.startsWith(`${applicationId}::`))
+    )
+  } catch (_err) {
+    addLog('Unable to clear existing tasks for this application.')
+  }
+}
+
+/**
+ * Search terms plus the existing-task index a run dedupes against. The screen owns
+ * the polling; the data lives here because a run keeps using it once the screen is
+ * gone.
+ */
+export const refreshSearchTerms = async (isPoll = false) => {
+  try {
+    const userId = await getUserId()
+    if (!userId) {
+      if (!isPoll) addLog('Error occured: no user found. Retrying...')
+      return
+    }
+    try {
+      const tasksResp = await api.get(`/tasks/${userId}`)
+      if (tasksResp.ok) {
+        const tasksData = await tasksResp.json().catch(() => [])
+        const taskKeys = Array.isArray(tasksData)
+          ? tasksData
+              .map((t: any) => {
+                const text = String(t?.text ?? '').trim()
+                const appId = t?.application_id ? String(t.application_id) : 'global'
+                if (!text) return null
+                return `${appId}::${text.toLowerCase()}`
+              })
+              .filter(Boolean) as string[]
+          : []
+        existingTasks = new Set(taskKeys)
+      }
+    } catch (_err) {
+      // ignore
+    }
+
+    const latestResumeResp = await api.get(`/resumes/${userId}/latest`)
+    if (!latestResumeResp.ok) { if (!isPoll) addLog('Error occured. Could not fetch resume. Retrying...'); return; }
+    const latestResume = await latestResumeResp.json()
+    const resumeId = latestResume?.resume_id
+    if (!resumeId) { if (!isPoll) addLog('No resume found. Retrying...'); return; }
+
+    const response = await api.get(`/resumes/${resumeId}/search-terms`)
+    if (!response.ok) { if (!isPoll) addLog('Error occured. Could not fetch search terms. Retrying...'); return; }
+
+    const data = await response.json()
+    const terms = Array.isArray(data?.search_terms) ? data.search_terms : []
+    // Enrichment is async: an empty list means the worker hasn't written search
+    // terms yet, so the screen stays "not ready" and automation stays disabled.
+    setState({ searchTerms: terms, searchTermsReady: terms.length > 0 })
+  } catch (_error) {
+    if (!isPoll) addLog('Error occured. Could not get search terms.')
+  }
+}
+
+const runFromDashboard = async (webview: AutomationWebview) => {
+  const sleep = async (ms: number) => {
+    let remaining = ms
+    while (remaining > 0) {
+      await waitForResume()
+      const chunk = Math.min(remaining, 200)
+      await new Promise(resolve => setTimeout(resolve, chunk))
+      remaining -= chunk
+    }
+    await waitForResume()
+  }
+
+  // Wait for and click the top-nav "Jobs" link
+  await withHumanFallback('could not find the Jobs link', async () => {
+    const clicked = await webview.executeJavaScript(`
+      (() => {
+        const link = Array.from(document.querySelectorAll('a'))
+          .find(a => (a.textContent || '').trim() === 'Jobs');
+        if (!link) return 'missing';
+        link.click();
+        return 'clicked';
+      })();
+    `)
+    return clicked === 'clicked'
+  })
+
+  // Select "Jobs I Qualify For" in the Show Me filter before applying job types
+  await (async () => {
+    for (let i = 0; i < 40; i++) {
+      const result = await webview.executeJavaScript(`
+        (() => {
+          const sel =
+            document.querySelector('select#single-select-filter') ||
+            document.querySelector('select[id*="single-select-filter"]') ||
+            document.querySelector('select[name*="show_me"]') ||
+            document.querySelector('select[aria-label*="Show Me"]');
+          if (!sel) return 'missing';
+          sel.scrollIntoView({ behavior: 'instant', block: 'center' });
+          const options = Array.from(sel.options || []);
+          const target = options.find(o => ((o.innerText || o.textContent || '').trim().toLowerCase().includes('jobs i qualify for')));
+          if (!target) return 'no-option';
+          sel.value = target.value;
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+          return 'set';
+        })();
+      `)
+      if (result === 'set') {
+        break
+      }
+      if (result === 'no-option') {
+        break
+      }
+      await sleep(100)
+    }
+  })()
+
+  // Open job type dropdown before searches
+  await (async () => {
+    for (let i = 0; i < 40; i++) {
+      const result = await webview.executeJavaScript(`
+        (() => {
+          const btn = document.querySelector('button#listFilter-category-job_type');
+          if (!btn) return 'missing';
+          btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+          btn.click();
+          return 'clicked';
+        })();
+      `)
+      if (result === 'clicked') {
+        return
+      }
+      await sleep(100)
+    }
+  })()
+
+  // Apply saved job type filters from backend
+  await (async () => {
+    const userId = await getUserId();
+    if (!userId) { addLog('Unable to fetch job types (no user).'); return }
+    try {
+      const resp = await api.get(`/preferences/${userId}/job-types`)
+      if (!resp.ok) { addLog('Failed to fetch job types.'); return }
+      const data = await resp.json()
+      const jobTypes: string[] = Array.isArray(data?.job_types) ? data.job_types : []
+      if (!jobTypes.length) {
+        addLog('No job types set; skipping filters.')
+        return
+      }
+
+      for (let i = 0; i < 20; i++) {
+        const ready = await webview.executeJavaScript(`!!document.querySelector('input[type="checkbox"][id^="job_type"]')`)
+        if (ready) break
+        await sleep(10)
+      }
+
+      await webview.executeJavaScript(`
+        (() => {
+          const selections = ${JSON.stringify(jobTypes.map(t => t.toLowerCase()))};
+          const cbs = Array.from(document.querySelectorAll('input[type="checkbox"][id^="job_type"]'));
+          let matched = 0;
+          cbs.forEach(cb => {
+            const labelText = (
+              (cb.closest('label')?.innerText) ||
+              (cb.parentElement?.innerText) ||
+              ''
+            ).trim().toLowerCase();
+            const hit = selections.find(sel => labelText.includes(sel));
+            if (hit) {
+              if (!cb.checked) cb.click();
+              matched++;
+            }
+          });
+          const applyBtn = Array.from(document.querySelectorAll('button')).find(b => (b.textContent || '').trim().toLowerCase() === 'apply');
+          if (applyBtn) {
+            applyBtn.click();
+          }
+          return { matched, applied: !!applyBtn };
+        })();
+      `)
+    } catch (_err) {
+      addLog('Error applying job type filters.')
+    }
+  })()
+
+  // Ensure preferences (e.g., recent jobs) are loaded before filters.
+  await loadUserPreferences().catch(() => {})
+
+  // Click "More Filters", then click "Exclude jobs I've applied for", then click Apply.
+  const moreFiltersClicked = await webview.executeJavaScript(`
+    (() => {
+      const el = Array.from(document.querySelectorAll('span.filter-text, button, a')).find(node => {
+        const text = (node.innerText || node.textContent || '').trim().toLowerCase();
+        return text === 'more filters';
+      });
+      if (!el) return false;
+      el.scrollIntoView({ behavior: 'instant', block: 'center' });
+      if (typeof el.click === 'function') el.click();
+      else el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      return true;
+    })();
+  `)
+  if (moreFiltersClicked) {
+    // Wait for more-filters panel to render
+    for (let i = 0; i < 60; i++) {
+      const panelVisible = await webview.executeJavaScript(`
+        (() => {
+          const panel = document.querySelector('div#cfEmployersAdvFilters') || document.querySelector('div[id*="EmployersAdvFilters"]');
+          if (!panel) return false;
+          const style = window.getComputedStyle(panel);
+          return style && style.display !== 'none' && style.visibility !== 'hidden';
+        })();
+      `)
+      if (panelVisible) {
+        break
+      }
+      await sleep(100)
+    }
+    // Wait for and click exclude applied jobs checkbox
+    for (let j = 0; j < 60; j++) {
+      const checkboxResult = await webview.executeJavaScript(`
+        (() => {
+          const cb =
+            document.querySelector('input[type="checkbox"][id*="exclude_applied_jobs"]') ||
+            Array.from(document.querySelectorAll('input[type="checkbox"]')).find(el =>
+              ((el.getAttribute('aria-label') || '').toLowerCase().includes("exclude jobs i've applied for"))
+            );
+          if (!cb) return { found: false, clicked: false, already: false };
+          const box = cb;
+          const already = !!box.checked;
+          if (!box.checked) {
+            if (typeof box.click === 'function') box.click();
+            else box.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            return { found: true, clicked: true, already };
+          }
+          return { found: true, clicked: false, already };
+        })();
+      `)
+      if (checkboxResult?.found) {
+        break
+      }
+      await sleep(100)
+    }
+    // If user prefers recent jobs, select the "last 7 days" post date filter before applying.
+    if (recentJobsPref) {
+      for (let j = 0; j < 60; j++) {
+        const radioResult = await webview.executeJavaScript(`
+          (() => {
+            const radios = Array.from(document.querySelectorAll('input[type="radio"][name="postdate"]'));
+            const target =
+              radios.find(r => (r.getAttribute('value') || '').trim() === '7') ||
+              radios.find(r => (r.getAttribute('ng-reflect-value') || '').trim() === '7') ||
+              radios.find(r => {
+                const id = (r.id || '').toLowerCase();
+                const val = (r.getAttribute('value') || '').trim();
+                const ngVal = (r.getAttribute('ng-reflect-value') || '').trim();
+                return id.includes('postdate') && (val === '7' || ngVal === '7');
+              }) ||
+              radios.find(r => {
+                const labelText = (r.closest('label')?.innerText || '').toLowerCase();
+                return labelText.includes('7') || labelText.includes('last 7') || labelText.includes('week');
+              });
+            if (!target) return { found: false, clicked: false, already: false };
+            const already = !!target.checked;
+            if (!target.checked) {
+              if (typeof target.click === 'function') target.click();
+              else target.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+              return { found: true, clicked: true, already };
+            }
+            return { found: true, clicked: false, already };
+          })();
+        `)
+        if (radioResult?.found) {
+          if (radioResult.clicked) {
+            addLog('Selected recent jobs filter (last 7 days).')
+          } else if (radioResult.already) {
+            addLog('Recent jobs filter already selected.')
+          }
+          break
+        }
+        if (j === 59) {
+          addLog('Recent jobs filter not found; continuing without it.')
+        }
+        await sleep(100)
+      }
+    }
+    for (let k = 0; k < 120; k++) {
+      const applied = await webview.executeJavaScript(`
+        (() => {
+          const panel = document.querySelector('div#cfEmployersAdvFilters') || document.querySelector('div[id*="EmployersAdvFilters"]');
+          const scope = panel || document;
+          const btn = Array.from(scope.querySelectorAll('button')).find(b => {
+            const text = (b.textContent || '').trim().toLowerCase();
+            const aria = (b.getAttribute('aria-label') || '').toLowerCase();
+            const enabled = !b.disabled && !!b.offsetParent;
+            return enabled && (text === 'apply' || aria === 'apply');
+          });
+          if (!btn) return 'missing';
+          btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+          if (typeof btn.click === 'function') btn.click();
+          else btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+          return 'clicked';
+        })();
+      `)
+      if (applied === 'clicked') {
+        addLog('Applied filters.')
+        break
+      }
+      await sleep(100)
+    }
+  }
+
+  // Search
+  await (async () => {
+    for (let i = 0; i < 40; i++) {
+      const found = await webview.executeJavaScript(`!!document.querySelector('input#jobs-keyword-input')`)
+      if (found) return
+       await sleep(100)
+    }
+  })()
+
+  if (!state.searchTerms.length) {
+    addLog('Error occured. Please try again later.')
+    setStatus('idle')
+    return
+  }
+
+  const normalizedTerms = state.searchTerms
+    .map(term => String(term ?? '').trim())
+    .filter(Boolean)
+
+  termLoop: for (const term of normalizedTerms) {
+    await waitForResume()
+    addLog(`Searching for "${term}"...`)
+
+    await webview.executeJavaScript(`
+      (() => {
+        const input = document.querySelector('input#jobs-keyword-input');
+        if (!input) return { found: false };
+        return {
+          found: true,
+          value: input.value || '',
+          placeholder: input.placeholder || ''
+        };
+      })();
+    `)
+
+    const typeResult = await webview.executeJavaScript(`
+      (async () => {
+        const input = document.querySelector('input#jobs-keyword-input');
+        if (!input) return 'missing-input';
+
+        const clearBtn = input.parentElement?.querySelector('button, .clear, .close') || null;
+        if (clearBtn && typeof clearBtn.click === 'function') {
+          clearBtn.click();
+        } else {
+          input.value = '';
+        }
+
+        input.focus();
+        const chars = ${JSON.stringify(term)}.split('');
+        for (const ch of chars) {
+          input.value = input.value + ch;
+          input.dispatchEvent(new InputEvent('input', { bubbles: true, composed: true, data: ch }));
+          input.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+          await new Promise(r => setTimeout(r, 40));
+        }
+        return 'typed';
+      })();
+    `)
+
+    if (typeResult === 'missing-input') { continue termLoop }
+
+    await webview.executeJavaScript(`
+      (() => {
+        const input = document.querySelector('input#jobs-keyword-input');
+        if (!input) return { found: false };
+        return { found: true, value: input.value || '' };
+      })();
+    `)
+
+    const enterResult = await webview.executeJavaScript(`
+      (() => {
+        const input = document.querySelector('input#jobs-keyword-input');
+        if (!input) return 'missing-input';
+        const eventInit = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, composed: true };
+        input.dispatchEvent(new KeyboardEvent('keydown', eventInit));
+        input.dispatchEvent(new KeyboardEvent('keypress', eventInit));
+        input.dispatchEvent(new KeyboardEvent('keyup', eventInit));
+        return 'enter-dispatched';
+      })();
+    `)
+
+    if (enterResult === 'missing-input') {
+      continue termLoop
+    }
+
+    for (let attempt = 0; attempt < 40; attempt++) {
+      const clickResult = await webview.executeJavaScript(`
+        (() => {
+          const btn =
+            document.querySelector('button.btn.btn_alt-default') ||
+            document.querySelector('button[type="submit"]') ||
+            document.querySelector('button[aria-label="Search"]') ||
+            document.querySelector('button:not([disabled])#search-btn') ||
+            document.querySelector('button:not([disabled]).btn-search') ||
+            Array.from(document.querySelectorAll('button')).find(b => (b.textContent || '').trim().toLowerCase() === 'search');
+          if (!btn) return 'missing';
+          btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+          btn.click();
+          return 'clicked';
+        })();
+      `)
+
+      if (clickResult === 'clicked') {
+        break
+      }
+       await sleep(100)
+    }
+
+    await sleep(100)
+
+    let pageIndex = 1
+    while (true) {
+      await waitForResume()
+      await (async () => {
+        for (let i = 0; i < 40; i++) {
+          const found = await webview.executeJavaScript(`
+            (() => Array.from(document.querySelectorAll('div[id^="list-item-"]')).length)();
+          `)
+          if (found && found > 0) return
+          await sleep(100)
+        }
+      })()
+
+      let jobCount = await webview.executeJavaScript(`
+        (() => Array.from(document.querySelectorAll('div[id^="list-item-"]')).length)();
+      `)
+
+      if (!jobCount || jobCount <= 0) {
+        break
+      }
+
+      // Apply panel filters only on first page
+      if (pageIndex === 1) {
+        await withHumanFallback(
+          'could not apply the "exclude jobs I have applied for" filter',
+          () => applyPanelFilters(webview)
+        )
+      }
+
+      // Recount after panel filters
+      await (async () => {
+        for (let i = 0; i < 40; i++) {
+          const found = await webview.executeJavaScript(`
+            (() => Array.from(document.querySelectorAll('div[id^="list-item-"]')).length)();
+          `)
+          if (found && found > 0) return
+          await sleep(100)
+        }
+      })()
+      jobCount = await webview.executeJavaScript(`
+        (() => Array.from(document.querySelectorAll('div[id^="list-item-"]')).length)();
+      `)
+
+      if (!jobCount || jobCount <= 0) {
+        addLog(`No job cards found for "${term}".`)
+        break
+      }
+
+      let consecutiveDoNotApply = 0
+      addLog(`${jobCount} jobs found for "${term}" on page ${pageIndex}.`)
+      for (let idx = 0; idx < jobCount; idx++) {
+        await waitForResume()
+        const clickJobResult = await webview.executeJavaScript(`
+          (() => {
+            const skipUnpaid = ${JSON.stringify(!unpaidRolesPref)};
+            const cards = Array.from(document.querySelectorAll('div[id^="list-item-"]'));
+            const card = cards[${idx}];
+            if (!card) return { status: 'missing' };
+            const rawText = card.innerText || card.textContent || '';
+            const normalized = rawText.toLowerCase();
+            if (skipUnpaid && (normalized.includes('unpaid') || normalized.includes('volunteer'))) {
+              return { status: 'skipped', reason: 'unpaid' };
+            }
+            if (normalized.includes('not qualified')) {
+              return { status: 'skipped', reason: 'not qualified' };
+            }
+            if (normalized.includes('applied')) {
+              return { status: 'skipped', reason: 'applied' };
+            }
+            const pickTitle = () => {
+              const preferred =
+                card.querySelector('[data-testid="job-title"]') ||
+                card.querySelector('.job-title') ||
+                card.querySelector('h3, h4') ||
+                card.querySelector('[role="link"]');
+              const raw = preferred && preferred.textContent ? preferred.textContent : card.innerText || card.textContent || '';
+              // Use first non-empty line, then trim common joiners.
+              const firstLine = raw
+                .split('\\n')
+                .map(t => t.trim())
+                .find(t => t.length > 0) || '';
+              if (!firstLine) return '';
+              // If the line contains multiple fields jammed together, split on two or more spaces.
+              const splitSpaces = firstLine.split(/\\s{2,}/).find(t => t.length > 0);
+              return (splitSpaces || firstLine).trim();
+            };
+            const title = pickTitle();
+            const shortTitle = title.length > 140 ? title.slice(0, 140) + '…' : title;
+
+            const lines = (card.innerText || card.textContent || '')
+              .split('\\n')
+              .map(t => t.trim())
+              .filter(t => t.length > 0);
+            const rawCompany = lines.find(l => l !== title) || '';
+            const companyName = rawCompany.includes(' - ')
+              ? rawCompany.split(' - ')[0].trim()
+              : rawCompany;
+            const displayTitle = companyName ? \`\${shortTitle} @ \${companyName}\` : shortTitle;
+
+            card.scrollIntoView({ behavior: 'instant', block: 'center' });
+            if (typeof card.click === 'function') {
+              card.click();
+            } else {
+              card.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            }
+            return { status: 'clicked', title: shortTitle, company: companyName, displayTitle };
+          })();
+        `)
+
+        if (clickJobResult?.status === 'clicked') {
+          currentJobApplicationId = null
+          clearedTasksForApplication = false
+          const titleStr = clickJobResult.displayTitle || clickJobResult.title || 'Untitled job';
+          const companyLower = (clickJobResult.company || (() => {
+            const atIdx = titleStr.indexOf('@');
+            if (atIdx !== -1) return titleStr.slice(atIdx + 1);
+            return '';
+          })()).toString().toLowerCase().trim();
+           await sleep(100)
+          const descResult = await webview.executeJavaScript(`
+            (async () => {
+              const normalize = (el) => (el?.innerText || el?.textContent || '').trim();
+              const stripNoise = (text) =>
+                text
+                  .split('\\n')
+                  .map(t => t.trim())
+                  .filter(t =>
+                    t.length > 0 &&
+                    !/home\\/jobs\\/search/i.test(t) &&
+                    !/keywords/i.test(t) &&
+                    !/location/i.test(t) &&
+                    !/distance/i.test(t) &&
+                    !/show me/i.test(t) &&
+                    !/all jobs/i.test(t)
+                  )
+                  .join(' ');
+              const serializeBlock = (el) => {
+                let text = el ? (el.innerText || el.textContent || '') : '';
+                const links = Array.from(el?.querySelectorAll('a') || []);
+                links.forEach(a => {
+                  const display = (a.innerText || a.textContent || 'link').trim();
+                  const href = a.href || a.getAttribute('href') || '';
+                  if (href && display.length) {
+                    const replacement = \`\${display} (\${href})\`;
+                    // replace first occurrence of display to avoid over-replacement
+                    text = text.replace(display, replacement);
+                  }
+                });
+                return text.trim();
+              };
+
+              // Wait for a job description heading to appear (up to ~4s)
+              let heading = null;
+              for (let i = 0; i < 16; i++) {
+                heading = Array.from(document.querySelectorAll('h1,h2,h3,h4,strong,b'))
+                  .find(h => /job description/i.test(h.innerText || ''));
+                if (heading) break;
+                await new Promise(r => setTimeout(r, 250));
+              }
+              if (!heading) return '';
+
+              const scope = heading.closest('section, article, div') || heading.parentElement;
+              if (!scope) return '';
+
+              const blocks = Array.from(scope.querySelectorAll('p, li, div'))
+                .map(serializeBlock)
+                .filter(t => t.length > 40);
+              const combined = stripNoise(blocks.join(' ').trim());
+              return combined;
+            })();
+          `)
+
+          // Send description to backend for decision and optionally apply
+          try {
+            const companyName = (clickJobResult.company || '').trim()
+            const jobTitle = (clickJobResult.title || '').trim()
+            const jobDescription = (descResult || '').toString()
+
+            if (!companyName || !jobTitle || !jobDescription.trim()) {
+              consecutiveDoNotApply = 0
+              addLog('Error: missing information. Skipping...')
+              continue
+            }
+
+            const addJobResp = await api.post(`/jobs/add`, {
+              company: companyName,
+              title: jobTitle,
+              description: jobDescription
+            })
+            let addedJobId: string | null = null
+            if (!addJobResp.ok) {
+              addLog('Server error.')
+            } else {
+              const addedJob = await addJobResp.json().catch(() => null)
+              addedJobId = addedJob?.job_id ?? addedJob?.id ?? null
+            }
+            const userId = await getUserId()
+            if (!userId) {
+              addLog('Decision skipped (no user).')
+            } else {
+              addLog(`Reviewing ${titleStr}...`)
+              const resp = await api.post(`/jobs/analyze/${userId}`, {
+                job_description: descResult || '',
+                company: companyName,
+                title: jobTitle
+              })
+              if (resp.ok) {
+                const data = await resp.json()
+                const instructions = normalizeEmployerInstructions(data?.employer_instructions)
+                void instructions
+                if (data.decision === 'APPLY') {
+                  consecutiveDoNotApply = 0
+                  addLog(`Decision: apply.`)
+                  let applicationRecordedStatus: ApplicationStatus | null = null
+              let pendingModalInstructionText: string | null = null
+                  const recordApplication = async (status: ApplicationStatus) => {
+                    const userIdForApplication = await getUserId()
+                    if (!userIdForApplication) return currentJobApplicationId
+                    if (applicationRecordedStatus === status && currentJobApplicationId) {
+                      return currentJobApplicationId
+                    }
+                    if (!addedJobId) {
+                      addLog('Unable to record application (missing job).')
+                      return currentJobApplicationId
+                    }
+                    const applicationPayload = {
+                      job_id: addedJobId,
+                      status
+                    }
+                    try {
+                      const resp = await api.post(`/applications/${userIdForApplication}/new`, applicationPayload)
+                      if (resp.ok) {
+                        const data = await resp.json().catch(() => ({}))
+                        const applicationId =
+                          data?.application_id ??
+                          data?.id ??
+                          data?.jobApplicationId ??
+                          null
+                        if (applicationId) {
+                          currentJobApplicationId = String(applicationId)
+                        }
+                        applicationRecordedStatus = status
+                        if (currentJobApplicationId && !clearedTasksForApplication) {
+                          await clearTasksForApplication(userIdForApplication, currentJobApplicationId)
+                          clearedTasksForApplication = true
+                        }
+                      }
+                    } catch (_err) {
+      // ignore
+    }
+                    return currentJobApplicationId
+                  }
+                  await recordApplication(ApplicationStatus.DRAFT)
+                  const waitForApproval = await loadUserPreferences()
+                  if (waitForApproval) {
+                    addLog(`Waiting for approval before applying to ${titleStr}...`)
+                    const approved = await requestApprovalForJob(clickJobResult.title || 'Untitled job', companyName || 'Unknown company')
+                    if (!approved) {
+                      addLog('Skipped applying (user declined).')
+                      continue
+                    }
+                    addLog('User approved. Applying now...')
+                  }
+                  let documentsMissing = false
+                  const applyClicked = await webview.executeJavaScript(`
+                    (() => {
+                      const btn = Array.from(document.querySelectorAll('button')).find(b => {
+                        const text = (b.textContent || '').trim().toLowerCase();
+                        const visible = !!(b.offsetParent);
+                        return text === 'apply' && !b.disabled && visible;
+                      });
+                      if (!btn) return false;
+                      btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+                      btn.click();
+                      return true;
+                    })();
+                  `)
+                  if (applyClicked) {
+                    // Delay inline-instructions check until after resume UI is present.
+                    const dividerExists = await webview.executeJavaScript(`
+                      (() => {
+                        const divider = document.querySelector('div.vr.ng-star-inserted');
+                        const heading = Array.from(document.querySelectorAll('h4')).find(
+                          el => (el.textContent || '').toLowerCase().includes('how to apply')
+                        );
+                        return !!(divider || heading);
+                      })();
+                    `)
+                    // defer instruction/task creation until after document checks below
+                    await webview.executeJavaScript(`
+                      (() => {
+                        const btn = Array.from(document.querySelectorAll('button')).find(b => {
+                          const text = (b.textContent || '').trim().toLowerCase();
+                          const visible = !!(b.offsetParent);
+                          return (text === 'submit' || text === 'save') && !b.disabled && visible;
+                        });
+                        const isRed = !!(btn && (btn.className || '').toLowerCase().includes('btn_primary'));
+                        return { hasSubmit: !!btn, hasRed: isRed };
+                      })();
+                    `)
+                    void dividerExists
+                    let seenResume = false
+                    let skipJob = false
+                    let coverLetterTaskAdded = false
+                    let workSampleChecked = false
+                    let portfolioChecked = false
+                    let transcriptChecked = false
+                    let preferHeadlessClose = false
+                    let docFieldFound = false
+                    let needsExternalAction = false
+                    let submitClickedForApplication = false
+
+                    if (dividerExists) {
+                      await withHumanFallback(
+                        'the job application modal did not open',
+                        () => waitForModalOpen(webview)
+                      )
+                      const { text } = await webview.executeJavaScript(`
+                        (() => {
+                          const modals = Array.from(document.querySelectorAll('div.modal-content, div[role="dialog"], .modal, .job-success-modal'));
+                          // Prefer a modal that has the how-to-apply node and is not the success modal
+                          const preferIndex = modals.findIndex(m =>
+                            !m.classList.contains('job-success-modal') &&
+                            m.querySelector('p#how-to-apply, #how-to-apply, .text-overflow.column, .p-group')
+                          );
+                          const modal = preferIndex >= 0
+                            ? modals[preferIndex]
+                            : (modals.find(m => !m.classList.contains('job-success-modal')) || modals[0] || null);
+                          const scope = modal || document;
+                          const lowerMatch = (id) => (id || '').toLowerCase().includes('how-to-apply');
+                          const el =
+                            scope.querySelector('p#how-to-apply') ||
+                            scope.querySelector('#how-to-apply') ||
+                            Array.from(scope.querySelectorAll('[id]')).find(node => lowerMatch(node.id)) ||
+                            Array.from(scope.querySelectorAll('p')).find(p => lowerMatch(p.id || ''));
+                          const container =
+                            el ||
+                            (el && el.parentElement) ||
+                            scope.querySelector('.text-overflow.column') ||
+                            scope.querySelector('.p-group') ||
+                            modal ||
+                            scope;
+
+                          const extractInstruction = (node) => {
+                            if (!node) return '';
+                            const anchors = Array.from(node.querySelectorAll('a')).map(a => {
+                              const t = (a.innerText || a.textContent || '').trim();
+                              const href = (a.getAttribute('href') || '').trim();
+                              if (href && t) {
+                                // Prefer the href to avoid UI-truncated anchor text; include text when distinct.
+                                return href.includes(t) ? href : (t + ' ' + href).trim();
+                              }
+                              return href || t;
+                            }).filter(Boolean);
+
+                            const rawLines = (node.innerText || node.textContent || '')
+                              .split(/\\n+/)
+                              .map(s => s.trim())
+                              .filter(Boolean);
+                            const applyLines = rawLines.filter(s => s.toLowerCase().includes('apply'));
+
+                            const candidates = [...anchors, ...applyLines];
+                            const first = candidates.find(Boolean);
+                            if (first) return first;
+
+                            const combined = [...rawLines, ...anchors].filter(Boolean);
+                            return Array.from(new Set(combined)).join(' ').trim();
+                          };
+
+                          const txt = extractInstruction(container);
+                          return {
+                            text: txt,
+                            elHtml: el ? el.outerHTML : '',
+                            modalHtml: modal ? modal.innerHTML : '',
+                            appliedModalIndex: preferIndex >= 0 ? preferIndex : (modals.length ? 0 : -1)
+                          };
+                        })();
+                      `)
+
+                      if (text) {
+                        pendingModalInstructionText = text
+                      }
+                    }
+                    for (let i = 0; i < 10; i++) { // faster resume/doc detection
+                      const found = await webview.executeJavaScript(`
+                        (() => {
+                          const resumeSelect =
+                            document.querySelector('select[id*="formfield"][id*="resume"]') ||
+                            document.querySelector('select[ng-reflect-name="resume"]');
+                          const label = Array.from(document.querySelectorAll('label'))
+                            .find(l => (l.textContent || '').toLowerCase().includes('resume'));
+                          const resumeButton =
+                            document.querySelector('button[id*="formfield"][id*="resume"]') ||
+                            Array.from(document.querySelectorAll('button')).find(b =>
+                              (b.textContent || '').toLowerCase().includes('resume')
+                            );
+                          return {
+                            hasLabel: !!label,
+                            hasSelect: !!resumeSelect,
+                            hasButton: !!resumeButton
+                          };
+                        })();
+                      `)
+                      if (found?.hasLabel || found?.hasSelect || found?.hasButton) {
+                        seenResume = true
+                        docFieldFound = true
+                        if (!transcriptChecked) {
+                          const transcriptExists = await webview.executeJavaScript(`
+                            (() => {
+                              const sel = document.querySelector('select[id*="transcript"]');
+                              return !!sel;
+                            })();
+                          `)
+                          if (transcriptExists) {
+                            docFieldFound = true
+                            let transcriptHandled = false
+                            for (let t = 0; t < 10; t++) { // shorter wait to avoid long gaps
+                              const selectResult = await webview.executeJavaScript(`
+                                (() => {
+                                  const sel = document.querySelector('select[id*="transcript"]');
+                                  if (!sel) return { found: false };
+                                  sel.scrollIntoView({ behavior: 'instant', block: 'center' });
+                                  if (typeof sel.click === 'function') sel.click();
+                                  else sel.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                                  const options = Array.from(sel.options || []).map(o => ({
+                                    value: o.value,
+                                    text: (o.innerText || o.textContent || '').trim()
+                                  })).filter(o => o.text || o.value);
+                                  return { found: true, hasOptions: options.length > 0, options };
+                                })();
+                              `)
+                              if (selectResult?.found) {
+                                transcriptHandled = true
+                                if (selectResult.hasOptions && selectResult.options?.length) {
+                                  await webview.executeJavaScript(`
+                                    (() => {
+                                      const sel = document.querySelector('select[id*="transcript"]');
+                                      if (!sel) return false;
+                                      const target = Array.from(sel.options || [])[0];
+                                      if (!target) return false;
+                                      sel.value = target.value;
+                                      sel.dispatchEvent(new Event('change', { bubbles: true }));
+                                      sel.dispatchEvent(new Event('input', { bubbles: true }));
+                                      return true;
+                                    })();
+                                  `)
+                                } else {
+                                documentsMissing = true
+                              await handleMissingDocument('transcript', clickJobResult.company, userId, currentJobApplicationId, titleStr)
+                                skipJob = true
+                                }
+                                break
+                              }
+                              await sleep(50)
+                            }
+                            if (!transcriptHandled) {
+                            documentsMissing = true
+                            await handleMissingDocument('transcript', clickJobResult.company, userId, currentJobApplicationId, titleStr)
+                            skipJob = true
+                            }
+                          }
+                          transcriptChecked = true
+                        }
+                        if (found?.hasSelect) {
+                          await webview.executeJavaScript(`
+                            (() => {
+                              const btn = Array.from(document.querySelectorAll('button')).find(b => {
+                                const text = (b.textContent || '').trim().toLowerCase();
+                                const visible = !!(b.offsetParent);
+                                return (text === 'submit' || text === 'save') && !b.disabled && visible;
+                              });
+                              const isRed = !!(btn && (btn.className || '').toLowerCase().includes('btn_primary'));
+                              return { hasSubmit: !!btn, hasRed: isRed };
+                            })();
+                          `)
+                          const coverLetterExists = await webview.executeJavaScript(`
+                            (() => {
+                              const addBtn = document.querySelector('button[id*="formfield"][id*="cover_let"]');
+                              const sel = document.querySelector('select[id*="formfield"][id*="cover_letter"]');
+                              const textBtn = Array.from(document.querySelectorAll('button')).find(b =>
+                                (b.textContent || '').toLowerCase().includes('cover letter')
+                              );
+                              const input = document.querySelector('input[id*="cover"]') || document.querySelector('textarea[id*="cover"]');
+                              return { hasSelect: !!sel, hasAdd: !!addBtn, hasAny: !!(sel || addBtn || textBtn || input) };
+                            })();
+                          `)
+                          if (coverLetterExists?.hasAny) {
+                            docFieldFound = true
+                            if (coverLetterExists.hasSelect) {
+                                
+                              const coverOpenResult = await webview.executeJavaScript(`
+                                (() => {
+                                  const sel = document.querySelector('select[id*="formfield"][id*="cover_letter"]');
+                                  if (!sel) return { status: 'missing', options: [] };
+                                  sel.scrollIntoView({ behavior: 'instant', block: 'center' });
+                                  if (typeof sel.click === 'function') {
+                                    sel.click();
+                                  } else {
+                                    sel.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                                  }
+                                  const opts = Array.from(sel.querySelectorAll('option')).map(o => (o.innerText || o.textContent || '').trim()).filter(Boolean);
+                                  return { status: 'clicked', options: opts };
+                                })();
+                              `)
+                              if (coverOpenResult?.status === 'clicked') {
+                                if (Array.isArray(coverOpenResult.options) && coverOpenResult.options.length) {
+                                  const hasCompany = companyLower
+                                    ? coverOpenResult.options.some((o: string) => o.toLowerCase().includes(companyLower))
+                                    : false;
+                                  if (!hasCompany) {
+                                    if (!coverLetterTaskAdded) {
+                                      documentsMissing = true
+                              await handleMissingDocument('cover letter', clickJobResult.company, userId, currentJobApplicationId, titleStr);
+                                      coverLetterTaskAdded = true
+                                    }
+                                  skipJob = true
+                                  }
+                                }
+                              }
+                            } else {
+                              if (!coverLetterTaskAdded) {
+                                documentsMissing = true
+                            await handleMissingDocument('cover letter', clickJobResult.company, userId, currentJobApplicationId, titleStr)
+                                coverLetterTaskAdded = true
+                              }
+                            skipJob = true
+                            }
+                          }
+
+                          if (!workSampleChecked) {
+                            const workSampleInfo = await webview.executeJavaScript(`
+                              (() => {
+                                const sel = document.querySelector('select[id*="writing_sample"]');
+                                const opts = sel
+                                  ? Array.from(sel.querySelectorAll('option')).map(o => ({
+                                      text: (o.innerText || o.textContent || '').trim(),
+                                      value: o.value
+                                    })).filter(o => o.text)
+                                  : [];
+                                const btn =
+                                  document.querySelector('button[id*="writing_sample"]') ||
+                                  Array.from(document.querySelectorAll('button')).find(b =>
+                                    (b.textContent || '').toLowerCase().includes('work sample')
+                                  );
+                                return { hasSelect: !!sel, options: opts, hasButton: !!btn };
+                              })();
+                            `)
+                            const workSampleVisible = !!(workSampleInfo?.hasSelect || workSampleInfo?.hasButton)
+                            if (workSampleVisible && workSampleInfo?.hasSelect) {
+                              docFieldFound = true
+                              const match = companyLower
+                                ? workSampleInfo.options.find((o: any) => o.text.toLowerCase().includes(companyLower))
+                                : null
+                              if (match) {
+                                await webview.executeJavaScript(`
+                                  (() => {
+                                    const sel = document.querySelector('select[id*="writing_sample"]');
+                                    if (!sel) return false;
+                                    const target = Array.from(sel.options).find(o =>
+                                      (o.innerText || o.textContent || '').toLowerCase().includes(${JSON.stringify(
+                                        companyLower || ''
+                                      )})
+                                    );
+                                    if (!target) return false;
+                                    sel.value = target.value;
+                                    sel.dispatchEvent(new Event('change', { bubbles: true }));
+                                    return true;
+                                  })();
+                                `)
+                              } else {
+                                documentsMissing = true
+                                await handleMissingDocument('work sample', clickJobResult.company, userId, currentJobApplicationId, titleStr)
+                                skipJob = true
+                              }
+                            } else if (workSampleVisible && workSampleInfo?.hasButton) {
+                              docFieldFound = true
+                              documentsMissing = true
+                              await handleMissingDocument('work sample', clickJobResult.company, userId, currentJobApplicationId, titleStr)
+                              skipJob = true
+                            }
+                            workSampleChecked = true
+                          }
+
+                          if (!portfolioChecked) {
+                            const portfolioInfo = await webview.executeJavaScript(`
+                              (() => {
+                                const checkboxes = Array.from(document.querySelectorAll('input[type="checkbox"][id*="other_documents"]'));
+                                const btn =
+                                  document.querySelector('button[id*="other_documents"]') ||
+                                  Array.from(document.querySelectorAll('button')).find(b =>
+                                    (b.textContent || '').toLowerCase().includes('portfolio')
+                                  );
+                                return { hasCheckboxes: checkboxes.length > 0, hasButton: !!btn };
+                              })();
+                            `)
+                          const portfolioVisible = !!(portfolioInfo?.hasCheckboxes || portfolioInfo?.hasButton)
+                          if (portfolioVisible && portfolioInfo?.hasCheckboxes) {
+                            docFieldFound = true
+                            await webview.executeJavaScript(`
+                              (() => {
+                                const checkboxes = Array.from(document.querySelectorAll('input[type="checkbox"][id*="other_documents"]'));
+                                checkboxes.forEach(cb => {
+                                  if (!cb.checked) {
+                                    cb.click();
+                                  }
+                                });
+                                return true;
+                              })();
+                            `)
+                          } else if (portfolioVisible && portfolioInfo?.hasButton) {
+                            docFieldFound = true
+                            documentsMissing = true
+                            await handleMissingDocument('portfolio', clickJobResult.company, userId, currentJobApplicationId, titleStr)
+                            skipJob = true
+                          }
+                          portfolioChecked = true
+                          }
+                          if (skipJob) {
+                            await recordApplication(ApplicationStatus.DRAFT)
+                            await closeModalIfPresent(webview)
+                            break
+                          }
+
+                          // Wait for red submit/save to appear; if it never turns red, close modal and continue.
+                          let submitClicked = false
+                          preferHeadlessClose = false
+                          for (let attempt = 0; attempt < 20; attempt++) { // ~0.2s
+                            const redNow = await webview.executeJavaScript(`
+                              (() => {
+                                const btn = Array.from(document.querySelectorAll('button')).find(b => {
+                                  const text = (b.textContent || '').trim().toLowerCase();
+                                  const visible = !!(b.offsetParent);
+                                  const isRed = (b.className || '').toLowerCase().includes('btn_primary');
+                                  return text === 'submit' && !b.disabled && visible && isRed;
+                                });
+                                if (btn) {
+                                  const hasDivider = !!document.querySelector('div.vr.ng-star-inserted');
+                                  return { clicked: (() => { btn.scrollIntoView({ behavior: 'instant', block: 'center' }); btn.click(); return true; })(), hasDivider };
+                                }
+                                return { clicked: false, hasDivider: false };
+                              })();
+                            `)
+                            if (redNow?.clicked) {
+                              submitClicked = true
+                              submitClickedForApplication = true
+                              preferHeadlessClose = !!redNow?.hasDivider
+                              break
+                            }
+                            await sleep(10)
+                          }
+                          if (!submitClicked) {
+                            await closeModalIfPresent(webview, preferHeadlessClose)
+                            skipJob = true
+                            break
+                          }
+                          let submitGone = false
+                          for (let attempt = 0; attempt < 20; attempt++) { // ~0.2s
+                            const submitStillThere = await webview.executeJavaScript(`
+                              (() => {
+                                const btn = Array.from(document.querySelectorAll('button')).find(b => {
+                                  const text = (b.textContent || '').trim().toLowerCase();
+                                  const visible = !!(b.offsetParent);
+                                  return (text === 'submit' || text === 'save') && visible;
+                                });
+                                return !!btn;
+                              })();
+                            `)
+                            if (!submitStillThere) {
+                              await closeModalIfPresent(webview, preferHeadlessClose)
+                              submitGone = true
+                              break
+                            }
+                            await sleep(10)
+                          }
+                          if (!submitGone) {
+                            await closeModalIfPresent(webview, preferHeadlessClose)
+                          }
+                          setStatus('running')
+                          await waitForDividerSubmissionAndClose(webview)
+                          if (skipJob) {
+                            await recordApplication(ApplicationStatus.DRAFT)
+                            await closeModalIfPresent(webview, preferHeadlessClose)
+                            break
+                          }
+                        } else if (found?.hasButton) {
+                          await webview.executeJavaScript(`
+                            (() => {
+                              const btn =
+                                document.querySelector('button[id*="formfield"][id*="resume"]') ||
+                                Array.from(document.querySelectorAll('button')).find(b =>
+                                  (b.textContent || '').toLowerCase().includes('resume')
+                                );
+                              if (!btn) return false;
+                              btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+                              btn.click();
+                              return true;
+                            })();
+                          `)
+
+                          // Wait for submit/save button to appear, then for it to be clicked (disappear)
+                          while (true) {
+                            const submitVisible = await webview.executeJavaScript(`
+                              (() => {
+                                const btn = Array.from(document.querySelectorAll('button')).find(b => {
+                                  const text = (b.textContent || '').trim().toLowerCase();
+                                  const visible = !!(b.offsetParent);
+                                  return (text === 'submit' || text === 'save') && !b.disabled && visible;
+                                });
+                                return !!btn;
+                              })();
+                            `)
+                            if (submitVisible) { break }
+                            await sleep(10)
+                          }
+
+                          const coverLetterExists = await webview.executeJavaScript(`
+                            (() => {
+                              const addBtn = document.querySelector('button[id*="formfield"][id*="cover_let"]');
+                              const sel = document.querySelector('select[id*="formfield"][id*="cover_letter"]');
+                              const textBtn = Array.from(document.querySelectorAll('button')).find(b =>
+                                (b.textContent || '').toLowerCase().includes('cover letter')
+                              );
+                              const input = document.querySelector('input[id*="cover"]') || document.querySelector('textarea[id*="cover"]');
+                              return { hasSelect: !!sel, hasAdd: !!addBtn, hasAny: !!(sel || addBtn || textBtn || input) };
+                            })();
+                          `)
+                          if (coverLetterExists?.hasAny) {
+                            // Try to open the cover letter selector/dropdown for the user.
+                            const coverOpenResult = await webview.executeJavaScript(`
+                              (() => {
+                                const sel =
+                                  document.querySelector('select[id*="formfield"][id*="cover_letter"]') ||
+                                  document.querySelector('button[id*="formfield"][id*="cover_let"]');
+                                if (!sel) return { status: 'missing', options: [] };
+                                sel.scrollIntoView({ behavior: 'instant', block: 'center' });
+                                if (typeof sel.click === 'function') {
+                                  sel.click();
+                                } else {
+                                  sel.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                                }
+                                const opts = sel.tagName === 'SELECT'
+                                  ? Array.from(sel.querySelectorAll('option')).map(o => (o.innerText || o.textContent || '').trim()).filter(Boolean)
+                                  : [];
+                                return { status: 'clicked', options: opts };
+                              })();
+                            `)
+                            if (coverOpenResult?.status === 'clicked') {
+                              if (Array.isArray(coverOpenResult.options) && coverOpenResult.options.length) {
+                                const hasCompany = companyLower
+                                  ? coverOpenResult.options.some((o: string) => o.toLowerCase().includes(companyLower))
+                                  : false;
+                                if (!hasCompany) {
+                                  await webview.executeJavaScript(`
+                                    (() => {
+                                      const btn =
+                                        document.querySelector('button.modal-close') ||
+                                        document.querySelector('button.headless-close-btn') ||
+                                        Array.from(document.querySelectorAll('button')).find(b => {
+                                          const cls = (b.className || '').toLowerCase();
+                                          return cls.includes('modal-close') || cls.includes('headless-close-btn');
+                                        });
+                                      if (btn) {
+                                        btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+                                        if (typeof btn.click === 'function') btn.click();
+                                        else btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                                        return true;
+                                      }
+                                      return false;
+                                    })();
+                                  `)
+                                  continue
+                                }
+                              }
+                            }
+                            if (!coverLetterExists.hasSelect) {
+                              if (!coverLetterTaskAdded) {
+                                documentsMissing = true
+                              await handleMissingDocument('cover letter', clickJobResult.company, userId, currentJobApplicationId, titleStr);
+                                coverLetterTaskAdded = true
+                              }
+                              await webview.executeJavaScript(`
+                                (() => {
+                                  const btn =
+                                    document.querySelector('button.modal-close') ||
+                                    document.querySelector('button.headless-close-btn') ||
+                                    Array.from(document.querySelectorAll('button')).find(b => {
+                                      const cls = (b.className || '').toLowerCase();
+                                      return cls.includes('modal-close') || cls.includes('headless-close-btn');
+                                    });
+                                  if (btn) {
+                                    btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+                                    if (typeof btn.click === 'function') btn.click();
+                                    else btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                                    return true;
+                                  }
+                                  return false;
+                                })();
+                              `)
+                              skipJob = true
+                            }
+                          }
+
+                          if (!workSampleChecked) {
+                            const workSampleInfo = await webview.executeJavaScript(`
+                              (() => {
+                                const sel = document.querySelector('select[id*="writing_sample"]');
+                                const opts = sel
+                                  ? Array.from(sel.querySelectorAll('option')).map(o => ({
+                                      text: (o.innerText || o.textContent || '').trim(),
+                                      value: o.value
+                                    })).filter(o => o.text)
+                                  : [];
+                                const btn =
+                                  document.querySelector('button[id*="writing_sample"]') ||
+                                  Array.from(document.querySelectorAll('button')).find(b =>
+                                    (b.textContent || '').toLowerCase().includes('work sample')
+                                  );
+                                return { hasSelect: !!sel, options: opts, hasButton: !!btn };
+                              })();
+                            `)
+                            if (workSampleInfo?.hasSelect) {
+                              const match = companyLower
+                                ? workSampleInfo.options.find((o: any) => o.text.toLowerCase().includes(companyLower))
+                                : null
+                              if (match) {
+                                await webview.executeJavaScript(`
+                                  (() => {
+                                    const sel = document.querySelector('select[id*="writing_sample"]');
+                                    if (!sel) return false;
+                                    const target = Array.from(sel.options).find(o =>
+                                      (o.innerText || o.textContent || '').toLowerCase().includes(${JSON.stringify(
+                                        companyLower || ''
+                                      )})
+                                    );
+                                    if (!target) return false;
+                                    sel.value = target.value;
+                                    sel.dispatchEvent(new Event('change', { bubbles: true }));
+                                    return true;
+                                  })();
+                                `)
+                              }
+                              workSampleChecked = true
+                            } else if (workSampleInfo?.hasButton) {
+                              documentsMissing = true
+                              await handleMissingDocument('work sample', clickJobResult.company, userId, currentJobApplicationId, titleStr)
+                          skipJob = true
+                              workSampleChecked = true
+                            } else {
+                              documentsMissing = true
+                              await handleMissingDocument('work sample', clickJobResult.company, userId, currentJobApplicationId, titleStr)
+                          skipJob = true
+                              workSampleChecked = true
+                            }
+                          }
+
+                          if (!portfolioChecked) {
+                            const portfolioInfo = await webview.executeJavaScript(`
+                              (() => {
+                                const checkboxes = Array.from(document.querySelectorAll('input[type="checkbox"][id*="other_documents"]'));
+                                const btn =
+                                  document.querySelector('button[id*="other_documents"]') ||
+                                  Array.from(document.querySelectorAll('button')).find(b =>
+                                    (b.textContent || '').toLowerCase().includes('portfolio')
+                                  );
+                                return { hasCheckboxes: checkboxes.length > 0, hasButton: !!btn };
+                              })();
+                            `)
+                            if (portfolioInfo?.hasCheckboxes) {
+                              await webview.executeJavaScript(`
+                                (() => {
+                                  const checkboxes = Array.from(document.querySelectorAll('input[type="checkbox"][id*="other_documents"]'));
+                                  checkboxes.forEach(cb => {
+                                    if (!cb.checked) {
+                                      cb.click();
+                                    }
+                                  });
+                                  return true;
+                                })();
+                              `)
+                              portfolioChecked = true
+                            } else if (portfolioInfo?.hasButton) {
+                              documentsMissing = true
+                              await handleMissingDocument('portfolio', clickJobResult.company, userId, currentJobApplicationId, titleStr)
+                      skipJob = true
+                              portfolioChecked = true
+                            } else {
+                              documentsMissing = true
+                              await handleMissingDocument('portfolio', clickJobResult.company, userId, currentJobApplicationId, titleStr)
+                      skipJob = true
+                              portfolioChecked = true
+                            }
+                          }
+                  if (skipJob) {
+                    await recordApplication(ApplicationStatus.DRAFT)
+                    await closeModalIfPresent(webview)
+                    break
+                  }
+
+                          // Wait specifically for red submit/save to appear
+                          let submitClicked = false
+                          preferHeadlessClose = false
+                          for (let attempt = 0; attempt < 20; attempt++) { // ~0.2s
+                            const redNow = await webview.executeJavaScript(`
+                              (() => {
+                                const btn = Array.from(document.querySelectorAll('button')).find(b => {
+                                  const text = (b.textContent || '').trim().toLowerCase();
+                                  const visible = !!(b.offsetParent);
+                                  const isRed = (b.className || '').toLowerCase().includes('btn_primary');
+                                  return text === 'submit' && !b.disabled && visible && isRed;
+                                });
+                                if (btn) {
+                                  const hasDivider = !!document.querySelector('div.vr.ng-star-inserted');
+                                  btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+                                  btn.click();
+                                  return { clicked: true, hasDivider };
+                                }
+                                return { clicked: false, hasDivider: false };
+                              })();
+                            `)
+                            if (redNow?.clicked) {
+                              submitClicked = true
+                              submitClickedForApplication = true
+                              preferHeadlessClose = !!redNow?.hasDivider
+                              break
+                            }
+                            await sleep(10)
+                          }
+                          if (!submitClicked) {
+                            await closeModalIfPresent(webview, preferHeadlessClose)
+                            skipJob = true
+                            break
+                          }
+                          // Wait for submit to disappear
+                          let submitGone = false
+                          for (let attempt = 0; attempt < 20; attempt++) { // ~0.2s
+                            const submitStillThere = await webview.executeJavaScript(`
+                              (() => {
+                                const btn = Array.from(document.querySelectorAll('button')).find(b => {
+                                  const text = (b.textContent || '').trim().toLowerCase();
+                                  const visible = !!(b.offsetParent);
+                                  return (text === 'submit' || text === 'save') && visible;
+                                });
+                                return !!btn;
+                              })();
+                            `)
+                            if (!submitStillThere) {
+                              await closeModalIfPresent(webview, preferHeadlessClose)
+                              setStatus('running')
+                              submitGone = true
+                              break
+                            }
+                            await sleep(10)
+                          }
+                          if (!submitGone) {
+                            await closeModalIfPresent(webview, preferHeadlessClose)
+                            setStatus('running')
+                            skipJob = true
+                          }
+                          await waitForDividerSubmissionAndClose(webview)
+                        if (skipJob) {
+                          await recordApplication(ApplicationStatus.DRAFT)
+                          await closeModalIfPresent(webview, preferHeadlessClose)
+                          break
+                        }
+                        }
+                        break
+                      }
+                       if (skipJob) {
+                         await recordApplication(ApplicationStatus.DRAFT)
+                         await closeModalIfPresent(webview, preferHeadlessClose)
+                         break
+                       }
+                        await sleep(50)
+                    }
+                    if (skipJob) {
+                      await recordApplication(ApplicationStatus.DRAFT)
+                      await closeModalIfPresent(webview, preferHeadlessClose)
+                      continue
+                    }
+                    if (!docFieldFound && !documentsMissing) {
+                      try {
+                        const instructionsText = await webview.executeJavaScript(`
+                          (() => {
+                            const collectAnchors = (scope) =>
+                              Array.from((scope && scope.querySelectorAll) ? scope.querySelectorAll('a') : []).map(a => {
+                                const label = (a.innerText || a.textContent || '').trim();
+                                const href = (a.getAttribute && a.getAttribute('href')) ? a.getAttribute('href').trim() : '';
+                                if (label && href) return label + ' ' + href;
+                                return href || label;
+                              }).filter(Boolean);
+                            const el = document.querySelector('#how-to-apply') || document.querySelector('p#how-to-apply');
+                            const primary = el ? (el.innerText || el.textContent || '').trim() : '';
+                            const anchorBits = collectAnchors(el || document);
+                            if (primary || anchorBits.length) {
+                              return [primary, ...anchorBits].filter(Boolean).join('\\n').trim();
+                            }
+                            const paragraphs = Array.from(document.querySelectorAll('p'))
+                              .map(p => (p.innerText || p.textContent || '').trim())
+                              .filter(Boolean);
+                            const moreAnchors = collectAnchors(document);
+                            return [...paragraphs, ...moreAnchors].filter(Boolean).join('\\n').trim();
+                          })();
+                        `)
+                        const userId = await getUserId()
+                        if (instructionsText && userId) {
+                          needsExternalAction = true
+                          await api.post(`/tasks/${userId}/add-instructions`, {
+                            employer_instructions: instructionsText,
+                            application_id: currentJobApplicationId ?? undefined,
+                            company: (clickJobResult.company || '').trim() || 'company unknown',
+                            title: (titleStr || '').trim() || 'title unknown'
+                          })
+                        }
+                      } catch (_err) {
+      // ignore
+    }
+                      await recordApplication(submitClickedForApplication && needsExternalAction ? ApplicationStatus.EXTERNAL : ApplicationStatus.DRAFT)
+                      await closeModalIfPresent(webview, preferHeadlessClose)
+                      // Wait for the "One more thing..." modal to appear, click through, then continue.
+                      for (let m = 0; m < 20; m++) {
+                        const modalVisible = await webview.executeJavaScript(`
+                          (() => {
+                            const text = Array.from(document.querySelectorAll('div, h1, h2, h3, h4, p')).find(el =>
+                              (el.innerText || el.textContent || '').trim().toLowerCase().includes('one more thing')
+                            );
+                            const yesNo = Array.from(document.querySelectorAll('button')).some(b => {
+                              const t = (b.textContent || '').trim().toLowerCase();
+                              return t === 'yes' || t === 'no';
+                            });
+                            return !!(text || yesNo);
+                          })();
+                        `)
+                        if (modalVisible) {
+                          for (let y = 0; y < 30; y++) {
+                            const clicked = await webview.executeJavaScript(`
+                              (() => {
+                                const btn = Array.from(document.querySelectorAll('button')).find(b => {
+                                  const txt = (b.textContent || '').trim().toLowerCase();
+                                  const cls = (b.className || '').toLowerCase();
+                                  return txt === 'yes' || cls.includes('yes');
+                                });
+                                if (!btn) return false;
+                                btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+                                if (typeof btn.click === 'function') btn.click();
+                                else btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                                return true;
+                              })();
+                            `)
+                            if (clicked) break
+                            await sleep(100)
+                          }
+                          // Wait for the modal to disappear before continuing.
+                          for (let z = 0; z < 30; z++) {
+                            const stillVisible = await webview.executeJavaScript(`
+                              (() => {
+                                const text = Array.from(document.querySelectorAll('div, h1, h2, h3, h4, p')).find(el =>
+                                  (el.innerText || el.textContent || '').trim().toLowerCase().includes('one more thing')
+                                );
+                                const yesNo = Array.from(document.querySelectorAll('button')).some(b => {
+                                  const t = (b.textContent || '').trim().toLowerCase();
+                                  return t === 'yes' || t === 'no';
+                                });
+                                return !!(text || yesNo);
+                              })();
+                            `)
+                            if (!stillVisible) break
+                            await sleep(100)
+                          }
+                          break
+                        }
+                        await sleep(100)
+                      }
+                      continue
+                    }
+                  if (!documentsMissing && dividerExists) {
+                    // instructions already collected pre-submit
+                  }
+                if (!documentsMissing && pendingModalInstructionText && userId) {
+                  try {
+                    needsExternalAction = true
+                    await api.post(`/tasks/${userId}/add-instructions`, {
+                      employer_instructions: pendingModalInstructionText,
+                      application_id: currentJobApplicationId ?? undefined,
+                      company: (clickJobResult.company || '').trim() || 'company unknown',
+                      title: (titleStr || '').trim() || 'title unknown'
+                    })
+                  } catch (_err) { /* ignore */ }
+                }
+                  if (!documentsMissing && instructions.length) {
+                    await addEmployerTasks(instructions, userId as string, currentJobApplicationId, titleStr)
+                  }
+                  if (!seenResume) {
+                    addLog('Waiting for user resume upload...')
+                    playAlertSound()
+                    setStatus('paused')
+                    return  
+                  }
+                    const hasExternalTasks = (needsExternalAction || instructions.length > 0)
+                    for (let i = 0; i < instructions.length; i++) {
+                      addLog(instructions[i].text)
+                    }
+                    const statusToRecord =
+                      !submitClickedForApplication
+                        ? ApplicationStatus.DRAFT
+                        : (hasExternalTasks ? ApplicationStatus.EXTERNAL : ApplicationStatus.APPLIED)
+                    await recordApplication(statusToRecord)
+                  }
+                } else if (data.decision === 'DO_NOT_APPLY') {
+                  consecutiveDoNotApply += 1
+                  addLog(`Decision: skip.`)                    
+                  if (consecutiveDoNotApply >= 4) {
+                    addLog('Moving to next search term...')
+                    continue termLoop
+                  }
+                } else {
+                  consecutiveDoNotApply = 0
+                  addLog('Decision unknown; skipping.')
+                }
+              } else if (resp.status === 400) {
+                consecutiveDoNotApply = 0
+                addLog('Error: missing information. Skipping...')
+              } else {
+                consecutiveDoNotApply = 0
+                addLog('Decision request failed; skipping.')
+              }
+            }
+          } catch (_e) {
+            consecutiveDoNotApply = 0
+          }
+        } else if (clickJobResult?.status === 'skipped') {
+          consecutiveDoNotApply = 0
+          const reason = clickJobResult.reason
+            ? ` (${String(clickJobResult.reason).toUpperCase()})`
+            : ''
+          addLog(`Skipped job #${idx + 1}${reason}.`)
+        } else {
+          consecutiveDoNotApply = 0
+          addLog(`Job card #${idx + 1} missing or not clickable.`)
+        }
+      }
+
+      const nextResult = await webview.executeJavaScript(`
+        (() => {
+          const btn = Array.from(document.querySelectorAll('button')).find(b => {
+            const text = (b.textContent || '').trim().toLowerCase();
+            const visible = !!(b.offsetParent);
+            return visible && (text === 'next' || text === 'next >' || text.includes('next'));
+          });
+          if (!btn) return { exists: false };
+          const disabled = btn.disabled || btn.getAttribute('aria-disabled') === 'true' || (btn.className || '').toLowerCase().includes('disabled');
+          if (disabled) return { exists: true, disabled: true, clicked: false };
+          btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+          if (typeof btn.click === 'function') btn.click();
+          else btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+          return { exists: true, disabled: false, clicked: true };
+        })();
+      `)
+
+      if (nextResult?.exists && nextResult.clicked && !nextResult.disabled) {
+        addLog(`Moving to page ${pageIndex + 1})...`)
+        pageIndex += 1
+        await sleep(400)
+        continue
+      }
+
+      if (nextResult?.exists && nextResult.clicked && !nextResult.disabled) {
+        addLog(`Moving to page ${pageIndex + 1})...`)
+        pageIndex += 1
+        await sleep(400)
+        continue
+      }
+
+      continue termLoop
+    }
+  }
+
+  addLog('Completed running search terms.')
+
+  setStatus('idle')
+}
+
+const runFromHome = async (webview: AutomationWebview) => {
+  // Ask for home, never the login form. Requesting the form directly while a session
+  // is still live replays a stale SAML request, and the IdP answers with its "you used
+  // the Back button" notice page instead of signing us in. Going to home lets NUWorks
+  // decide: it either serves the dashboard or redirects us to sign-in itself.
+  webview.src = HOME_URL
+
+  // Assigning src only starts the load, so the old page is still mounted here.
+  // Without this await the dashboard check below inspects the previous page.
+  await waitForWebViewLoad(webview)
+
+  if (await isHome(webview)) {
+    addLog('Already signed in.')
+    await runFromDashboard(webview)
+    return
+  }
+
+  // Not home, so we need a sign-in. Clicking the button is a convenience only: on a
+  // notice or interstitial page it won't be there, and that's fine — the human is
+  // about to take over regardless.
+  const signInClicked = await waitForSelector(
+    webview,
+    'input.input-button.btn.btn_primary.full_width.btn_multi_line',
+    5000
+  )
+  if (signInClicked) {
+    await webview.executeJavaScript(`document.querySelector('input.input-button.btn.btn_primary.full_width.btn_multi_line').click()`)
+    addLog('Navigating to login...')
+  }
+
+  // Hand over as soon as sign-in is clicked, without waiting to recognise the
+  // identity provider. Northeastern SSO has moved between Shibboleth and Microsoft
+  // Entra, and the IdP can insert MFA or consent screens at will; the only thing we
+  // assert is the end state. Unblocking before the redirect also matters, because the
+  // interaction-blocker overlay would otherwise lock the user out of the login form.
+  playAlertSound()
+  setState({ awaitingInput: true })
+  addLog('Waiting for user to sign in...')
+  await waitForHome(webview)
+
+  addLog('Continuing...')
+  setState({ awaitingInput: false })
+  await runFromDashboard(webview)
+}
+
+// -- actions --------------------------------------------------------------
+
+export const start = async () => {
+  // Guards a double-click and, in dev, a StrictMode double-mount re-firing this.
+  if (state.status === 'running' || state.status === 'paused') return
+  if (state.searchTermsReady !== true) {
+    addLog('Setting up your job search. Please wait a moment...')
+    return
+  }
+  const webview = getAutomationWebview()
+  if (!webview) {
+    addLog('Error: webview not found')
+    setStatus('error')
+    return
+  }
+
+  setState({ awaitingInput: false })
+  setStatus('running')
+  addLog('Beginning automation...')
+
+  // Nothing awaits the run, so an uncaught throw would be an unhandled rejection
+  // that leaves the UI stuck on "running".
+  try {
+    await runFromHome(webview)
+  } catch (err) {
+    addLog(`Error: ${err instanceof Error ? err.message : String(err)}`)
+    setStatus('error')
+  }
+}
+
+export const pause = () => setStatus('paused')
+
+export const resume = () => setStatus('running')
+
+export const approve = (approved: boolean) => {
+  approvalResolver?.(approved)
+}
+
+export const continueAfterHandoff = () => {
+  handoffResolver?.()
+}
