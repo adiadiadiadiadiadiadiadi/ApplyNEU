@@ -1,6 +1,6 @@
 import {
   waitForSelector, playAlertSound,
-  HOME_URL, isHome, waitForHome, waitForWebViewLoad,
+  HOME_URL, isHome, waitForHome, waitForWebViewLoad, isInAuthFlow, currentUrl,
   withTitleSuffix, toBool, buildTaskKey,
   normalizeEmployerInstructions, closeModalIfPresent,
   waitForDividerSubmissionAndClose, waitForModalOpen, applyPanelFilters,
@@ -177,37 +177,112 @@ const withHumanFallback = async (
   }
 }
 
-async function handleMissingDocument(
-  type: 'cover letter' | 'work sample' | 'portfolio' | 'transcript',
+const createDocumentTask = async (
+  text: string,
+  description: string,
+  userId: string,
+  applicationId?: string | null
+) => {
+  const key = buildTaskKey(text, applicationId)
+  if (existingTasks.has(key)) return
+  const resp = await api.post(`/tasks/${userId}/new`, { text, description, application_id: applicationId ?? undefined })
+  if (!resp.ok) {
+    addLog('Error occured while creating task.')
+    return
+  }
+  existingTasks.add(key)
+}
+
+async function handleNoCoverLetter(
   companyName: string,
   userId: string | undefined,
   applicationId?: string | null,
   jobTitle?: string,
   webview?: AutomationWebview
 ) {
-  addLog(`No ${type} found for ${companyName}.`)
+  addLog(`No cover letter found for ${companyName}.`)
   if (!userId) {
     addLog(`Error occured.`)
     return
   }
-  const text = `Upload ${companyName} ${type}`
-  const article = type === 'cover letter' ? 'your' : 'a'
-  const description = withTitleSuffix(
-    jobTitle,
-    `Upload ${article} ${companyName} ${type} in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
+  await createDocumentTask(
+    `Upload ${companyName} cover letter`,
+    withTitleSuffix(
+      jobTitle,
+      `Upload your ${companyName} cover letter in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
+    ),
+    userId,
+    applicationId
   )
-  const key = buildTaskKey(text, applicationId)
-  if (!existingTasks.has(key)) {
-    const resp = await api.post(`/tasks/${userId}/new`, { text, description, application_id: applicationId ?? undefined })
-    if (!resp.ok) {
-      addLog('Error occured while creating task.')
-    } else {
-      existingTasks.add(key)
-    }
-  }
   if (webview) {
     await closeModalIfPresent(webview)
   }
+}
+
+async function handleNoWorkSample(
+  companyName: string,
+  userId: string | undefined,
+  applicationId?: string | null,
+  jobTitle?: string
+) {
+  addLog(`No work sample found for ${companyName}.`)
+  if (!userId) {
+    addLog(`Error occured.`)
+    return
+  }
+  await createDocumentTask(
+    `Upload ${companyName} work sample`,
+    withTitleSuffix(
+      jobTitle,
+      `Upload a work sample for ${companyName} in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
+    ),
+    userId,
+    applicationId
+  )
+}
+
+async function handleNoPortfolio(
+  companyName: string,
+  userId: string | undefined,
+  applicationId?: string | null,
+  jobTitle?: string
+) {
+  addLog(`No portfolio found for ${companyName}.`)
+  if (!userId) {
+    addLog(`Error occured.`)
+    return
+  }
+  await createDocumentTask(
+    `Upload ${companyName} portfolio`,
+    withTitleSuffix(
+      jobTitle,
+      `Upload a portfolio for ${companyName} in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
+    ),
+    userId,
+    applicationId
+  )
+}
+
+async function handleNoTranscript(
+  companyName: string,
+  userId: string | undefined,
+  applicationId?: string | null,
+  jobTitle?: string
+) {
+  addLog(`No transcript found for ${companyName}.`)
+  if (!userId) {
+    addLog(`Error occured.`)
+    return
+  }
+  await createDocumentTask(
+    `Upload ${companyName} transcript`,
+    withTitleSuffix(
+      jobTitle,
+      `Upload a transcript for ${companyName} in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
+    ),
+    userId,
+    applicationId
+  )
 }
 
 const addEmployerTasks = async (
@@ -1072,13 +1147,20 @@ const runFromDashboard = async (webview: AutomationWebview) => {
                         seenResume = true
                         docFieldFound = true
                         if (!transcriptChecked) {
-                          const transcriptExists = await webview.executeJavaScript(`
+                          const transcriptInfo = await webview.executeJavaScript(`
                             (() => {
                               const sel = document.querySelector('select[id*="transcript"]');
-                              return !!sel;
+                              const btn =
+                                document.querySelector('button[id*="transcript"]') ||
+                                Array.from(document.querySelectorAll('button')).find(b =>
+                                  (b.textContent || '').toLowerCase().includes('transcript')
+                                );
+                              return { hasSelect: !!sel, hasButton: !!btn };
                             })();
                           `)
-                          if (transcriptExists) {
+                          // Both can render together; the select is the only one that
+                          // can be filled, so it wins when present.
+                          if (transcriptInfo?.hasSelect) {
                             docFieldFound = true
                             let transcriptHandled = false
                             for (let t = 0; t < 10; t++) { // shorter wait to avoid long gaps
@@ -1113,7 +1195,7 @@ const runFromDashboard = async (webview: AutomationWebview) => {
                                   `)
                                 } else {
                                 documentsMissing = true
-                              await handleMissingDocument('transcript', clickJobResult.company, userId, currentJobApplicationId, titleStr)
+                              await handleNoTranscript(clickJobResult.company, userId, currentJobApplicationId, titleStr)
                                 skipJob = true
                                 }
                                 break
@@ -1122,9 +1204,14 @@ const runFromDashboard = async (webview: AutomationWebview) => {
                             }
                             if (!transcriptHandled) {
                             documentsMissing = true
-                            await handleMissingDocument('transcript', clickJobResult.company, userId, currentJobApplicationId, titleStr)
+                            await handleNoTranscript(clickJobResult.company, userId, currentJobApplicationId, titleStr)
                             skipJob = true
                             }
+                          } else if (transcriptInfo?.hasButton) {
+                            docFieldFound = true
+                            documentsMissing = true
+                            await handleNoTranscript(clickJobResult.company, userId, currentJobApplicationId, titleStr)
+                            skipJob = true
                           }
                           transcriptChecked = true
                         }
@@ -1177,7 +1264,7 @@ const runFromDashboard = async (webview: AutomationWebview) => {
                                   if (!hasCompany) {
                                     if (!coverLetterTaskAdded) {
                                       documentsMissing = true
-                              await handleMissingDocument('cover letter', clickJobResult.company, userId, currentJobApplicationId, titleStr);
+                              await handleNoCoverLetter(clickJobResult.company, userId, currentJobApplicationId, titleStr);
                                       coverLetterTaskAdded = true
                                     }
                                   skipJob = true
@@ -1187,7 +1274,7 @@ const runFromDashboard = async (webview: AutomationWebview) => {
                             } else {
                               if (!coverLetterTaskAdded) {
                                 documentsMissing = true
-                            await handleMissingDocument('cover letter', clickJobResult.company, userId, currentJobApplicationId, titleStr)
+                            await handleNoCoverLetter(clickJobResult.company, userId, currentJobApplicationId, titleStr)
                                 coverLetterTaskAdded = true
                               }
                             skipJob = true
@@ -1236,13 +1323,13 @@ const runFromDashboard = async (webview: AutomationWebview) => {
                                 `)
                               } else {
                                 documentsMissing = true
-                                await handleMissingDocument('work sample', clickJobResult.company, userId, currentJobApplicationId, titleStr)
+                                await handleNoWorkSample(clickJobResult.company, userId, currentJobApplicationId, titleStr)
                                 skipJob = true
                               }
                             } else if (workSampleVisible && workSampleInfo?.hasButton) {
                               docFieldFound = true
                               documentsMissing = true
-                              await handleMissingDocument('work sample', clickJobResult.company, userId, currentJobApplicationId, titleStr)
+                              await handleNoWorkSample(clickJobResult.company, userId, currentJobApplicationId, titleStr)
                               skipJob = true
                             }
                             workSampleChecked = true
@@ -1277,7 +1364,7 @@ const runFromDashboard = async (webview: AutomationWebview) => {
                           } else if (portfolioVisible && portfolioInfo?.hasButton) {
                             docFieldFound = true
                             documentsMissing = true
-                            await handleMissingDocument('portfolio', clickJobResult.company, userId, currentJobApplicationId, titleStr)
+                            await handleNoPortfolio(clickJobResult.company, userId, currentJobApplicationId, titleStr)
                             skipJob = true
                           }
                           portfolioChecked = true
@@ -1442,7 +1529,7 @@ const runFromDashboard = async (webview: AutomationWebview) => {
                             if (!coverLetterExists.hasSelect) {
                               if (!coverLetterTaskAdded) {
                                 documentsMissing = true
-                              await handleMissingDocument('cover letter', clickJobResult.company, userId, currentJobApplicationId, titleStr);
+                              await handleNoCoverLetter(clickJobResult.company, userId, currentJobApplicationId, titleStr);
                                 coverLetterTaskAdded = true
                               }
                               await webview.executeJavaScript(`
@@ -1509,12 +1596,12 @@ const runFromDashboard = async (webview: AutomationWebview) => {
                               workSampleChecked = true
                             } else if (workSampleInfo?.hasButton) {
                               documentsMissing = true
-                              await handleMissingDocument('work sample', clickJobResult.company, userId, currentJobApplicationId, titleStr)
+                              await handleNoWorkSample(clickJobResult.company, userId, currentJobApplicationId, titleStr)
                           skipJob = true
                               workSampleChecked = true
                             } else {
                               documentsMissing = true
-                              await handleMissingDocument('work sample', clickJobResult.company, userId, currentJobApplicationId, titleStr)
+                              await handleNoWorkSample(clickJobResult.company, userId, currentJobApplicationId, titleStr)
                           skipJob = true
                               workSampleChecked = true
                             }
@@ -1547,12 +1634,12 @@ const runFromDashboard = async (webview: AutomationWebview) => {
                               portfolioChecked = true
                             } else if (portfolioInfo?.hasButton) {
                               documentsMissing = true
-                              await handleMissingDocument('portfolio', clickJobResult.company, userId, currentJobApplicationId, titleStr)
+                              await handleNoPortfolio(clickJobResult.company, userId, currentJobApplicationId, titleStr)
                       skipJob = true
                               portfolioChecked = true
                             } else {
                               documentsMissing = true
-                              await handleMissingDocument('portfolio', clickJobResult.company, userId, currentJobApplicationId, titleStr)
+                              await handleNoPortfolio(clickJobResult.company, userId, currentJobApplicationId, titleStr)
                       skipJob = true
                               portfolioChecked = true
                             }
@@ -1847,20 +1934,32 @@ const runFromDashboard = async (webview: AutomationWebview) => {
 }
 
 const runFromHome = async (webview: AutomationWebview) => {
-  // Ask for home, never the login form. Requesting the form directly while a session
-  // is still live replays a stale SAML request, and the IdP answers with its "you used
-  // the Back button" notice page instead of signing us in. Going to home lets NUWorks
-  // decide: it either serves the dashboard or redirects us to sign-in itself.
-  webview.src = HOME_URL
-
-  // Assigning src only starts the load, so the old page is still mounted here.
-  // Without this await the dashboard check below inspects the previous page.
-  await waitForWebViewLoad(webview)
-
   if (await isHome(webview)) {
     addLog('Already signed in.')
     await runFromDashboard(webview)
     return
+  }
+
+  // The webview requested HOME_URL when it mounted, so by the time play is pressed it
+  // may already be partway through Northeastern's SSO chain with a SAML request
+  // outstanding. Navigating again abandons that request, and the IdP answers the
+  // retired request with its "you used the Back button" notice instead of a login
+  // form. NUWorks' own pages are safe to re-request -- no SAML request exists until
+  // its sign-in button is clicked -- so only a URL that has left NUWorks is off limits.
+  if (!isInAuthFlow(currentUrl(webview))) {
+    // Ask for home, never the login form: going to home lets NUWorks decide whether to
+    // serve the dashboard or redirect us to sign-in itself.
+    webview.src = HOME_URL
+
+    // Assigning src only starts the load, so the old page is still mounted here.
+    // Without this await the dashboard check below inspects the previous page.
+    await waitForWebViewLoad(webview)
+
+    if (await isHome(webview)) {
+      addLog('Already signed in.')
+      await runFromDashboard(webview)
+      return
+    }
   }
 
   // Not home, so we need a sign-in. Clicking the button is a convenience only: on a
