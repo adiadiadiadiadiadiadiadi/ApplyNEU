@@ -1,12 +1,7 @@
 import type { AutomationWebview } from '../automationWebview'
 
 /**
- * The run loop only ever touches the page by handing it a snippet of JavaScript as
- * text and reading the answer -- 54 times, through executeJavaScript alone. So a
- * stand-in that answers those snippets from a script lets the whole loop run with no
- * Electron, no NUWorks and no sign-in.
- *
- * These are characterization tests: they pin what the loop *currently* does so a
+ * Characterization tests: they pin what the loop *currently* does so a
  * refactor can be checked against it. The answers here are invented, so they say
  * nothing about whether the loop is correct against the real NUWorks.
  */
