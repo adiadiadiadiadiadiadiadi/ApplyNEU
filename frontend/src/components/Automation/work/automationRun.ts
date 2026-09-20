@@ -15,6 +15,7 @@ import {
 } from '../symplicity/documents'
 import { addEmployerTasks, clearTasksForApplication } from '../symplicity/tasks'
 import { requestApprovalForJob, withHumanFallback } from './approval'
+import { retry, sleep, waitForResume } from './pacing'
 import { loadUserPreferences, prefersRecentJobs, allowsUnpaidRoles } from './preferences'
 
 let currentJobApplicationId: string | null = null
@@ -28,23 +29,11 @@ export const ensureGreeted = () => {
   addLog('Bot connected...')
 }
 
-const waitForResume = async () => {
-  while (getState().status === 'paused') {
-    await new Promise(res => setTimeout(res, 200))
-  }
-}
-
 const runFromDashboard = async (webview: AutomationWebview) => {
-  const sleep = async (ms: number) => {
-    let remaining = ms
-    while (remaining > 0) {
-      await waitForResume()
-      const chunk = Math.min(remaining, 200)
-      await new Promise(resolve => setTimeout(resolve, chunk))
-      remaining -= chunk
-    }
-    await waitForResume()
-  }
+  const jobCardCount = (): Promise<number> => webview.executeJavaScript(`
+    (() => Array.from(document.querySelectorAll('div[id^="list-item-"]')).length)();
+  `)
+  const waitForJobCards = () => retry(async () => (await jobCardCount()) > 0)
 
   // Wait for and click the top-nav "Jobs" link
   await withHumanFallback('could not find the Jobs link', async () => {
@@ -61,53 +50,41 @@ const runFromDashboard = async (webview: AutomationWebview) => {
   })
 
   // Select "Jobs I Qualify For" in the Show Me filter before applying job types
-  await (async () => {
-    for (let i = 0; i < 40; i++) {
-      const result = await webview.executeJavaScript(`
-        (() => {
-          const sel =
-            document.querySelector('select#single-select-filter') ||
-            document.querySelector('select[id*="single-select-filter"]') ||
-            document.querySelector('select[name*="show_me"]') ||
-            document.querySelector('select[aria-label*="Show Me"]');
-          if (!sel) return 'missing';
-          sel.scrollIntoView({ behavior: 'instant', block: 'center' });
-          const options = Array.from(sel.options || []);
-          const target = options.find(o => ((o.innerText || o.textContent || '').trim().toLowerCase().includes('jobs i qualify for')));
-          if (!target) return 'no-option';
-          sel.value = target.value;
-          sel.dispatchEvent(new Event('change', { bubbles: true }));
-          return 'set';
-        })();
-      `)
-      if (result === 'set') {
-        break
-      }
-      if (result === 'no-option') {
-        break
-      }
-      await sleep(100)
-    }
-  })()
+  await retry(async () => {
+    const result = await webview.executeJavaScript(`
+      (() => {
+        const sel =
+          document.querySelector('select#single-select-filter') ||
+          document.querySelector('select[id*="single-select-filter"]') ||
+          document.querySelector('select[name*="show_me"]') ||
+          document.querySelector('select[aria-label*="Show Me"]');
+        if (!sel) return 'missing';
+        sel.scrollIntoView({ behavior: 'instant', block: 'center' });
+        const options = Array.from(sel.options || []);
+        const target = options.find(o => ((o.innerText || o.textContent || '').trim().toLowerCase().includes('jobs i qualify for')));
+        if (!target) return 'no-option';
+        sel.value = target.value;
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        return 'set';
+      })();
+    `)
+    // 'no-option' means the filter exists but the choice does not; retrying cannot help.
+    return result === 'set' || result === 'no-option'
+  })
 
   // Open job type dropdown before searches
-  await (async () => {
-    for (let i = 0; i < 40; i++) {
-      const result = await webview.executeJavaScript(`
-        (() => {
-          const btn = document.querySelector('button#listFilter-category-job_type');
-          if (!btn) return 'missing';
-          btn.scrollIntoView({ behavior: 'instant', block: 'center' });
-          btn.click();
-          return 'clicked';
-        })();
-      `)
-      if (result === 'clicked') {
-        return
-      }
-      await sleep(100)
-    }
-  })()
+  await retry(async () => {
+    const result = await webview.executeJavaScript(`
+      (() => {
+        const btn = document.querySelector('button#listFilter-category-job_type');
+        if (!btn) return 'missing';
+        btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+        btn.click();
+        return 'clicked';
+      })();
+    `)
+    return result === 'clicked'
+  })
 
   // Apply saved job type filters from backend
   await (async () => {
@@ -123,11 +100,10 @@ const runFromDashboard = async (webview: AutomationWebview) => {
         return
       }
 
-      for (let i = 0; i < 20; i++) {
-        const ready = await webview.executeJavaScript(`!!document.querySelector('input[type="checkbox"][id^="job_type"]')`)
-        if (ready) break
-        await sleep(10)
-      }
+      await retry(
+        () => webview.executeJavaScript(`!!document.querySelector('input[type="checkbox"][id^="job_type"]')`),
+        { attempts: 20, interval: 10 }
+      )
 
       await webview.executeJavaScript(`
         (() => {
@@ -286,13 +262,7 @@ const runFromDashboard = async (webview: AutomationWebview) => {
   }
 
   // Search
-  await (async () => {
-    for (let i = 0; i < 40; i++) {
-      const found = await webview.executeJavaScript(`!!document.querySelector('input#jobs-keyword-input')`)
-      if (found) return
-       await sleep(100)
-    }
-  })()
+  await retry(() => webview.executeJavaScript(`!!document.querySelector('input#jobs-keyword-input')`))
 
   if (!getState().searchTerms.length) {
     addLog('Error occured. Please try again later.')
@@ -398,19 +368,9 @@ const runFromDashboard = async (webview: AutomationWebview) => {
     let pageIndex = 1
     while (true) {
       await waitForResume()
-      await (async () => {
-        for (let i = 0; i < 40; i++) {
-          const found = await webview.executeJavaScript(`
-            (() => Array.from(document.querySelectorAll('div[id^="list-item-"]')).length)();
-          `)
-          if (found && found > 0) return
-          await sleep(100)
-        }
-      })()
+      await waitForJobCards()
 
-      let jobCount = await webview.executeJavaScript(`
-        (() => Array.from(document.querySelectorAll('div[id^="list-item-"]')).length)();
-      `)
+      let jobCount = await jobCardCount()
 
       if (!jobCount || jobCount <= 0) {
         break
@@ -425,18 +385,8 @@ const runFromDashboard = async (webview: AutomationWebview) => {
       }
 
       // Recount after panel filters
-      await (async () => {
-        for (let i = 0; i < 40; i++) {
-          const found = await webview.executeJavaScript(`
-            (() => Array.from(document.querySelectorAll('div[id^="list-item-"]')).length)();
-          `)
-          if (found && found > 0) return
-          await sleep(100)
-        }
-      })()
-      jobCount = await webview.executeJavaScript(`
-        (() => Array.from(document.querySelectorAll('div[id^="list-item-"]')).length)();
-      `)
+      await waitForJobCards()
+      jobCount = await jobCardCount()
 
       if (!jobCount || jobCount <= 0) {
         addLog(`No job cards found for "${term}".`)
