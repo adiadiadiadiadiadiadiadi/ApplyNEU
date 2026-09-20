@@ -1,17 +1,10 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import './automation.css'
 import { suppressErrorRedirect, releaseErrorRedirect } from '../../lib/fetchErrorControl'
-import {
-  approve,
-  continueAfterHandoff,
-  ensureGreeted,
-  getState,
-  pause,
-  refreshSearchTerms,
-  resume,
-  start,
-  subscribe,
-} from './automationRun'
+import { getState, subscribe } from './work/automationStore'
+import { approve, continueAfterHandoff } from './work/approval'
+import { refreshSearchTerms } from './work/searchTerms'
+import { ensureGreeted, pause, resume, start } from './work/automationRun'
 
 // A run holds its own key for as long as it lasts (see automationRun).
 const SCREEN_SUPPRESSOR = 'automation-screen'

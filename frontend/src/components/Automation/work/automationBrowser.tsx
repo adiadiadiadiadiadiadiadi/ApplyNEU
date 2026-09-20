@@ -1,10 +1,10 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react'
 import { useLocation } from 'react-router-dom'
-import './automation.css'
+import '../automation.css'
 import { HOME_URL, logNavigation } from './automationHelpers'
 import { setAutomationWebview } from './automationWebview'
 import type { AutomationWebview } from './automationWebview'
-import { getState, subscribe } from './automationRun'
+import { getState, subscribe } from './automationStore'
 
 // Zoom level for the embedded NUWorks browser. Lower fits more of the page in the
 // pane; below ~0.6 the job cards get too small for the selectors' scrollIntoView to
