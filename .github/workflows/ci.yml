@@ -1,13 +1,71 @@
 name: CI
 
 on:
+  # Pull requests against any base, so a PR stacked on another feature branch is
+  # still checked. Pushes only on the long-lived branches -- a branch with an open
+  # PR would otherwise run everything twice, once per event.
   push:
     branches: [main, develop]
   pull_request:
-    branches: [main, develop]
 
 jobs:
   backend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Check types backend
+        working-directory: backend
+        run: npm run typecheck
+
+      - name: Lint backend
+        working-directory: backend
+        run: npm run lint
+
+  frontend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Check types
+        working-directory: frontend
+        run: npm run build
+
+      - name: Lint frontend
+        working-directory: frontend
+        run: npm run lint
+
+  # Job ids cannot contain spaces; `name` is what shows up as the check.
+  test-suite:
+    name: test suite
     runs-on: ubuntu-latest
 
     services:
@@ -37,13 +95,9 @@ jobs:
         working-directory: backend
         run: npm ci
 
-      - name: Check types backend
-        working-directory: backend
-        run: npm run typecheck
-
-      - name: Lint backend
-        working-directory: backend
-        run: npm run lint
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
 
       - name: Test backend
         working-directory: backend
@@ -52,29 +106,6 @@ jobs:
           NODE_ENV: test
         run: npm test
 
-  frontend:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Install frontend dependencies
+      - name: Test frontend
         working-directory: frontend
-        run: npm ci
-
-      - name: Check types
-        working-directory: frontend
-        run: npm run build
-
-      - name: Lint frontend
-        working-directory: frontend
-        run: npm run lint
+        run: npm test
