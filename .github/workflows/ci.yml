@@ -1,9 +1,6 @@
 name: CI
 
 on:
-  # Pull requests against any base, so a PR stacked on another feature branch is
-  # still checked. Pushes only on the long-lived branches -- a branch with an open
-  # PR would otherwise run everything twice, once per event.
   push:
     branches: [main, develop]
   pull_request:
@@ -63,7 +60,6 @@ jobs:
         working-directory: frontend
         run: npm run lint
 
-  # Job ids cannot contain spaces; `name` is what shows up as the check.
   test-suite:
     name: test suite
     runs-on: ubuntu-latest
