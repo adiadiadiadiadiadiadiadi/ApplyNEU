@@ -1,4 +1,5 @@
-import { closeModalIfPresent, withTitleSuffix } from "../work/automationHelpers"
+import { withTitleSuffix } from "../work/automationHelpers"
+import { closeModalIfPresent } from "./submission"
 import { addLog } from "../work/automationStore"
 import { AutomationWebview } from "../work/automationWebview"
 import { createDocumentTask } from "./tasks"

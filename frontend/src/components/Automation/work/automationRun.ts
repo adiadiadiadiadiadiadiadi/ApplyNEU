@@ -1,9 +1,12 @@
 import {
   waitForSelector, playAlertSound,
   HOME_URL, isHome, waitForHome, waitForWebViewLoad, isInAuthFlow, currentUrl,
-  normalizeEmployerInstructions, closeModalIfPresent,
-  waitForDividerSubmissionAndClose, waitForModalOpen, applyPanelFilters,
+  normalizeEmployerInstructions,
 } from './automationHelpers'
+import { applyPanelFilters } from '../symplicity/filters'
+import {
+  closeModalIfPresent, waitForDividerSubmissionAndClose, waitForModalOpen,
+} from '../symplicity/submission'
 import { getUserId } from '../../../lib/supabase'
 import { api } from '../../../lib/api'
 import { ApplicationStatus } from '../../../lib/types'
