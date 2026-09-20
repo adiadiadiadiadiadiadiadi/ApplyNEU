@@ -68,6 +68,9 @@ const run = async (extra: Answer[] = []) => {
     tasks: (api.post as any).mock.calls
       .filter((c: any[]) => c[0].includes('/tasks/'))
       .map((c: any[]) => c[1].text),
+    applications: (api.post as any).mock.calls
+      .filter((c: any[]) => c[0].includes('/applications/'))
+      .map((c: any[]) => c[1].status),
   }
 }
 
@@ -77,6 +80,19 @@ describe('no resume on file (the add-a-new-resume branch)', () => {
 
     expect(view.unmatched).toEqual([])
     expect(tasks).toEqual([])
+  })
+
+  it('raises a task and records a draft when no work sample matches the company', async () => {
+    const { tasks, applications } = await run([
+      {
+        match: 'hasSelect: !!sel, options: opts',
+        result: { hasSelect: true, options: [{ text: 'OtherCorp writing sample', value: 'w1' }], hasButton: false },
+      },
+      { match: 'hasCheckboxes: checkboxes.length', result: { hasCheckboxes: false, hasButton: false } },
+    ])
+
+    expect(tasks).toEqual(['Upload Acme work sample'])
+    expect(applications).toEqual(['draft'])
   })
 
   it('still raises tasks for documents the employer does ask for', async () => {

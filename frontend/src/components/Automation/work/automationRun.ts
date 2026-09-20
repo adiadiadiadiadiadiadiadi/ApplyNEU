@@ -1197,6 +1197,10 @@ const runFromDashboard = async (webview: AutomationWebview) => {
                                     return true;
                                   })();
                                 `)
+                              } else {
+                                documentsMissing = true
+                                await handleNoWorkSample(clickJobResult.company, userId, currentJobApplicationId, titleStr)
+                                skipJob = true
                               }
                               workSampleChecked = true
                             } else if (workSampleInfo?.hasButton) {
