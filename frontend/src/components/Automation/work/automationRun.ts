@@ -1205,9 +1205,8 @@ const runFromDashboard = async (webview: AutomationWebview) => {
                               skipJob = true
                               workSampleChecked = true
                             } else {
-                              documentsMissing = true
-                              await handleNoWorkSample(clickJobResult.company, userId, currentJobApplicationId, titleStr)
-                              skipJob = true
+                              // Neither control present: the employer never asked for a
+                              // work sample, so there is nothing missing.
                               workSampleChecked = true
                             }
                           }
@@ -1243,9 +1242,6 @@ const runFromDashboard = async (webview: AutomationWebview) => {
                               skipJob = true
                               portfolioChecked = true
                             } else {
-                              documentsMissing = true
-                              await handleNoPortfolio(clickJobResult.company, userId, currentJobApplicationId, titleStr)
-                              skipJob = true
                               portfolioChecked = true
                             }
                           }
