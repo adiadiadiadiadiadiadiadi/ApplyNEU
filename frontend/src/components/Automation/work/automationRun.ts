@@ -1541,6 +1541,8 @@ const runFromDashboard = async (webview: AutomationWebview) => {
   setStatus('idle')
 }
 
+const SSO_GRACE_MS = 3000
+
 const runFromHome = async (webview: AutomationWebview) => {
   if (await isHome(webview)) {
     addLog('Already signed in.')
@@ -1568,10 +1570,15 @@ const runFromHome = async (webview: AutomationWebview) => {
     addLog('Navigating to login...')
   }
 
-  playAlertSound()
+  // Unblock immediately either way, so the login form is never locked behind the
+  // interaction blocker. Only alarm the user once SSO has failed to complete on its
+  // own, which it does whenever their session is still live.
   setState({ awaitingInput: true })
-  addLog('Waiting for user to sign in...')
-  await waitForHome(webview)
+  if (!(await waitForHome(webview, SSO_GRACE_MS))) {
+    playAlertSound()
+    addLog('Waiting for user to sign in...')
+    await waitForHome(webview)
+  }
 
   addLog('Continuing...')
   setState({ awaitingInput: false })

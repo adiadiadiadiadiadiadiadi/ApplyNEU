@@ -31,14 +31,32 @@ export const fakeWebview = (
   const unmatched: string[] = []
   const hits = new Map<string, number>()
 
+  const listeners = new Map<string, Set<(event: unknown) => void>>()
+  const emit = (type: string) => {
+    listeners.get(type)?.forEach(listener => listener({}))
+  }
+
+  // Assigning src is how the loop navigates, and waitForWebViewLoad waits on the
+  // did-stop-loading that follows, so the setter has to emit it.
+  let currentUrl = url
+
   const view: FakeWebview = {
-    src: url,
+    get src() { return currentUrl },
+    set src(next: string) {
+      currentUrl = next
+      setTimeout(() => emit('did-stop-loading'), 0)
+    },
     calls,
     unmatched,
     hits,
-    getURL: () => view.src,
-    addEventListener: () => {},
-    removeEventListener: () => {},
+    getURL: () => currentUrl,
+    addEventListener: (type, listener) => {
+      if (!listeners.has(type)) listeners.set(type, new Set())
+      listeners.get(type)!.add(listener)
+    },
+    removeEventListener: (type, listener) => {
+      listeners.get(type)?.delete(listener)
+    },
     executeJavaScript: async (code: string) => {
       calls.push(code)
       const answer = answers.find(a => code.includes(a.match))
@@ -55,9 +73,3 @@ export const fakeWebview = (
   }
   return view
 }
-
-/** Substring of each script the loop injected, for readable call-order assertions. */
-export const scriptTrace = (view: FakeWebview, marks: string[]) =>
-  view.calls
-    .map(code => marks.find(mark => code.includes(mark)))
-    .filter((mark): mark is string => !!mark)
