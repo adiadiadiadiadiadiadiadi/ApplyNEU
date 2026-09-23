@@ -50,10 +50,6 @@ export default function Profile() {
     year: 0,
   })
   const [weeklyData, setWeeklyData] = useState<Array<{ week: string; applications: number; responses: number }>>([])
-  // TODO: computed but never rendered — either wire into a "top companies" chart
-  // or remove this state and its computation below (see spawned cleanup task).
-  const [companyData, setCompanyData] = useState<Array<{ company: string; count: number }>>([])
-  void companyData
   const [funnel, setFunnel] = useState([
     { label: 'Apply → Response', value: 0 },
     { label: 'Response → Interview', value: 0 },
@@ -118,7 +114,7 @@ export default function Profile() {
           })
         }
 
-        let apps: Array<{ status: string; applied_at?: string; company?: string }> = []
+        let apps: Array<{ status: string; applied_at?: string }> = []
         if (appsResp.ok) {
           apps = await appsResp.json()
         }
@@ -149,13 +145,9 @@ export default function Profile() {
             responses: 0,
           }))
 
-          const companyCounts: Record<string, number> = {}
-
           apps.forEach((app) => {
             const status = (app.status ?? '').toLowerCase()
             const appliedAt = app.applied_at ? new Date(app.applied_at) : null
-            const company = (app.company ?? '').toString() || 'Unknown'
-            companyCounts[company] = (companyCounts[company] ?? 0) + 1
 
             if (appliedAt && !Number.isNaN(appliedAt.getTime())) {
               weekBuckets.forEach((bucket, idx) => {
@@ -169,13 +161,7 @@ export default function Profile() {
             }
           })
 
-          const companyDataSorted = Object.entries(companyCounts)
-            .map(([company, count]) => ({ company, count }))
-            .sort((a, b) => b.count - a.count)
-            .slice(0, 8)
-
           setWeeklyData(weekCounts)
-          setCompanyData(companyDataSorted)
           const total = statsData.total ?? 0
           const responses = (statsData.interviews ?? 0) + (statsData.offers ?? 0) + (statsData.rejected ?? 0)
           const applyToResponse = total > 0 ? Math.round((responses / total) * 100) : 0
