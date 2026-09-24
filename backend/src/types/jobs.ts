@@ -1,7 +1,7 @@
 import type { Request } from 'express';
 
 export type SendJobDescriptionRequest = Request<
-  { user_id: string },
+  Record<string, never>,
   unknown,
   {
     job_description: string;

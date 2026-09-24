@@ -22,7 +22,6 @@ export async function handleNoCoverLetter(
       jobTitle,
       `Upload your ${companyName} cover letter in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
     ),
-    userId,
     applicationId
   )
   if (webview) {
@@ -47,7 +46,6 @@ export async function handleNoWorkSample(
       jobTitle,
       `Upload a work sample for ${companyName} in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
     ),
-    userId,
     applicationId
   )
 }
@@ -69,7 +67,6 @@ export async function handleNoPortfolio(
       jobTitle,
       `Upload a portfolio for ${companyName} in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
     ),
-    userId,
     applicationId
   )
 }
@@ -91,7 +88,6 @@ export async function handleNoTranscript(
       jobTitle,
       `Upload a transcript for ${companyName} in the 'My Documents' tab in NUWorks. Make sure the document name includes '${companyName}'.`
     ),
-    userId,
     applicationId
   )
 }

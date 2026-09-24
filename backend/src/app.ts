@@ -8,12 +8,13 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
-import userController from './controller/user.controller.ts';
-import resumeController from './controller/resume.controller.ts';
-import jobController from './controller/job.controller.ts';
-import taskController from './controller/task.controller.ts';
-import applicationController from './controller/application.controller.ts';
-import preferenceController from './controller/preference.controller.ts';
+import userController, { meUserController } from './controller/user.controller.ts';
+import resumeController, { meResumeController } from './controller/resume.controller.ts';
+import jobController, { meJobController } from './controller/job.controller.ts';
+import taskController, { meTaskController } from './controller/task.controller.ts';
+import { meApplicationController } from './controller/application.controller.ts';
+import { mePreferenceController } from './controller/preference.controller.ts';
+import { authenticate } from './controller/middleware/authenticate.ts';
 import errorHandler from './controller/middleware/handlers/errorHandler.ts';
 
 const PORT = 8080;
@@ -45,11 +46,22 @@ app.use(cors());
 app.use(express.json());
 
 app.use('/users', userController());
-app.use('/preferences', preferenceController());
 app.use('/resumes', resumeController());
 app.use('/jobs', jobController());
 app.use('/tasks', taskController());
-app.use('/applications', applicationController());
+
+// Everything the caller owns hangs off /me, identified by the JWT rather than by a
+// url param. authenticate is mounted on the router itself so a route added here
+// cannot accidentally ship unauthenticated.
+const meRouter = express.Router();
+meRouter.use(authenticate);
+meRouter.use('/', meUserController());
+meRouter.use('/preferences', mePreferenceController());
+meRouter.use('/resumes', meResumeController());
+meRouter.use('/jobs', meJobController());
+meRouter.use('/tasks', meTaskController());
+meRouter.use('/applications', meApplicationController());
+app.use('/me', meRouter);
 
 app.use(errorHandler);
 

@@ -1,6 +1,6 @@
 import { type Request } from 'express';
 
-export interface ResumeMetadataRequest extends Request<{ user_id: string }> {
+export interface ResumeMetadataRequest extends Request {
   body: {
     file_name: string;
     file_type: string;
@@ -22,4 +22,3 @@ export interface ResumeSaveRequest extends Request {
 }
 
 export type PossibleInterestsRequest = Request<{ resume_id: string }>;
-export type LatestResumeRequest = Request<{ user_id: string }>;

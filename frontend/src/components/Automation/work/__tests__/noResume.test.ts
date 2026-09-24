@@ -8,8 +8,8 @@ vi.mock('../../../../lib/api', () => {
     api: {
       get: vi.fn(async (path: string) => {
         if (path.includes('/job-types')) return json({ job_types: ['Co-op'] })
-        if (path.includes('/preferences/')) return json({ wait_for_approval: false, recent_jobs: true, unpaid_roles: false })
-        if (path.includes('/tasks/')) return json([])
+        if (path.includes('/preferences')) return json({ wait_for_approval: false, recent_jobs: true, unpaid_roles: false })
+        if (path.includes('/tasks')) return json([])
         if (path.includes('/latest')) return json({ resume_id: 'r1' })
         if (path.includes('search-terms')) return json({ search_terms: ['software'] })
         return json({})
@@ -17,7 +17,7 @@ vi.mock('../../../../lib/api', () => {
       post: vi.fn(async (path: string) => {
         if (path.includes('/jobs/add')) return json({ job_id: 'j1' })
         if (path.includes('/jobs/analyze')) return json({ decision: 'APPLY', employer_instructions: [] })
-        if (path.includes('/applications/')) return json({ application_id: 'a1' })
+        if (path.includes('/applications')) return json({ application_id: 'a1' })
         return json({})
       }),
       del: vi.fn(async () => json({})),
@@ -66,10 +66,10 @@ const run = async (extra: Answer[] = []) => {
   return {
     view,
     tasks: (api.post as any).mock.calls
-      .filter((c: any[]) => c[0].includes('/tasks/'))
+      .filter((c: any[]) => c[0].includes('/tasks'))
       .map((c: any[]) => c[1].text),
     applications: (api.post as any).mock.calls
-      .filter((c: any[]) => c[0].includes('/applications/'))
+      .filter((c: any[]) => c[0].includes('/applications'))
       .map((c: any[]) => c[1].status),
   }
 }

@@ -19,7 +19,6 @@ const queueAdd = jest.fn<(...args: any[]) => Promise<any>>();
 
 const USER_ID = 'test-user-id';
 
-const requireUser = jest.fn((_req: any, _res: any, next: any) => next());
 const authenticate = jest.fn((req: any, _res: any, next: any) => {
   req.auth = { userId: USER_ID };
   next();
@@ -48,10 +47,6 @@ jest.unstable_mockModule('../../src/queues/resumeEnrichmentQueue.ts', () => ({
   getResumeEnrichmentQueue: () => ({ add: queueAdd }),
 }));
 
-jest.unstable_mockModule('../../src/controller/middleware/requireUser.ts', () => ({
-  requireUser: (req: any, res: any, next: any) => requireUser(req, res, next),
-}));
-
 jest.unstable_mockModule('../../src/controller/middleware/authenticate.ts', () => ({
   authenticate: (req: any, res: any, next: any) => authenticate(req, res, next),
 }));
@@ -60,11 +55,6 @@ const { app } = await import('../../src/app.ts');
 
 const RESUME_ID = 'resume-123';
 const KEY = 'resumes/abc123.pdf';
-
-const rejectUser = () =>
-  requireUser.mockImplementation((_req: any, res: any) =>
-    res.status(401).json({ message: 'Unauthorized.' })
-  );
 
 const rejectAuth = () =>
   authenticate.mockImplementation((_req: any, res: any) =>
@@ -82,8 +72,6 @@ beforeEach(() => {
   generateSearchTerms.mockReset();
   cacheShortResume.mockReset();
   queueAdd.mockReset();
-  requireUser.mockReset();
-  requireUser.mockImplementation((_req: any, _res: any, next: any) => next());
   authenticate.mockReset();
   authenticate.mockImplementation((req: any, _res: any, next: any) => {
     req.auth = { userId: USER_ID };
@@ -94,8 +82,8 @@ beforeEach(() => {
   cacheShortResume.mockResolvedValue(undefined);
 });
 
-describe('POST /resumes/upload/:user_id', () => {
-  const url = `/resumes/upload/${USER_ID}`;
+describe('POST /me/resumes/upload', () => {
+  const url = '/me/resumes/upload';
   const validBody = { file_name: 'cv.pdf', file_type: 'application/pdf', file_size: 12345 };
 
   it('returns 200 with the presigned upload payload on valid input', async () => {
@@ -129,8 +117,8 @@ describe('POST /resumes/upload/:user_id', () => {
     expect(getUploadUrl).not.toHaveBeenCalled();
   });
 
-  it('returns 401 when user does not exist', async () => {
-    rejectUser();
+  it('returns 401 when the caller is not authenticated', async () => {
+    rejectAuth();
 
     const res = await request(app).post(url).send(validBody);
 
@@ -138,14 +126,12 @@ describe('POST /resumes/upload/:user_id', () => {
     expect(getUploadUrl).not.toHaveBeenCalled();
   });
 
-  it('validates the body before checking the user (invalid body + missing user -> 400)', async () => {
-    rejectUser();
+  it('authenticates before validating the body (invalid body + rejected token -> 401)', async () => {
+    rejectAuth();
 
     const res = await request(app).post(url).send({});
 
-    expect(res.status).toBe(400);
-    expect(res.body.message).toBe('file_name is required.');
-    expect(requireUser).not.toHaveBeenCalled();
+    expect(res.status).toBe(401);
     expect(getUploadUrl).not.toHaveBeenCalled();
   });
 
@@ -277,8 +263,8 @@ describe('GET /resumes/:resume_id/possible-interests', () => {
   });
 });
 
-describe('GET /resumes/:user_id/latest', () => {
-  const url = `/resumes/${USER_ID}/latest`;
+describe('GET /me/resumes/latest', () => {
+  const url = '/me/resumes/latest';
 
   it('returns 200 and the latest resume record', async () => {
     const resume = { resume_id: RESUME_ID, file_name: 'cv.pdf', key: KEY, file_size_bytes: 12345, created_at: '2026-01-01' };
@@ -300,8 +286,8 @@ describe('GET /resumes/:user_id/latest', () => {
     expect(res.body.message).toBe('Resume not found.');
   });
 
-  it('returns 401 when user does not exist', async () => {
-    rejectUser();
+  it('returns 401 when the caller is not authenticated', async () => {
+    rejectAuth();
 
     const res = await request(app).get(url);
 

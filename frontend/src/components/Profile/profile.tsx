@@ -93,9 +93,9 @@ export default function Profile() {
       setMetricsLoading(true)
       setMetricsError(null)
       try {
-        const statsResp = await api.get(`/users/${userId}/application-stats`)
-        const appsResp = await api.get(`/applications/${userId}`)
-        const tasksResp = await api.get(`/tasks/${userId}?includeCompleted=true`)
+        const statsResp = await api.get('/me/application-stats')
+        const appsResp = await api.get('/me/applications')
+        const tasksResp = await api.get('/me/tasks?includeCompleted=true')
 
         if (!statsResp.ok) throw new Error('stats failed')
         const statsData = await statsResp.json()

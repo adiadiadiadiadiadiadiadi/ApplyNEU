@@ -13,7 +13,7 @@ export async function loadUserPreferences() {
   const userId = await getUserId()
   if (!userId) return waitForApprovalPref
   try {
-    const resp = await api.get(`/preferences/${userId}`)
+    const resp = await api.get('/me/preferences')
     if (resp.ok) {
       const data = await resp.json().catch(() => ({}))
       waitForApprovalPref = toBool(data.wait_for_approval ?? data.waitForApproval, true)

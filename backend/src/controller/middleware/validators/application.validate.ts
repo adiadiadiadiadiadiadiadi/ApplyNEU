@@ -16,20 +16,13 @@ const handleValidation = (req: Request, res: Response, next: NextFunction) => {
 };
 
 export const validateAddApplication = [
-    param('user_id').notEmpty().withMessage('user_id is required.'),
     body('job_id').notEmpty().withMessage('job_id is required.'),
     body('status').trim().notEmpty().withMessage('status is required.')
         .toLowerCase().isIn(VALID_STATUSES).withMessage('Invalid status.'),
     handleValidation,
 ];
 
-export const validateUserIdParam = [
-    param('user_id').notEmpty().withMessage('user_id is required.'),
-    handleValidation,
-];
-
 export const validateUpdateApplicationStatus = [
-    param('user_id').notEmpty().withMessage('user_id is required.'),
     param('application_id').notEmpty().withMessage('application_id is required.'),
     body('status').trim().notEmpty().withMessage('status is required.')
         .toLowerCase().isIn(VALID_STATUSES).withMessage('Invalid status.'),

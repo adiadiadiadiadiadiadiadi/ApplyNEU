@@ -10,15 +10,18 @@ jest.unstable_mockModule('../../src/services/preference.service.ts', () => ({
   updateJobType: jest.fn(),
 }));
 
-jest.unstable_mockModule('../../src/controller/middleware/requireUser.ts', () => ({
-  // Default passthrough; individual tests override this to simulate an unknown user.
-  requireUser: jest.fn((_req: unknown, _res: unknown, next: () => void) => next()),
+jest.unstable_mockModule('../../src/controller/middleware/authenticate.ts', () => ({
+  // Default passthrough authenticating as USER_ID; tests override it to simulate a rejected token.
+  authenticate: jest.fn((req: { auth?: { userId: string } }, _res: unknown, next: () => void) => {
+    req.auth = { userId: USER_ID };
+    next();
+  }),
 }));
 
 const { getUserPreferences, updateUserPreferences, getJobTypes, updateJobType } = await import(
   '../../src/services/preference.service.ts'
 );
-const { requireUser } = await import('../../src/controller/middleware/requireUser.ts');
+const { authenticate } = await import('../../src/controller/middleware/authenticate.ts');
 const { app } = await import('../../src/app.ts');
 
 const USER_ID = 'test-user-id';
@@ -30,21 +33,23 @@ const mockGetUserPreferences = getUserPreferences as ServiceMock;
 const mockUpdateUserPreferences = updateUserPreferences as ServiceMock;
 const mockGetJobTypes = getJobTypes as ServiceMock;
 const mockUpdateJobType = updateJobType as ServiceMock;
-const mockRequireUser = requireUser as MiddlewareMock;
+const mockAuthenticate = authenticate as MiddlewareMock;
 
-// Makes requireUser reject the request as if the user_id did not resolve to a real user.
-const rejectUnknownUser = () =>
-  mockRequireUser.mockImplementationOnce(
+const rejectToken = () =>
+  mockAuthenticate.mockImplementationOnce(
     (_req: unknown, res: { status: (code: number) => { json: (body: unknown) => void } }) =>
       res.status(401).json({ message: 'Unauthorized.' })
   );
 
 beforeEach(() => {
   jest.resetAllMocks();
-  mockRequireUser.mockImplementation((_req: unknown, _res: unknown, next: () => void) => next());
+  mockAuthenticate.mockImplementation((req: { auth?: { userId: string } }, _res: unknown, next: () => void) => {
+    req.auth = { userId: USER_ID };
+    next();
+  });
 });
 
-describe('GET /preferences/:user_id', () => {
+describe('GET /me/preferences', () => {
   it('returns 200 and the preference flags', async () => {
     const prefs = {
       wait_for_approval: true,
@@ -55,17 +60,17 @@ describe('GET /preferences/:user_id', () => {
     };
     mockGetUserPreferences.mockResolvedValue(prefs);
 
-    const res = await request(app).get(`/preferences/${USER_ID}`);
+    const res = await request(app).get('/me/preferences');
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual(prefs);
     expect(mockGetUserPreferences).toHaveBeenCalledWith(USER_ID);
   });
 
-  it('returns 401 when user does not exist', async () => {
-    rejectUnknownUser();
+  it('returns 401 when the token is rejected', async () => {
+    rejectToken();
 
-    const res = await request(app).get(`/preferences/${USER_ID}`);
+    const res = await request(app).get('/me/preferences');
 
     expect(res.status).toBe(401);
     expect(mockGetUserPreferences).not.toHaveBeenCalled();
@@ -74,14 +79,14 @@ describe('GET /preferences/:user_id', () => {
   it('returns 500 when the service throws an unexpected error', async () => {
     mockGetUserPreferences.mockRejectedValue(new Error('db down'));
 
-    const res = await request(app).get(`/preferences/${USER_ID}`);
+    const res = await request(app).get('/me/preferences');
 
     expect(res.status).toBe(500);
     expect(res.body).toEqual({ message: 'Internal server error.' });
   });
 });
 
-describe('PUT /preferences/:user_id', () => {
+describe('PUT /me/preferences', () => {
   it('returns 200 and the updated preferences', async () => {
     const body = {
       wait_for_approval: false,
@@ -92,7 +97,7 @@ describe('PUT /preferences/:user_id', () => {
     };
     mockUpdateUserPreferences.mockResolvedValue(body);
 
-    const res = await request(app).put(`/preferences/${USER_ID}`).send(body);
+    const res = await request(app).put('/me/preferences').send(body);
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual(body);
@@ -106,10 +111,10 @@ describe('PUT /preferences/:user_id', () => {
     );
   });
 
-  it('returns 401 when user does not exist', async () => {
-    rejectUnknownUser();
+  it('returns 401 when the token is rejected', async () => {
+    rejectToken();
 
-    const res = await request(app).put(`/preferences/${USER_ID}`).send({});
+    const res = await request(app).put('/me/preferences').send({});
 
     expect(res.status).toBe(401);
     expect(mockUpdateUserPreferences).not.toHaveBeenCalled();
@@ -118,29 +123,29 @@ describe('PUT /preferences/:user_id', () => {
   it('returns 500 when the service throws an unexpected error', async () => {
     mockUpdateUserPreferences.mockRejectedValue(new Error('db down'));
 
-    const res = await request(app).put(`/preferences/${USER_ID}`).send({});
+    const res = await request(app).put('/me/preferences').send({});
 
     expect(res.status).toBe(500);
     expect(res.body).toEqual({ message: 'Internal server error.' });
   });
 });
 
-describe('GET /preferences/:user_id/job-types', () => {
+describe('GET /me/preferences/job-types', () => {
   it('returns 200 and the list of job types', async () => {
     const jobTypes = ['full-time', 'internship'];
     mockGetJobTypes.mockResolvedValue(jobTypes);
 
-    const res = await request(app).get(`/preferences/${USER_ID}/job-types`);
+    const res = await request(app).get('/me/preferences/job-types');
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual(jobTypes);
     expect(mockGetJobTypes).toHaveBeenCalledWith(USER_ID);
   });
 
-  it('returns 401 when user does not exist', async () => {
-    rejectUnknownUser();
+  it('returns 401 when the token is rejected', async () => {
+    rejectToken();
 
-    const res = await request(app).get(`/preferences/${USER_ID}/job-types`);
+    const res = await request(app).get('/me/preferences/job-types');
 
     expect(res.status).toBe(401);
     expect(mockGetJobTypes).not.toHaveBeenCalled();
@@ -149,20 +154,20 @@ describe('GET /preferences/:user_id/job-types', () => {
   it('returns 500 when the service throws an unexpected error', async () => {
     mockGetJobTypes.mockRejectedValue(new Error('db down'));
 
-    const res = await request(app).get(`/preferences/${USER_ID}/job-types`);
+    const res = await request(app).get('/me/preferences/job-types');
 
     expect(res.status).toBe(500);
     expect(res.body).toEqual({ message: 'Internal server error.' });
   });
 });
 
-describe('PUT /preferences/:user_id/job-types', () => {
+describe('PUT /me/preferences/job-types', () => {
   it('returns 200 and the updated job types on valid input', async () => {
     const jobTypes = ['full-time'];
     mockUpdateJobType.mockResolvedValue(jobTypes);
 
     const res = await request(app)
-      .put(`/preferences/${USER_ID}/job-types`)
+      .put('/me/preferences/job-types')
       .send({ job_types: jobTypes });
 
     expect(res.status).toBe(200);
@@ -171,17 +176,17 @@ describe('PUT /preferences/:user_id/job-types', () => {
   });
 
   it('returns 400 when the job_types field is missing', async () => {
-    const res = await request(app).put(`/preferences/${USER_ID}/job-types`).send({});
+    const res = await request(app).put('/me/preferences/job-types').send({});
 
     expect(res.status).toBe(400);
     expect(mockUpdateJobType).not.toHaveBeenCalled();
   });
 
-  it('returns 401 when user does not exist', async () => {
-    rejectUnknownUser();
+  it('returns 401 when the token is rejected', async () => {
+    rejectToken();
 
     const res = await request(app)
-      .put(`/preferences/${USER_ID}/job-types`)
+      .put('/me/preferences/job-types')
       .send({ job_types: ['full-time'] });
 
     expect(res.status).toBe(401);
@@ -192,7 +197,7 @@ describe('PUT /preferences/:user_id/job-types', () => {
     mockUpdateJobType.mockRejectedValue(new Error('db down'));
 
     const res = await request(app)
-      .put(`/preferences/${USER_ID}/job-types`)
+      .put('/me/preferences/job-types')
       .send({ job_types: ['full-time'] });
 
     expect(res.status).toBe(500);

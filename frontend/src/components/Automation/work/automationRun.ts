@@ -94,7 +94,7 @@ const runFromDashboard = async (webview: AutomationWebview) => {
     const userId = await getUserId();
     if (!userId) { addLog('Unable to fetch job types (no user).'); return }
     try {
-      const resp = await api.get(`/preferences/${userId}/job-types`)
+      const resp = await api.get('/me/preferences/job-types')
       if (!resp.ok) { addLog('Failed to fetch job types.'); return }
       const data = await resp.json()
       const jobTypes: string[] = Array.isArray(data?.job_types) ? data.job_types : []
@@ -549,7 +549,7 @@ const runFromDashboard = async (webview: AutomationWebview) => {
               addLog('Decision skipped (no user).')
             } else {
               addLog(`Reviewing ${titleStr}...`)
-              const resp = await api.post(`/jobs/analyze/${userId}`, {
+              const resp = await api.post('/me/jobs/analyze', {
                 job_description: descResult || '',
                 company: companyName,
                 title: jobTitle
@@ -578,7 +578,7 @@ const runFromDashboard = async (webview: AutomationWebview) => {
                       status
                     }
                     try {
-                      const resp = await api.post(`/applications/${userIdForApplication}/new`, applicationPayload)
+                      const resp = await api.post('/me/applications/new', applicationPayload)
                       if (resp.ok) {
                         const data = await resp.json().catch(() => ({}))
                         const applicationId =
@@ -591,7 +591,7 @@ const runFromDashboard = async (webview: AutomationWebview) => {
                         }
                         applicationRecordedStatus = status
                         if (currentJobApplicationId && !clearedTasksForApplication) {
-                          await clearTasksForApplication(userIdForApplication, currentJobApplicationId)
+                          await clearTasksForApplication(currentJobApplicationId)
                           clearedTasksForApplication = true
                         }
                       }
@@ -1366,7 +1366,7 @@ const runFromDashboard = async (webview: AutomationWebview) => {
                         const userId = await getUserId()
                         if (instructionsText && userId) {
                           needsExternalAction = true
-                          await api.post(`/tasks/${userId}/add-instructions`, {
+                          await api.post('/me/tasks/add-instructions', {
                             employer_instructions: instructionsText,
                             application_id: currentJobApplicationId ?? undefined,
                             company: (clickJobResult.company || '').trim() || 'company unknown',
@@ -1440,7 +1440,7 @@ const runFromDashboard = async (webview: AutomationWebview) => {
                     if (!documentsMissing && pendingModalInstructionText && userId) {
                       try {
                         needsExternalAction = true
-                        await api.post(`/tasks/${userId}/add-instructions`, {
+                        await api.post('/me/tasks/add-instructions', {
                           employer_instructions: pendingModalInstructionText,
                           application_id: currentJobApplicationId ?? undefined,
                           company: (clickJobResult.company || '').trim() || 'company unknown',
@@ -1449,7 +1449,7 @@ const runFromDashboard = async (webview: AutomationWebview) => {
                       } catch (_err) { /* ignore */ }
                     }
                     if (!documentsMissing && instructions.length) {
-                      await addEmployerTasks(instructions, userId as string, currentJobApplicationId, titleStr)
+                      await addEmployerTasks(instructions, currentJobApplicationId, titleStr)
                     }
                     if (!seenResume) {
                       addLog('Waiting for user resume upload...')

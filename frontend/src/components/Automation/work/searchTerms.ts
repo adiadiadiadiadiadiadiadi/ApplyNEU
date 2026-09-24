@@ -16,7 +16,7 @@ export const refreshSearchTerms = async (isPoll = false) => {
       return
     }
     try {
-      const tasksResp = await api.get(`/tasks/${userId}`)
+      const tasksResp = await api.get('/me/tasks')
       if (tasksResp.ok) {
         const tasksData = await tasksResp.json().catch(() => [])
         const taskKeys = Array.isArray(tasksData)
@@ -35,7 +35,7 @@ export const refreshSearchTerms = async (isPoll = false) => {
       // ignore
     }
 
-    const latestResumeResp = await api.get(`/resumes/${userId}/latest`)
+    const latestResumeResp = await api.get('/me/resumes/latest')
     if (!latestResumeResp.ok) { if (!isPoll) addLog('Error occured. Could not fetch resume. Retrying...'); return; }
     const latestResume = await latestResumeResp.json()
     const resumeId = latestResume?.resume_id

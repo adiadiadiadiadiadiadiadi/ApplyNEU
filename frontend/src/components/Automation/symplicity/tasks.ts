@@ -12,12 +12,11 @@ export const setExistingTasks = (keys: Iterable<string>) => {
 export const createDocumentTask = async (
   text: string,
   description: string,
-  userId: string,
   applicationId?: string | null
 ) => {
   const key = buildTaskKey(text, applicationId)
   if (existingTasks.has(key)) return
-  const resp = await api.post(`/tasks/${userId}/new`, { text, description, application_id: applicationId ?? undefined })
+  const resp = await api.post('/me/tasks/new', { text, description, application_id: applicationId ?? undefined })
   if (!resp.ok) {
     addLog('Error occured while creating task.')
     return
@@ -27,7 +26,6 @@ export const createDocumentTask = async (
 
 export const addEmployerTasks = async (
   instructions: EmployerInstruction[],
-  userId: string,
   applicationId?: string | null,
   jobTitle?: string
 ) => {
@@ -39,7 +37,7 @@ export const addEmployerTasks = async (
       const key = buildTaskKey(text, applicationId)
       if (!key || existingTasks.has(key)) return
 
-      const resp = await api.post(`/tasks/${userId}/new`, {
+      const resp = await api.post('/me/tasks/new', {
         text,
         description: withTitleSuffix(jobTitle, description || text),
         application_id: applicationId ?? undefined
@@ -57,9 +55,9 @@ export const addEmployerTasks = async (
   }
 }
 
-export const clearTasksForApplication = async (userId: string, applicationId: string) => {
+export const clearTasksForApplication = async (applicationId: string) => {
   try {
-    await api.del(`/tasks/${userId}/application/${applicationId}`)
+    await api.del(`/me/tasks/application/${applicationId}`)
     existingTasks = new Set(
       Array.from(existingTasks).filter(key => !key.startsWith(`${applicationId}::`))
     )

@@ -11,7 +11,6 @@ const handleValidation = (req: Request, res: Response, next: NextFunction) => {
 };
 
 export const validateAddTask = [
-    param('user_id').notEmpty().withMessage('user_id is required.'),
     body('text').notEmpty().withMessage('text is required.'),
     body('description').notEmpty().withMessage('description is required.'),
     body('application_id').notEmpty().withMessage('application_id is required.'),
@@ -19,7 +18,6 @@ export const validateAddTask = [
 ];
 
 export const validateAddInstructions = [
-    param('user_id').notEmpty().withMessage('user_id is required.'),
     body('employer_instructions').notEmpty().withMessage('employer_instructions is required.'),
     body('application_id').notEmpty().withMessage('application_id is required.'),
     handleValidation,
@@ -30,13 +28,7 @@ export const validateTaskIdParam = [
     handleValidation,
 ];
 
-export const validateUserIdParam = [
-    param('user_id').notEmpty().withMessage('user_id is required.'),
-    handleValidation,
-];
-
 export const validateClearTasks = [
-    param('user_id').notEmpty().withMessage('user_id is required.'),
     param('application_id').notEmpty().withMessage('application_id is required.'),
     handleValidation,
 ];

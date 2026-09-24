@@ -6,15 +6,18 @@ const sendJobDescription =
   jest.fn<(user_id: string, job_description: string, company?: string, title?: string) => Promise<any>>();
 const addJob = jest.fn<(company: string, title: string, description: string) => Promise<any>>();
 
-const requireUser = jest.fn((_req: any, _res: any, next: any) => next());
+const authenticate = jest.fn((req: any, _res: any, next: any) => {
+  req.auth = { userId: USER_ID };
+  next();
+});
 
 jest.unstable_mockModule('../../src/services/job.service.ts', () => ({
   sendJobDescription,
   addJob,
 }));
 
-jest.unstable_mockModule('../../src/controller/middleware/requireUser.ts', () => ({
-  requireUser: (req: any, res: any, next: any) => requireUser(req, res, next),
+jest.unstable_mockModule('../../src/controller/middleware/authenticate.ts', () => ({
+  authenticate: (req: any, res: any, next: any) => authenticate(req, res, next),
 }));
 
 const { app } = await import('../../src/app.ts');
@@ -24,20 +27,23 @@ const JOB_DESCRIPTION = 'We are hiring a Software Engineer to build great things
 const COMPANY = 'Acme';
 const TITLE = 'Software Engineer';
 
-const rejectUser = () =>
-  requireUser.mockImplementation((_req: any, res: any) =>
+const rejectAuth = () =>
+  authenticate.mockImplementation((_req: any, res: any) =>
     res.status(401).json({ message: 'Unauthorized.' })
   );
 
 beforeEach(() => {
   sendJobDescription.mockReset();
   addJob.mockReset();
-  requireUser.mockReset();
-  requireUser.mockImplementation((_req: any, _res: any, next: any) => next());
+  authenticate.mockReset();
+  authenticate.mockImplementation((req: any, _res: any, next: any) => {
+    req.auth = { userId: USER_ID };
+    next();
+  });
 });
 
-describe('POST /jobs/analyze/:user_id', () => {
-  const url = `/jobs/analyze/${USER_ID}`;
+describe('POST /me/jobs/analyze', () => {
+  const url = '/me/jobs/analyze';
 
   it('returns 200 and the AI decision on valid input', async () => {
     const decision = { decision: 'APPLY', employer_instructions: [] };
@@ -152,8 +158,8 @@ describe('POST /jobs/analyze/:user_id', () => {
     expect(sendJobDescription).toHaveBeenCalledWith(USER_ID, JOB_DESCRIPTION, COMPANY, TITLE);
   });
 
-  it('returns 401 when user does not exist', async () => {
-    rejectUser();
+  it('returns 401 when the token is rejected', async () => {
+    rejectAuth();
 
     const res = await request(app)
       .post(url)
@@ -163,14 +169,12 @@ describe('POST /jobs/analyze/:user_id', () => {
     expect(sendJobDescription).not.toHaveBeenCalled();
   });
 
-  it('validates the body before checking the user (invalid body + missing user -> 400)', async () => {
-    rejectUser();
+  it('authenticates before validating the body (invalid body + rejected token -> 401)', async () => {
+    rejectAuth();
 
     const res = await request(app).post(url).send({}); // missing job_description
 
-    expect(res.status).toBe(400);
-    expect(res.body.message).toBe('job_description is required.');
-    expect(requireUser).not.toHaveBeenCalled();
+    expect(res.status).toBe(401);
     expect(sendJobDescription).not.toHaveBeenCalled();
   });
 
