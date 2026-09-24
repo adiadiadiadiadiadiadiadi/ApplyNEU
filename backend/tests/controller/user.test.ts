@@ -7,7 +7,10 @@ const getUser = jest.fn<(user_id: string) => Promise<any>>();
 const updateUser = jest.fn<(user_id: string, first_name: string, last_name: string, grad_year: number) => Promise<any>>();
 const getUserApplicationStats = jest.fn<(user_id: string) => Promise<any>>();
 
-const requireUser = jest.fn((_req: any, _res: any, next: any) => next());
+const authenticate = jest.fn((req: any, _res: any, next: any) => {
+  req.auth = { userId: USER_ID };
+  next();
+});
 
 jest.unstable_mockModule('../../src/services/user/user.service.ts', () => ({
   addUser,
@@ -22,8 +25,8 @@ jest.unstable_mockModule('../../src/services/application.service.ts', () => ({
   updateApplicationStatus: jest.fn(),
 }));
 
-jest.unstable_mockModule('../../src/controller/middleware/requireUser.ts', () => ({
-  requireUser: (req: any, res: any, next: any) => requireUser(req, res, next),
+jest.unstable_mockModule('../../src/controller/middleware/authenticate.ts', () => ({
+  authenticate: (req: any, res: any, next: any) => authenticate(req, res, next),
 }));
 
 const { app } = await import('../../src/app.ts');
@@ -37,8 +40,8 @@ const validUserBody = {
   grad_year: 2026,
 };
 
-const rejectUser = () =>
-  requireUser.mockImplementation((_req: any, res: any) =>
+const rejectAuth = () =>
+  authenticate.mockImplementation((_req: any, res: any) =>
     res.status(401).json({ message: 'Unauthorized.' })
   );
 
@@ -47,8 +50,11 @@ beforeEach(() => {
   getUser.mockReset();
   updateUser.mockReset();
   getUserApplicationStats.mockReset();
-  requireUser.mockReset();
-  requireUser.mockImplementation((_req: any, _res: any, next: any) => next());
+  authenticate.mockReset();
+  authenticate.mockImplementation((req: any, _res: any, next: any) => {
+    req.auth = { userId: USER_ID };
+    next();
+  });
 });
 
 describe('POST /users/new', () => {
@@ -96,14 +102,14 @@ describe('POST /users/new', () => {
     expect(addUser).not.toHaveBeenCalled();
   });
 
-  it('does not require an existing user (requireUser is not applied to this route)', async () => {
-    rejectUser();
+  it('does not require authentication (signup happens before the user has a session)', async () => {
+    rejectAuth();
     addUser.mockResolvedValue({ ...validUserBody });
 
     const res = await request(app).post('/users/new').send(validUserBody);
 
     expect(res.status).toBe(200);
-    expect(requireUser).not.toHaveBeenCalled();
+    expect(authenticate).not.toHaveBeenCalled();
   });
 
   it('propagates an AppError status from the service', async () => {
@@ -125,12 +131,12 @@ describe('POST /users/new', () => {
   });
 });
 
-describe('GET /users/:user_id', () => {
+describe('GET /me', () => {
   it('returns 200 and the user record when found', async () => {
     const user = { ...validUserBody };
     getUser.mockResolvedValue(user);
 
-    const res = await request(app).get(`/users/${USER_ID}`);
+    const res = await request(app).get('/me');
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual(user);
@@ -140,23 +146,32 @@ describe('GET /users/:user_id', () => {
   it('returns 404 when the user does not exist', async () => {
     getUser.mockRejectedValue(new AppError(404, 'User not found.'));
 
-    const res = await request(app).get(`/users/${USER_ID}`);
+    const res = await request(app).get('/me');
 
     expect(res.status).toBe(404);
     expect(res.body.message).toBe('User not found.');
   });
 
+  it('returns 401 when the token is rejected', async () => {
+    rejectAuth();
+
+    const res = await request(app).get('/me');
+
+    expect(res.status).toBe(401);
+    expect(getUser).not.toHaveBeenCalled();
+  });
+
   it('returns 500 when the service throws a non-AppError', async () => {
     getUser.mockRejectedValue(new Error('db down'));
 
-    const res = await request(app).get(`/users/${USER_ID}`);
+    const res = await request(app).get('/me');
 
     expect(res.status).toBe(500);
     expect(res.body.message).toBe('Internal server error.');
   });
 });
 
-describe('PUT /users/:user_id', () => {
+describe('PUT /me', () => {
   const updateBody = {
     first_name: 'Grace',
     last_name: 'Hopper',
@@ -167,7 +182,7 @@ describe('PUT /users/:user_id', () => {
     const updated = { user_id: USER_ID, ...updateBody };
     updateUser.mockResolvedValue(updated);
 
-    const res = await request(app).put(`/users/${USER_ID}`).send(updateBody);
+    const res = await request(app).put('/me').send(updateBody);
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual(updated);
@@ -180,7 +195,7 @@ describe('PUT /users/:user_id', () => {
       const body: Record<string, unknown> = { ...updateBody };
       delete body[field];
 
-      const res = await request(app).put(`/users/${USER_ID}`).send(body);
+      const res = await request(app).put('/me').send(body);
 
       expect(res.status).toBe(400);
       expect(res.body.message).toBe(`${field} is required.`);
@@ -188,28 +203,28 @@ describe('PUT /users/:user_id', () => {
     }
   );
 
-  it('returns 401 when user does not exist', async () => {
-    rejectUser();
+  it('returns 401 when the token is rejected', async () => {
+    rejectAuth();
 
-    const res = await request(app).put(`/users/${USER_ID}`).send(updateBody);
+    const res = await request(app).put('/me').send(updateBody);
 
     expect(res.status).toBe(401);
     expect(updateUser).not.toHaveBeenCalled();
   });
 
-  it('validates the body before checking the user (invalid body + missing user -> 400)', async () => {
-    rejectUser();
+  it('authenticates before validating the body (invalid body + rejected token -> 401)', async () => {
+    rejectAuth();
 
-    const res = await request(app).put(`/users/${USER_ID}`).send({});
+    const res = await request(app).put('/me').send({});
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(401);
     expect(updateUser).not.toHaveBeenCalled();
   });
 
   it('propagates a 404 AppError when the user disappears between checks', async () => {
     updateUser.mockRejectedValue(new AppError(404, 'User not found.'));
 
-    const res = await request(app).put(`/users/${USER_ID}`).send(updateBody);
+    const res = await request(app).put('/me').send(updateBody);
 
     expect(res.status).toBe(404);
     expect(res.body.message).toBe('User not found.');
@@ -218,29 +233,29 @@ describe('PUT /users/:user_id', () => {
   it('returns 500 when the service throws a non-AppError', async () => {
     updateUser.mockRejectedValue(new Error('db down'));
 
-    const res = await request(app).put(`/users/${USER_ID}`).send(updateBody);
+    const res = await request(app).put('/me').send(updateBody);
 
     expect(res.status).toBe(500);
     expect(res.body.message).toBe('Internal server error.');
   });
 });
 
-describe('GET /users/:user_id/application-stats', () => {
+describe('GET /me/application-stats', () => {
   it('returns 200 and the aggregate application stats', async () => {
     const stats = { pending: 1, applied: 2, interview: 0, offer: 0, rejected: 1 };
     getUserApplicationStats.mockResolvedValue(stats);
 
-    const res = await request(app).get(`/users/${USER_ID}/application-stats`);
+    const res = await request(app).get('/me/application-stats');
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual(stats);
     expect(getUserApplicationStats).toHaveBeenCalledWith(USER_ID);
   });
 
-  it('returns 401 when user does not exist', async () => {
-    rejectUser();
+  it('returns 401 when the token is rejected', async () => {
+    rejectAuth();
 
-    const res = await request(app).get(`/users/${USER_ID}/application-stats`);
+    const res = await request(app).get('/me/application-stats');
 
     expect(res.status).toBe(401);
     expect(getUserApplicationStats).not.toHaveBeenCalled();
@@ -249,7 +264,7 @@ describe('GET /users/:user_id/application-stats', () => {
   it('returns 500 when the service throws a non-AppError', async () => {
     getUserApplicationStats.mockRejectedValue(new Error('db down'));
 
-    const res = await request(app).get(`/users/${USER_ID}/application-stats`);
+    const res = await request(app).get('/me/application-stats');
 
     expect(res.status).toBe(500);
     expect(res.body.message).toBe('Internal server error.');

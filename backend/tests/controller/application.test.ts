@@ -10,9 +10,12 @@ const getUserApplicationStats = jest.fn<(user_id: string) => Promise<any>>();
 const getUserApplications = jest.fn<(user_id: string) => Promise<any>>();
 const updateApplicationStatus = jest.fn<(user_id: string, application_id: string, status: string) => Promise<any>>();
 
-// requireUser is mocked but reconfigurable so individual tests can simulate a
-// missing user (401) while the default lets the request through.
-const requireUser = jest.fn((_req: any, _res: any, next: any) => next());
+// authenticate is mocked but reconfigurable so individual tests can simulate a
+// rejected token (401) while the default authenticates the request as USER_ID.
+const authenticate = jest.fn((req: any, _res: any, next: any) => {
+  req.auth = { userId: USER_ID };
+  next();
+});
 
 jest.unstable_mockModule('../../src/services/application.service.ts', () => ({
   addJobApplication,
@@ -21,8 +24,8 @@ jest.unstable_mockModule('../../src/services/application.service.ts', () => ({
   updateApplicationStatus,
 }));
 
-jest.unstable_mockModule('../../src/controller/middleware/requireUser.ts', () => ({
-  requireUser: (req: any, res: any, next: any) => requireUser(req, res, next),
+jest.unstable_mockModule('../../src/controller/middleware/authenticate.ts', () => ({
+  authenticate: (req: any, res: any, next: any) => authenticate(req, res, next),
 }));
 
 const { app } = await import('../../src/app.ts');
@@ -34,9 +37,9 @@ const JOB_ID = 'test-job-id';
 // Mirrors VALID_STATUSES in application.validate.ts.
 const VALID_STATUSES = ['pending', 'draft', 'applied', 'interview', 'offer', 'rejected', 'external'];
 
-// Makes requireUser reject the request with a 401, simulating a non-existent user.
-const rejectUser = () =>
-  requireUser.mockImplementation((_req: any, res: any) =>
+// Makes authenticate reject the request with a 401, simulating a missing or invalid token.
+const rejectAuth = () =>
+  authenticate.mockImplementation((_req: any, res: any) =>
     res.status(401).json({ message: 'Unauthorized.' })
   );
 
@@ -45,17 +48,20 @@ beforeEach(() => {
   getUserApplicationStats.mockReset();
   getUserApplications.mockReset();
   updateApplicationStatus.mockReset();
-  requireUser.mockReset();
-  requireUser.mockImplementation((_req: any, _res: any, next: any) => next());
+  authenticate.mockReset();
+  authenticate.mockImplementation((req: any, _res: any, next: any) => {
+    req.auth = { userId: USER_ID };
+    next();
+  });
 });
 
-describe('POST /applications/:user_id/new', () => {
+describe('POST /me/applications/new', () => {
   it('returns 200 and the created application on valid input', async () => {
     const created = { application_id: APP_ID, job_id: JOB_ID, user_id: USER_ID, status: 'draft' };
     addJobApplication.mockResolvedValue(created);
 
     const res = await request(app)
-      .post(`/applications/${USER_ID}/new`)
+      .post('/me/applications/new')
       .send({ job_id: JOB_ID, status: 'draft' });
 
     expect(res.status).toBe(200);
@@ -67,7 +73,7 @@ describe('POST /applications/:user_id/new', () => {
     addJobApplication.mockResolvedValue({ application_id: APP_ID, status });
 
     const res = await request(app)
-      .post(`/applications/${USER_ID}/new`)
+      .post('/me/applications/new')
       .send({ job_id: JOB_ID, status });
 
     expect(res.status).toBe(200);
@@ -78,7 +84,7 @@ describe('POST /applications/:user_id/new', () => {
     addJobApplication.mockResolvedValue({ application_id: APP_ID, status: 'applied' });
 
     const res = await request(app)
-      .post(`/applications/${USER_ID}/new`)
+      .post('/me/applications/new')
       .send({ job_id: JOB_ID, status: 'APPLIED' });
 
     expect(res.status).toBe(200);
@@ -89,7 +95,7 @@ describe('POST /applications/:user_id/new', () => {
     addJobApplication.mockResolvedValue({ application_id: APP_ID });
 
     const res = await request(app)
-      .post(`/applications/${USER_ID}/new`)
+      .post('/me/applications/new')
       .send({
         job_id: JOB_ID,
         status: 'draft',
@@ -104,7 +110,7 @@ describe('POST /applications/:user_id/new', () => {
 
   it('returns 400 when job_id is missing', async () => {
     const res = await request(app)
-      .post(`/applications/${USER_ID}/new`)
+      .post('/me/applications/new')
       .send({ status: 'draft' });
 
     expect(res.status).toBe(400);
@@ -114,7 +120,7 @@ describe('POST /applications/:user_id/new', () => {
 
   it('returns 400 when status is missing', async () => {
     const res = await request(app)
-      .post(`/applications/${USER_ID}/new`)
+      .post('/me/applications/new')
       .send({ job_id: JOB_ID });
 
     expect(res.status).toBe(400);
@@ -123,7 +129,7 @@ describe('POST /applications/:user_id/new', () => {
   });
 
   it('returns 400 when the body is empty', async () => {
-    const res = await request(app).post(`/applications/${USER_ID}/new`).send({});
+    const res = await request(app).post('/me/applications/new').send({});
 
     expect(res.status).toBe(400);
     expect(res.body.message).toBe('job_id is required.');
@@ -132,7 +138,7 @@ describe('POST /applications/:user_id/new', () => {
 
   it('returns 400 when status is not a valid value', async () => {
     const res = await request(app)
-      .post(`/applications/${USER_ID}/new`)
+      .post('/me/applications/new')
       .send({ job_id: JOB_ID, status: 'not-a-real-status' });
 
     expect(res.status).toBe(400);
@@ -140,11 +146,11 @@ describe('POST /applications/:user_id/new', () => {
     expect(addJobApplication).not.toHaveBeenCalled();
   });
 
-  it('returns 401 when user does not exist', async () => {
-    rejectUser();
+  it('returns 401 when the token is rejected', async () => {
+    rejectAuth();
 
     const res = await request(app)
-      .post(`/applications/${USER_ID}/new`)
+      .post('/me/applications/new')
       .send({ job_id: JOB_ID, status: 'draft' });
 
     expect(res.status).toBe(401);
@@ -155,7 +161,7 @@ describe('POST /applications/:user_id/new', () => {
     addJobApplication.mockRejectedValue(new AppError(409, 'Application already exists for this job/user.'));
 
     const res = await request(app)
-      .post(`/applications/${USER_ID}/new`)
+      .post('/me/applications/new')
       .send({ job_id: JOB_ID, status: 'draft' });
 
     expect(res.status).toBe(409);
@@ -166,7 +172,7 @@ describe('POST /applications/:user_id/new', () => {
     addJobApplication.mockRejectedValue(new Error('boom'));
 
     const res = await request(app)
-      .post(`/applications/${USER_ID}/new`)
+      .post('/me/applications/new')
       .send({ job_id: JOB_ID, status: 'draft' });
 
     expect(res.status).toBe(500);
@@ -175,7 +181,7 @@ describe('POST /applications/:user_id/new', () => {
 
   it('returns 400 when job_id is an empty string', async () => {
     const res = await request(app)
-      .post(`/applications/${USER_ID}/new`)
+      .post('/me/applications/new')
       .send({ job_id: '', status: 'draft' });
 
     expect(res.status).toBe(400);
@@ -185,7 +191,7 @@ describe('POST /applications/:user_id/new', () => {
 
   it('returns 400 when status is an empty string', async () => {
     const res = await request(app)
-      .post(`/applications/${USER_ID}/new`)
+      .post('/me/applications/new')
       .send({ job_id: JOB_ID, status: '' });
 
     expect(res.status).toBe(400);
@@ -195,7 +201,7 @@ describe('POST /applications/:user_id/new', () => {
 
   it('returns 400 when status is whitespace only', async () => {
     const res = await request(app)
-      .post(`/applications/${USER_ID}/new`)
+      .post('/me/applications/new')
       .send({ job_id: JOB_ID, status: '   ' });
 
     expect(res.status).toBe(400);
@@ -207,28 +213,26 @@ describe('POST /applications/:user_id/new', () => {
     addJobApplication.mockResolvedValue({ application_id: APP_ID, status: 'draft' });
 
     const res = await request(app)
-      .post(`/applications/${USER_ID}/new`)
+      .post('/me/applications/new')
       .send({ job_id: JOB_ID, status: '  draft  ' });
 
     expect(res.status).toBe(200);
     expect(addJobApplication).toHaveBeenCalledWith(USER_ID, JOB_ID, 'draft');
   });
 
-  it('validates the body before checking the user (invalid body + missing user -> 400)', async () => {
-    rejectUser();
+  it('authenticates before validating the body (invalid body + rejected token -> 401)', async () => {
+    rejectAuth();
 
     const res = await request(app)
-      .post(`/applications/${USER_ID}/new`)
+      .post('/me/applications/new')
       .send({ status: 'draft' }); // missing job_id
 
-    expect(res.status).toBe(400);
-    expect(res.body.message).toBe('job_id is required.');
-    expect(requireUser).not.toHaveBeenCalled();
+    expect(res.status).toBe(401);
     expect(addJobApplication).not.toHaveBeenCalled();
   });
 });
 
-describe('GET /applications/:user_id', () => {
+describe('GET /me/applications', () => {
   it('returns 200 and the list of applications for the user', async () => {
     const apps = [
       { application_id: APP_ID, job_id: JOB_ID, status: 'applied', company: 'Acme', title: 'Engineer' },
@@ -236,7 +240,7 @@ describe('GET /applications/:user_id', () => {
     ];
     getUserApplications.mockResolvedValue(apps);
 
-    const res = await request(app).get(`/applications/${USER_ID}`);
+    const res = await request(app).get('/me/applications');
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual(apps);
@@ -246,16 +250,16 @@ describe('GET /applications/:user_id', () => {
   it('returns 200 and an empty array when the user has no applications', async () => {
     getUserApplications.mockResolvedValue([]);
 
-    const res = await request(app).get(`/applications/${USER_ID}`);
+    const res = await request(app).get('/me/applications');
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual([]);
   });
 
-  it('returns 401 when user does not exist', async () => {
-    rejectUser();
+  it('returns 401 when the token is rejected', async () => {
+    rejectAuth();
 
-    const res = await request(app).get(`/applications/${USER_ID}`);
+    const res = await request(app).get('/me/applications');
 
     expect(res.status).toBe(401);
     expect(getUserApplications).not.toHaveBeenCalled();
@@ -264,15 +268,15 @@ describe('GET /applications/:user_id', () => {
   it('propagates an AppError status from the service', async () => {
     getUserApplications.mockRejectedValue(new AppError(500, 'Error fetching applications.'));
 
-    const res = await request(app).get(`/applications/${USER_ID}`);
+    const res = await request(app).get('/me/applications');
 
     expect(res.status).toBe(500);
     expect(res.body.message).toBe('Error fetching applications.');
   });
 });
 
-describe('PUT /applications/:user_id/:application_id/status', () => {
-  const url = `/applications/${USER_ID}/${APP_ID}/status`;
+describe('PUT /me/applications/:application_id/status', () => {
+  const url = `/me/applications/${APP_ID}/status`;
 
   it('returns 200 and the updated application on valid input', async () => {
     const updated = { application_id: APP_ID, job_id: JOB_ID, status: 'interview' };
@@ -336,8 +340,8 @@ describe('PUT /applications/:user_id/:application_id/status', () => {
     expect(updateApplicationStatus).not.toHaveBeenCalled();
   });
 
-  it('returns 401 when user does not exist', async () => {
-    rejectUser();
+  it('returns 401 when the token is rejected', async () => {
+    rejectAuth();
 
     const res = await request(app).put(url).send({ status: 'applied' });
 

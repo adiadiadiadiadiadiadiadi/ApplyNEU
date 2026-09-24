@@ -44,7 +44,7 @@ export const fetchUserProfile = createAsyncThunk<UserProfile, void, { rejectValu
       }
 
       const user = data.user
-      const response = await api.get(`/users/${user.id}`)
+      const response = await api.get('/me')
 
       if (!response.ok) {
         let backendMessage = 'failed to fetch profile from backend'
@@ -67,7 +67,7 @@ export const fetchUserProfile = createAsyncThunk<UserProfile, void, { rejectValu
 
       let prefsRow: Record<string, unknown> = {}
       try {
-        const prefsResp = await api.get(`/preferences/${user.id}`)
+        const prefsResp = await api.get('/me/preferences')
         if (prefsResp.ok) prefsRow = await prefsResp.json()
       } catch { /* proceed with defaults */ }
 
@@ -103,7 +103,7 @@ export const saveUserPreferences = createAsyncThunk<
   if (!userId) return rejectWithValue('No user loaded')
 
   try {
-    const response = await api.put(`/preferences/${userId}`, {
+    const response = await api.put('/me/preferences', {
       wait_for_approval: prefs.waitForApproval,
       recent_jobs: prefs.recent_jobs,
       job_match: prefs.job_match,

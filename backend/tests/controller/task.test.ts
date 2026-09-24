@@ -8,7 +8,6 @@ const getTasks = jest.fn<(user_id: string, includeCompleted: boolean) => Promise
 const deleteTasksForApplication = jest.fn<(user_id: string, application_id: string) => Promise<any>>();
 const addInstructions = jest.fn<(user_id: string, employer_instructions: string, application_id: string, company?: string, title?: string) => Promise<any>>();
 
-const requireUser = jest.fn((_req: any, _res: any, next: any) => next());
 const authenticate = jest.fn((req: any, _res: any, next: any) => {
   req.auth = { userId: USER_ID };
   next();
@@ -25,10 +24,6 @@ jest.unstable_mockModule('../../src/services/task/ai.task.service.ts', () => ({
   addInstructions,
 }));
 
-jest.unstable_mockModule('../../src/controller/middleware/requireUser.ts', () => ({
-  requireUser: (req: any, res: any, next: any) => requireUser(req, res, next),
-}));
-
 jest.unstable_mockModule('../../src/controller/middleware/authenticate.ts', () => ({
   authenticate: (req: any, res: any, next: any) => authenticate(req, res, next),
 }));
@@ -38,11 +33,6 @@ const { app } = await import('../../src/app.ts');
 const USER_ID = 'test-user-id';
 const TASK_ID = 'test-task-id';
 const APP_ID = 'test-app-id';
-
-const rejectUser = () =>
-  requireUser.mockImplementation((_req: any, res: any) =>
-    res.status(401).json({ message: 'Unauthorized.' })
-  );
 
 const rejectAuth = () =>
   authenticate.mockImplementation((_req: any, res: any) =>
@@ -55,8 +45,6 @@ beforeEach(() => {
   getTasks.mockReset();
   deleteTasksForApplication.mockReset();
   addInstructions.mockReset();
-  requireUser.mockReset();
-  requireUser.mockImplementation((_req: any, _res: any, next: any) => next());
   authenticate.mockReset();
   authenticate.mockImplementation((req: any, _res: any, next: any) => {
     req.auth = { userId: USER_ID };
@@ -64,13 +52,13 @@ beforeEach(() => {
   });
 });
 
-describe('POST /tasks/:user_id/new', () => {
+describe('POST /me/tasks/new', () => {
   it('returns 200 and the created task on valid input', async () => {
     const created = { task_id: TASK_ID, user_id: USER_ID, application_id: APP_ID, text: 'Do thing', description: 'desc', completed: false };
     addTask.mockResolvedValue(created);
 
     const res = await request(app)
-      .post(`/tasks/${USER_ID}/new`)
+      .post('/me/tasks/new')
       .send({ text: 'Do thing', description: 'desc', application_id: APP_ID });
 
     expect(res.status).toBe(200);
@@ -82,7 +70,7 @@ describe('POST /tasks/:user_id/new', () => {
     addTask.mockResolvedValue({ task_id: TASK_ID });
 
     const res = await request(app)
-      .post(`/tasks/${USER_ID}/new`)
+      .post('/me/tasks/new')
       .send({ text: 'Do thing', description: 'desc', application_id: APP_ID, completed: true, foo: 'bar' });
 
     expect(res.status).toBe(200);
@@ -91,7 +79,7 @@ describe('POST /tasks/:user_id/new', () => {
 
   it('returns 400 when text is missing', async () => {
     const res = await request(app)
-      .post(`/tasks/${USER_ID}/new`)
+      .post('/me/tasks/new')
       .send({ description: 'desc', application_id: APP_ID });
 
     expect(res.status).toBe(400);
@@ -101,7 +89,7 @@ describe('POST /tasks/:user_id/new', () => {
 
   it('returns 400 when description is missing', async () => {
     const res = await request(app)
-      .post(`/tasks/${USER_ID}/new`)
+      .post('/me/tasks/new')
       .send({ text: 'Do thing', application_id: APP_ID });
 
     expect(res.status).toBe(400);
@@ -111,7 +99,7 @@ describe('POST /tasks/:user_id/new', () => {
 
   it('returns 400 when application_id is missing', async () => {
     const res = await request(app)
-      .post(`/tasks/${USER_ID}/new`)
+      .post('/me/tasks/new')
       .send({ text: 'Do thing', description: 'desc' });
 
     expect(res.status).toBe(400);
@@ -120,30 +108,30 @@ describe('POST /tasks/:user_id/new', () => {
   });
 
   it('returns 400 when the body is empty', async () => {
-    const res = await request(app).post(`/tasks/${USER_ID}/new`).send({});
+    const res = await request(app).post('/me/tasks/new').send({});
 
     expect(res.status).toBe(400);
     expect(res.body.message).toBe('text is required.');
     expect(addTask).not.toHaveBeenCalled();
   });
 
-  it('returns 401 when user does not exist', async () => {
-    rejectUser();
+  it('returns 401 when the token is rejected', async () => {
+    rejectAuth();
 
     const res = await request(app)
-      .post(`/tasks/${USER_ID}/new`)
+      .post('/me/tasks/new')
       .send({ text: 'Do thing', description: 'desc', application_id: APP_ID });
 
     expect(res.status).toBe(401);
     expect(addTask).not.toHaveBeenCalled();
   });
 
-  it('validates the body before checking the user (invalid body + missing user -> 400)', async () => {
-    rejectUser();
+  it('authenticates before validating the body (invalid body + rejected token -> 401)', async () => {
+    rejectAuth();
 
-    const res = await request(app).post(`/tasks/${USER_ID}/new`).send({});
+    const res = await request(app).post('/me/tasks/new').send({});
 
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(401);
     expect(addTask).not.toHaveBeenCalled();
   });
 
@@ -151,7 +139,7 @@ describe('POST /tasks/:user_id/new', () => {
     addTask.mockRejectedValue(new AppError(409, 'Task already exists.'));
 
     const res = await request(app)
-      .post(`/tasks/${USER_ID}/new`)
+      .post('/me/tasks/new')
       .send({ text: 'Do thing', description: 'desc', application_id: APP_ID });
 
     expect(res.status).toBe(409);
@@ -162,7 +150,7 @@ describe('POST /tasks/:user_id/new', () => {
     addTask.mockRejectedValue(new Error('db down'));
 
     const res = await request(app)
-      .post(`/tasks/${USER_ID}/new`)
+      .post('/me/tasks/new')
       .send({ text: 'Do thing', description: 'desc', application_id: APP_ID });
 
     expect(res.status).toBe(500);
@@ -170,13 +158,13 @@ describe('POST /tasks/:user_id/new', () => {
   });
 });
 
-describe('POST /tasks/:user_id/add-instructions', () => {
+describe('POST /me/tasks/add-instructions', () => {
   it('returns 200 and the generated tasks on valid input', async () => {
     const tasks = [{ task_id: TASK_ID, text: 'Upload transcript' }];
     addInstructions.mockResolvedValue(tasks);
 
     const res = await request(app)
-      .post(`/tasks/${USER_ID}/add-instructions`)
+      .post('/me/tasks/add-instructions')
       .send({ employer_instructions: 'Upload transcript', application_id: APP_ID, company: 'Acme', title: 'Engineer' });
 
     expect(res.status).toBe(200);
@@ -188,7 +176,7 @@ describe('POST /tasks/:user_id/add-instructions', () => {
     addInstructions.mockResolvedValue([]);
 
     const res = await request(app)
-      .post(`/tasks/${USER_ID}/add-instructions`)
+      .post('/me/tasks/add-instructions')
       .send({ employer_instructions: 'Upload transcript', application_id: APP_ID });
 
     expect(res.status).toBe(200);
@@ -197,7 +185,7 @@ describe('POST /tasks/:user_id/add-instructions', () => {
 
   it('returns 400 when employer_instructions is missing', async () => {
     const res = await request(app)
-      .post(`/tasks/${USER_ID}/add-instructions`)
+      .post('/me/tasks/add-instructions')
       .send({ application_id: APP_ID });
 
     expect(res.status).toBe(400);
@@ -207,7 +195,7 @@ describe('POST /tasks/:user_id/add-instructions', () => {
 
   it('returns 400 when application_id is missing', async () => {
     const res = await request(app)
-      .post(`/tasks/${USER_ID}/add-instructions`)
+      .post('/me/tasks/add-instructions')
       .send({ employer_instructions: 'Upload transcript' });
 
     expect(res.status).toBe(400);
@@ -215,11 +203,11 @@ describe('POST /tasks/:user_id/add-instructions', () => {
     expect(addInstructions).not.toHaveBeenCalled();
   });
 
-  it('returns 401 when user does not exist', async () => {
-    rejectUser();
+  it('returns 401 when the token is rejected', async () => {
+    rejectAuth();
 
     const res = await request(app)
-      .post(`/tasks/${USER_ID}/add-instructions`)
+      .post('/me/tasks/add-instructions')
       .send({ employer_instructions: 'Upload transcript', application_id: APP_ID });
 
     expect(res.status).toBe(401);
@@ -230,7 +218,7 @@ describe('POST /tasks/:user_id/add-instructions', () => {
     addInstructions.mockRejectedValue(new Error('ai failed'));
 
     const res = await request(app)
-      .post(`/tasks/${USER_ID}/add-instructions`)
+      .post('/me/tasks/add-instructions')
       .send({ employer_instructions: 'Upload transcript', application_id: APP_ID });
 
     expect(res.status).toBe(500);
@@ -238,22 +226,22 @@ describe('POST /tasks/:user_id/add-instructions', () => {
   });
 });
 
-describe('DELETE /tasks/:user_id/application/:application_id', () => {
+describe('DELETE /me/tasks/application/:application_id', () => {
   it('returns 200 and clears tasks for the application', async () => {
     const result = { deleted: 3 };
     deleteTasksForApplication.mockResolvedValue(result);
 
-    const res = await request(app).delete(`/tasks/${USER_ID}/application/${APP_ID}`);
+    const res = await request(app).delete(`/me/tasks/application/${APP_ID}`);
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual(result);
     expect(deleteTasksForApplication).toHaveBeenCalledWith(USER_ID, APP_ID);
   });
 
-  it('returns 401 when user does not exist', async () => {
-    rejectUser();
+  it('returns 401 when the token is rejected', async () => {
+    rejectAuth();
 
-    const res = await request(app).delete(`/tasks/${USER_ID}/application/${APP_ID}`);
+    const res = await request(app).delete(`/me/tasks/application/${APP_ID}`);
 
     expect(res.status).toBe(401);
     expect(deleteTasksForApplication).not.toHaveBeenCalled();
@@ -262,7 +250,7 @@ describe('DELETE /tasks/:user_id/application/:application_id', () => {
   it('returns 500 when the service throws a non-AppError', async () => {
     deleteTasksForApplication.mockRejectedValue(new Error('db down'));
 
-    const res = await request(app).delete(`/tasks/${USER_ID}/application/${APP_ID}`);
+    const res = await request(app).delete(`/me/tasks/application/${APP_ID}`);
 
     expect(res.status).toBe(500);
     expect(res.body.message).toBe('Internal server error.');
@@ -281,14 +269,13 @@ describe('PUT /tasks/:task_id/complete', () => {
     expect(toggleTask).toHaveBeenCalledWith(TASK_ID, USER_ID);
   });
 
-  it('does not use requireUser (no :user_id param on this route), but does require authentication', async () => {
+  it('requires authentication', async () => {
     rejectAuth();
     toggleTask.mockResolvedValue({ task_id: TASK_ID, completed: false });
 
     const res = await request(app).put(`/tasks/${TASK_ID}/complete`);
 
     expect(res.status).toBe(401);
-    expect(requireUser).not.toHaveBeenCalled();
     expect(toggleTask).not.toHaveBeenCalled();
   });
 
@@ -311,12 +298,12 @@ describe('PUT /tasks/:task_id/complete', () => {
   });
 });
 
-describe('GET /tasks/:user_id', () => {
+describe('GET /me/tasks', () => {
   it('returns 200 and the list of tasks, excluding completed by default', async () => {
     const tasks = [{ task_id: TASK_ID, completed: false }];
     getTasks.mockResolvedValue(tasks);
 
-    const res = await request(app).get(`/tasks/${USER_ID}`);
+    const res = await request(app).get('/me/tasks');
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual(tasks);
@@ -326,7 +313,7 @@ describe('GET /tasks/:user_id', () => {
   it('passes includeCompleted=true when the query flag is "true"', async () => {
     getTasks.mockResolvedValue([]);
 
-    const res = await request(app).get(`/tasks/${USER_ID}?includeCompleted=true`);
+    const res = await request(app).get(`/me/tasks?includeCompleted=true`);
 
     expect(res.status).toBe(200);
     expect(getTasks).toHaveBeenCalledWith(USER_ID, true);
@@ -335,7 +322,7 @@ describe('GET /tasks/:user_id', () => {
   it('treats a non-"true" query value as false', async () => {
     getTasks.mockResolvedValue([]);
 
-    const res = await request(app).get(`/tasks/${USER_ID}?includeCompleted=yes`);
+    const res = await request(app).get(`/me/tasks?includeCompleted=yes`);
 
     expect(res.status).toBe(200);
     expect(getTasks).toHaveBeenCalledWith(USER_ID, false);
@@ -344,16 +331,16 @@ describe('GET /tasks/:user_id', () => {
   it('treats an uppercase "TRUE" query value as true (case-insensitive)', async () => {
     getTasks.mockResolvedValue([]);
 
-    const res = await request(app).get(`/tasks/${USER_ID}?includeCompleted=TRUE`);
+    const res = await request(app).get(`/me/tasks?includeCompleted=TRUE`);
 
     expect(res.status).toBe(200);
     expect(getTasks).toHaveBeenCalledWith(USER_ID, true);
   });
 
-  it('returns 401 when user does not exist', async () => {
-    rejectUser();
+  it('returns 401 when the token is rejected', async () => {
+    rejectAuth();
 
-    const res = await request(app).get(`/tasks/${USER_ID}`);
+    const res = await request(app).get('/me/tasks');
 
     expect(res.status).toBe(401);
     expect(getTasks).not.toHaveBeenCalled();
@@ -362,7 +349,7 @@ describe('GET /tasks/:user_id', () => {
   it('returns 500 when the service throws a non-AppError', async () => {
     getTasks.mockRejectedValue(new Error('db down'));
 
-    const res = await request(app).get(`/tasks/${USER_ID}`);
+    const res = await request(app).get('/me/tasks');
 
     expect(res.status).toBe(500);
     expect(res.body.message).toBe('Internal server error.');

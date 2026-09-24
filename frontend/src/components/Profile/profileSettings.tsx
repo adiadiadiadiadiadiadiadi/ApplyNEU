@@ -73,7 +73,7 @@ export default function ProfileSettings() {
       const emailFromAuth = (user.email ?? '').trim()
 
       try {
-        const resp = await api.get(`/users/${user.id}`)
+        const resp = await api.get('/me')
         if (resp.ok) {
           const userRow = await resp.json()
           const first = (userRow.first_name ?? '').toString()
@@ -94,7 +94,7 @@ export default function ProfileSettings() {
             email: (userRow.email ?? '').toString(),
           })
           try {
-            const latestResumeResp = await api.get(`/resumes/${user.id}/latest`)
+            const latestResumeResp = await api.get('/me/resumes/latest')
             if (latestResumeResp.ok) {
               const latest = await latestResumeResp.json()
               setCurrentResumeName((latest.file_name ?? '').toString())
@@ -165,7 +165,7 @@ export default function ProfileSettings() {
     }
 
     try {
-      const resp = await api.put(`/users/${userId}`, {
+      const resp = await api.put('/me', {
         first_name: finalFirst,
         last_name: finalLast,
         email: finalEmail,
@@ -300,7 +300,7 @@ export default function ProfileSettings() {
     setUploadError(null)
 
     try {
-      const presignResp = await api.post(`/resumes/upload/${userId}`, {
+      const presignResp = await api.post('/me/resumes/upload', {
         file_name: file.name,
         file_type: file.type,
         file_size: file.size,

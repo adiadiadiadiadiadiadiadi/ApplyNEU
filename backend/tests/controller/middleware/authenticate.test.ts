@@ -3,7 +3,6 @@ import { generateKeyPair, SignJWT, jwtVerify } from 'jose';
 import type { Request, Response } from 'express';
 
 const USER_ID = 'e2f1a2d0-1111-4a2a-9c3e-000000000001';
-const OTHER_USER_ID = 'e2f1a2d0-1111-4a2a-9c3e-000000000002';
 const SUPABASE_URL = 'https://project.supabase.co';
 
 // Signing keys for the tests. The static jose import above resolves to the real
@@ -21,11 +20,10 @@ jest.unstable_mockModule('jose', () => ({
   jwtVerify,
 }));
 
-const { requireUser } = await import('../../../src/controller/middleware/requireUser.ts');
+const { authenticate } = await import('../../../src/controller/middleware/authenticate.ts');
 
-const makeReq = (userId: string | undefined, authHeader?: string): Request =>
+const makeReq = (authHeader?: string): Request =>
   ({
-    params: userId === undefined ? {} : { user_id: userId },
     headers: authHeader === undefined ? {} : { authorization: authHeader },
   }) as unknown as Request;
 
@@ -47,28 +45,17 @@ const sign = async (
     .setExpirationTime(expiresIn)
     .sign(key);
 
-describe('requireUser', () => {
+describe('authenticate', () => {
   beforeEach(() => {
     process.env.DEV_SUPABASE_URL = SUPABASE_URL;
   });
 
-  it('rejects when the route has no :user_id param', async () => {
-    const req = makeReq(undefined);
-    const res = makeRes();
-    const next = jest.fn();
-
-    await requireUser(req, res, next);
-
-    expect(res.status).toHaveBeenCalledWith(401);
-    expect(next).not.toHaveBeenCalled();
-  });
-
   it('rejects when there is no Authorization header', async () => {
-    const req = makeReq(USER_ID);
+    const req = makeReq();
     const res = makeRes();
     const next = jest.fn();
 
-    await requireUser(req, res, next);
+    await authenticate(req, res, next);
 
     expect(res.status).toHaveBeenCalledWith(401);
     expect(next).not.toHaveBeenCalled();
@@ -76,48 +63,52 @@ describe('requireUser', () => {
 
   it('rejects a header that is not a bearer token', async () => {
     const token = await sign(USER_ID, projectKeys.privateKey);
-    const req = makeReq(USER_ID, `Basic ${token}`);
+    const req = makeReq(`Basic ${token}`);
     const res = makeRes();
     const next = jest.fn();
 
-    await requireUser(req, res, next);
+    await authenticate(req, res, next);
 
     expect(res.status).toHaveBeenCalledWith(401);
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('accepts a valid token whose sub matches :user_id and attaches req.auth', async () => {
+  it('accepts a valid token and attaches req.auth from its sub', async () => {
     const token = await sign(USER_ID, projectKeys.privateKey);
-    const req = makeReq(USER_ID, `Bearer ${token}`);
+    const req = makeReq(`Bearer ${token}`);
     const res = makeRes();
     const next = jest.fn();
 
-    await requireUser(req, res, next);
+    await authenticate(req, res, next);
 
     expect(next).toHaveBeenCalledTimes(1);
     expect(res.status).not.toHaveBeenCalled();
     expect(req.auth).toEqual({ userId: USER_ID });
   });
 
-  it('rejects with 403 when the token is valid but sub does not match :user_id', async () => {
-    const token = await sign(OTHER_USER_ID, projectKeys.privateKey);
-    const req = makeReq(USER_ID, `Bearer ${token}`);
+  it('rejects a valid token that carries no sub', async () => {
+    const token = await new SignJWT({})
+      .setProtectedHeader({ alg: 'ES256' })
+      .setIssuedAt()
+      .setExpirationTime('5m')
+      .sign(projectKeys.privateKey);
+    const req = makeReq(`Bearer ${token}`);
     const res = makeRes();
     const next = jest.fn();
 
-    await requireUser(req, res, next);
+    await authenticate(req, res, next);
 
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(401);
     expect(next).not.toHaveBeenCalled();
   });
 
   it('rejects a token signed by a key outside the project key set', async () => {
     const token = await sign(USER_ID, attackerKeys.privateKey);
-    const req = makeReq(USER_ID, `Bearer ${token}`);
+    const req = makeReq(`Bearer ${token}`);
     const res = makeRes();
     const next = jest.fn();
 
-    await requireUser(req, res, next);
+    await authenticate(req, res, next);
 
     expect(res.status).toHaveBeenCalledWith(401);
     expect(next).not.toHaveBeenCalled();
@@ -125,11 +116,11 @@ describe('requireUser', () => {
 
   it('rejects an expired token', async () => {
     const token = await sign(USER_ID, projectKeys.privateKey, { expiresIn: '-1m' });
-    const req = makeReq(USER_ID, `Bearer ${token}`);
+    const req = makeReq(`Bearer ${token}`);
     const res = makeRes();
     const next = jest.fn();
 
-    await requireUser(req, res, next);
+    await authenticate(req, res, next);
 
     expect(res.status).toHaveBeenCalledWith(401);
     expect(next).not.toHaveBeenCalled();
@@ -137,11 +128,11 @@ describe('requireUser', () => {
 
   it('rejects a symmetrically signed token, so a leaked shared secret is not enough', async () => {
     const token = await sign(USER_ID, hmacSecret, { alg: 'HS256' });
-    const req = makeReq(USER_ID, `Bearer ${token}`);
+    const req = makeReq(`Bearer ${token}`);
     const res = makeRes();
     const next = jest.fn();
 
-    await requireUser(req, res, next);
+    await authenticate(req, res, next);
 
     expect(res.status).toHaveBeenCalledWith(401);
     expect(next).not.toHaveBeenCalled();

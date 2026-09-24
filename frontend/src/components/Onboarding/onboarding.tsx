@@ -61,9 +61,9 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     }
   }
 
-  const updateJobTypes = async (userId: string): Promise<boolean> => {
+  const updateJobTypes = async (): Promise<boolean> => {
     try {
-      const response = await api.put(`/preferences/${userId}/job-types`, {
+      const response = await api.put('/me/preferences/job-types', {
         job_types: selectedJobTypes
       })
       return response.ok
@@ -107,7 +107,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         navigate('/401')
         return
       }
-      const updated = await updateJobTypes(user.id)
+      const updated = await updateJobTypes()
       setLoading(false)
       if (!updated) {
         setStepError('could not save job types. please try again.')
@@ -127,7 +127,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       }
 
       try {
-        const response = await api.post(`/resumes/upload/${user.id}`, {
+        const response = await api.post('/me/resumes/upload', {
           file_name: uploadedFile.name,
           file_type: uploadedFile.type,
           file_size: uploadedFile.size

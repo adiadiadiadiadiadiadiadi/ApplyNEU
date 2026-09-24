@@ -14,7 +14,6 @@ export interface PostUserRequest extends Request {
 }
 
 export interface PutUserRequest extends Request {
-  params: { user_id: UUID };
   body: PostUserObject;
 }
 
@@ -27,15 +26,7 @@ export interface UpdatePreferencesBody {
   email_notifications: boolean;
 }
 
-export type UserIdParams = { user_id: UUID };
-
-export type UserIdRequest = Request<UserIdParams>;
-export type UpdatePreferencesRequest = Request<UserIdParams, unknown, UpdatePreferencesBody>;
-export type UpdateInterestsRequest = Request<UserIdParams, unknown, { interests: string[] }>;
-export type UpdateJobTypesRequest = Request<UserIdParams, unknown, { job_types: string[] }>;
-export type UpdateSearchTermsRequest = Request<UserIdParams, unknown, { resume_id: string }>;
-export type GetJobTypesRequest = Request<UserIdParams>;
-export type GetSearchTermsRequest = Request<UserIdParams>;
-export type GetUserInterestsRequest = Request<UserIdParams>;
+export type UpdatePreferencesRequest = Request<Record<string, never>, unknown, UpdatePreferencesBody>;
+export type UpdateJobTypesRequest = Request<Record<string, never>, unknown, { job_types: string[] }>;
 
 export type PostUserResponse = PostUserObject | { error: string };
