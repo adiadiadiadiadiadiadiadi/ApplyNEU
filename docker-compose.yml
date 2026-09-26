@@ -2,7 +2,10 @@
 #
 #   docker compose up -d --build
 #
-# Postgres is not here on purpose because both dev and prod live in Supabase.
+# Dev and prod Postgres live in Supabase, so the only database here is the throwaway
+# one the integration tests provision into:
+#
+#   docker compose --profile test up -d postgres-test
 
 services:
   api:
@@ -44,6 +47,24 @@ services:
       timeout: 3s
       retries: 10
     restart: unless-stopped
+
+  postgres-test:
+    profiles: ['test']
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      # Throwaway data on a tmpfs, reachable only from this machine: no password to commit.
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - '5433:5432'
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
 volumes:
   redisdata:
