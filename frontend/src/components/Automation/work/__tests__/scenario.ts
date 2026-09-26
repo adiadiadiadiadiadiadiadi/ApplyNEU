@@ -27,9 +27,11 @@ export const reachesOneJob = (): Answer[] => [
   { match: 'btn.btn_alt-default', result: 'clicked' },
   { match: "return { found: true, value: input.value || '' }", result: { found: true, value: 'software' } },
 
-  // one job card, then no more pages. `skipUnpaid` must precede `list-item-`: the
-  // card-click script contains both, and the fake takes the first match.
-  { match: 'skipUnpaid', result: { status: 'clicked', title: 'Backend Intern', company: 'Acme', displayTitle: 'Backend Intern @ Acme' } },
+  // one job card, then no more pages. `skipUnpaid` and `const cardIndex =` must both
+  // precede `list-item-`: the inspect and click scripts each contain it, and the fake
+  // takes the first match.
+  { match: 'skipUnpaid', result: { status: 'eligible', title: 'Backend Intern', company: 'Acme', displayTitle: 'Backend Intern @ Acme' } },
+  { match: 'const cardIndex =', result: 'clicked' },
   { match: 'list-item-', result: 1 },
   { match: 'job description', result: 'A backend internship building services. '.repeat(4) },
   { match: "text === 'next'", result: { exists: false } },

@@ -21,6 +21,9 @@ import { requestApprovalForJob, withHumanFallback } from './approval'
 import { retry, sleep, waitForResume } from './pacing'
 import { loadUserPreferences, prefersRecentJobs, allowsUnpaidRoles } from './preferences'
 
+const jobKey = (company: unknown, title: unknown) =>
+  `${String(company ?? '').trim().toLowerCase()}::${String(title ?? '').trim().toLowerCase()}`
+
 let currentJobApplicationId: string | null = null
 let clearedTasksForApplication = false
 let greeted = false
@@ -33,6 +36,11 @@ export const ensureGreeted = () => {
 }
 
 const runFromDashboard = async (webview: AutomationWebview) => {
+  // Search terms overlap, so the same posting surfaces under several of them in one
+  // run. Per-run and in-memory, so a (company, title) collision costs at most one
+  // posting until the next run.
+  const seenJobs = new Set<string>()
+
   const jobCardCount = (): Promise<number> => webview.executeJavaScript(`
     (() => Array.from(document.querySelectorAll('div[id^="list-item-"]')).length)();
   `)
@@ -400,7 +408,7 @@ const runFromDashboard = async (webview: AutomationWebview) => {
       addLog(`${jobCount} jobs found for "${term}" on page ${pageIndex}.`)
       for (let idx = 0; idx < jobCount; idx++) {
         await waitForResume()
-        const clickJobResult = await webview.executeJavaScript(`
+        const cardResult = await webview.executeJavaScript(`
           (() => {
             const skipUnpaid = ${JSON.stringify(!allowsUnpaidRoles())};
             const cards = Array.from(document.querySelectorAll('div[id^="list-item-"]'));
@@ -447,15 +455,38 @@ const runFromDashboard = async (webview: AutomationWebview) => {
               : rawCompany;
             const displayTitle = companyName ? \`\${shortTitle} @ \${companyName}\` : shortTitle;
 
-            card.scrollIntoView({ behavior: 'instant', block: 'center' });
-            if (typeof card.click === 'function') {
-              card.click();
-            } else {
-              card.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-            }
-            return { status: 'clicked', title: shortTitle, company: companyName, displayTitle };
+            return { status: 'eligible', title: shortTitle, company: companyName, displayTitle };
           })();
         `)
+
+        let clickJobResult = cardResult
+
+        if (cardResult?.status === 'eligible') {
+          const key = jobKey(cardResult.company, cardResult.title)
+          if (seenJobs.has(key)) {
+            clickJobResult = { status: 'skipped', reason: 'seen this run', displayTitle: cardResult.displayTitle }
+          } else {
+            seenJobs.add(key)
+            const clicked = await webview.executeJavaScript(`
+              (() => {
+                const cardIndex = ${idx};
+                const cards = Array.from(document.querySelectorAll('div[id^="list-item-"]'));
+                const card = cards[cardIndex];
+                if (!card) return 'missing';
+                card.scrollIntoView({ behavior: 'instant', block: 'center' });
+                if (typeof card.click === 'function') {
+                  card.click();
+                } else {
+                  card.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+                }
+                return 'clicked';
+              })();
+            `)
+            clickJobResult = clicked === 'clicked'
+              ? { ...cardResult, status: 'clicked' }
+              : { status: 'missing' }
+          }
+        }
 
         if (clickJobResult?.status === 'clicked') {
           currentJobApplicationId = null
@@ -1489,6 +1520,9 @@ const runFromDashboard = async (webview: AutomationWebview) => {
           } catch (_e) {
             consecutiveDoNotApply = 0
           }
+        } else if (clickJobResult?.status === 'skipped' && clickJobResult.reason === 'seen this run') {
+          consecutiveDoNotApply = 0
+          addLog(`Skipped job #${idx + 1} (ALREADY SEEN THIS RUN): ${clickJobResult.displayTitle || 'Untitled job'}.`)
         } else if (clickJobResult?.status === 'skipped') {
           consecutiveDoNotApply = 0
           const reason = clickJobResult.reason
