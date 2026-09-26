@@ -13,7 +13,6 @@ const getResumeSearchTerms = jest.fn<(resume_id: string, user_id: string) => Pro
 
 // Both default to resolving.
 const generateSearchTerms = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
-const cacheShortResume = jest.fn<(resume_id: string) => Promise<any>>();
 
 const queueAdd = jest.fn<(...args: any[]) => Promise<any>>();
 
@@ -36,10 +35,6 @@ jest.unstable_mockModule('../../src/services/resume/resume.service.ts', () => ({
 
 jest.unstable_mockModule('../../src/services/user/user.ai.service.ts', () => ({
   getSearchTerms: generateSearchTerms,
-}));
-
-jest.unstable_mockModule('../../src/services/resume/ai.resume.service.ts', () => ({
-  cacheShortResume,
 }));
 
 // Enrichment is enqueued, not run inline; mock the queue so tests need no Redis.
@@ -70,7 +65,6 @@ beforeEach(() => {
   updateResumeInterests.mockReset();
   getResumeSearchTerms.mockReset();
   generateSearchTerms.mockReset();
-  cacheShortResume.mockReset();
   queueAdd.mockReset();
   authenticate.mockReset();
   authenticate.mockImplementation((req: any, _res: any, next: any) => {
@@ -79,7 +73,6 @@ beforeEach(() => {
   });
   // Keep post-save AI tasks quiet by default.
   generateSearchTerms.mockResolvedValue(undefined);
-  cacheShortResume.mockResolvedValue(undefined);
 });
 
 describe('POST /me/resumes/upload', () => {
@@ -177,7 +170,6 @@ describe('POST /resumes/save', () => {
     expect(res.status).toBe(200);
     expect(queueAdd).not.toHaveBeenCalled();
     expect(generateSearchTerms).not.toHaveBeenCalled();
-    expect(cacheShortResume).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -208,7 +200,6 @@ describe('POST /resumes/save', () => {
     expect(res.status).toBe(404);
     expect(res.body.message).toBe('Resume not found or already completed.');
     expect(generateSearchTerms).not.toHaveBeenCalled();
-    expect(cacheShortResume).not.toHaveBeenCalled();
   });
 
   it('returns 500 when the service throws a non-AppError', async () => {
@@ -357,7 +348,6 @@ describe('PUT /resumes/:resume_id/interests', () => {
       expect.objectContaining({ jobId: RESUME_ID, attempts: 3 }),
     );
     expect(generateSearchTerms).not.toHaveBeenCalled();
-    expect(cacheShortResume).not.toHaveBeenCalled();
   });
 
   it('returns 400 when interests is missing', async () => {

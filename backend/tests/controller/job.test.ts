@@ -178,15 +178,15 @@ describe('POST /me/jobs/analyze', () => {
     expect(sendJobDescription).not.toHaveBeenCalled();
   });
 
-  it('propagates an AppError status from the service (e.g. 404 resume not cached)', async () => {
-    sendJobDescription.mockRejectedValue(new AppError(404, 'Short resume not cached.'));
+  it('propagates an AppError status from the service (e.g. 404 resume not found)', async () => {
+    sendJobDescription.mockRejectedValue(new AppError(404, 'Resume not found.'));
 
     const res = await request(app)
       .post(url)
       .send({ job_description: JOB_DESCRIPTION, company: COMPANY, title: TITLE });
 
     expect(res.status).toBe(404);
-    expect(res.body.message).toBe('Short resume not cached.');
+    expect(res.body.message).toBe('Resume not found.');
   });
 
   it('returns 500 when the service throws a non-AppError', async () => {

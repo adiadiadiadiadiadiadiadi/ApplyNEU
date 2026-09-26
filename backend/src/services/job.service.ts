@@ -35,9 +35,8 @@ const normalizeEmployerInstructions = (input: any): EmployerInstruction[] => {
 
 /**
  * Sends a job description to Claude Haiku to decide APPLY/DO_NOT_APPLY using the user's
- * cached short resume and their job_match sensitivity preference (low/medium/high).
+ * resume text and their job_match sensitivity preference (low/medium/high).
  * Also extracts any required external application steps from the posting.
- * Relies on short_resume being pre-cached; throws 404 if it hasn't been generated yet.
  * @param user_id - User evaluating the job
  * @param job_description - Full text of the job posting
  * @param company - Company name for prompt context and instruction formatting
@@ -53,8 +52,8 @@ export const sendJobDescription = async (user_id: string, job_description: strin
     if (!resumeResult.rows.length) throw new AppError(404, 'Resume not found.');
 
     const row = resumeResult.rows[0];
-    const resume = row.short_resume || row.resume_text;
-    if (!resume) throw new AppError(404, 'Short resume not cached.');
+    const resume = row.resume_text;
+    if (!resume) throw new AppError(404, 'Resume not found.');
 
     const prefsResult = await pool.query(
       `SELECT job_match FROM preferences WHERE user_id::text = $1 LIMIT 1;`,
