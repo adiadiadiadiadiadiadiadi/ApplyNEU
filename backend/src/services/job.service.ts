@@ -2,6 +2,7 @@ import { pool } from '../db/index.ts';
 import Anthropic from '@anthropic-ai/sdk';
 import { AppError } from '../errors/AppError.ts';
 import { withRetry } from '../utils/retry.ts';
+import { normalizeAndHash } from '../utils/hash.ts';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -10,6 +11,7 @@ type EmployerInstruction = { instruction: string; description: string };
 export type JobMatchSensitivity = 'low' | 'medium' | 'high';
 
 const NON_REQUIRED_TASK_PATTERN = /\b(ad[\s-]?block(?:er)?|pop[\s-]?up(?: blocker)?|clear (?:your )?cache|cookies?|switch (?:to )?(?:another|different) browser|disable (?:browser )?extensions?|enable javascript|incognito|private mode|vpn|proxy|firewall|antivirus|troubleshoot|workaround|tip|optional|recommended|preference)\b/i;
+
 
 /**
  * Filters and deduplicates a raw list of employer instruction objects.
@@ -178,9 +180,10 @@ export const sendJobDescription = async (user_id: string, job_description: strin
 };
 
 /**
- * Inserts a job, deduplicating on (company, title). On conflict, fetches and returns
- * the existing row instead of inserting — the DO NOTHING clause means RETURNING would
- * otherwise give no rows.
+ * Inserts a job, deduplicating on (company, title, description_hash) so that a repost
+ * with a changed description becomes a new job_id rather than mutating the existing row.
+ * A conflict therefore means the description is byte-identical after normalization, which
+ * makes the DO UPDATE a no-op kept only so RETURNING yields the existing row.
  * @param company - Company name
  * @param title - Job title
  * @param description - Full job description text
@@ -189,13 +192,13 @@ export const addJob = async (company: string, title: string, description: string
   try {
     const result = await pool.query(
       `
-        INSERT INTO jobs (company, title, description)
-        VALUES ($1, $2, $3)
-        ON CONFLICT (company, title)
+        INSERT INTO jobs (company, title, description, description_hash)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (company, title, description_hash)
         DO UPDATE SET description = EXCLUDED.description
         RETURNING *;
       `,
-      [company, title, description]
+      [company, title, description, normalizeAndHash(description)]
     );
     if (!result.rows[0]) throw new AppError(500, 'Error creating job.');
     return result.rows[0];
