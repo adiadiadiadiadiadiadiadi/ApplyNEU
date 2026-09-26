@@ -8,6 +8,7 @@ const completeResumeUpload = jest.fn<(resume_id: string, key: string, user_id: s
 const getPossibleInterests = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
 const getPrimaryResume = jest.fn<(user_id: string) => Promise<any>>();
 const listResumes = jest.fn<(user_id: string) => Promise<any>>();
+const setPrimaryResume = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
 const getResumeInterests = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
 const updateResumeInterests = jest.fn<(resume_id: string, interests: string[], user_id: string) => Promise<any>>();
 const getResumeSearchTerms = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
@@ -30,6 +31,7 @@ jest.unstable_mockModule('../../src/services/resume/resume.service.ts', () => ({
   getPossibleInterests,
   getPrimaryResume,
   listResumes,
+  setPrimaryResume,
   getResumeInterests,
   updateResumeInterests,
   getResumeSearchTerms,
@@ -51,6 +53,7 @@ jest.unstable_mockModule('../../src/controller/middleware/authenticate.ts', () =
 const { app } = await import('../../src/app.ts');
 
 const RESUME_ID = 'resume-123';
+const RESUME_UUID = '7f1c1a3e-2b5d-4c7a-9f10-8e2d4b6a1c33';
 const KEY = 'resumes/abc123.pdf';
 
 const rejectAuth = () =>
@@ -64,6 +67,7 @@ beforeEach(() => {
   getPossibleInterests.mockReset();
   getPrimaryResume.mockReset();
   listResumes.mockReset();
+  setPrimaryResume.mockReset();
   getResumeInterests.mockReset();
   updateResumeInterests.mockReset();
   getResumeSearchTerms.mockReset();
@@ -293,10 +297,10 @@ describe('GET /me/resumes/primary', () => {
 describe('GET /me/resumes', () => {
   const url = '/me/resumes';
 
-  it('returns 200 and the caller\'s resumes', async () => {
+  it('returns 200 and the caller\'s resumes, newest first, flagged with is_primary', async () => {
     const resumes = [
-      { resume_id: RESUME_ID, file_name: 'cv.pdf', created_at: '2026-01-02', upload_complete: true },
-      { resume_id: 'resume-456', file_name: 'old.pdf', created_at: '2026-01-01', upload_complete: true },
+      { resume_id: RESUME_ID, file_name: 'cv.pdf', created_at: '2026-01-02', upload_complete: true, is_primary: false },
+      { resume_id: 'resume-456', file_name: 'old.pdf', created_at: '2026-01-01', upload_complete: true, is_primary: true },
     ];
     listResumes.mockResolvedValue(resumes);
 
@@ -323,6 +327,62 @@ describe('GET /me/resumes', () => {
 
     expect(res.status).toBe(401);
     expect(listResumes).not.toHaveBeenCalled();
+  });
+});
+
+describe('PUT /me/resumes/:resume_id/primary', () => {
+  const url = `/me/resumes/${RESUME_UUID}/primary`;
+
+  it('returns 200 and the new pointer on success', async () => {
+    setPrimaryResume.mockResolvedValue({ primary_resume_id: RESUME_UUID });
+
+    const res = await request(app).put(url);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ primary_resume_id: RESUME_UUID });
+    expect(setPrimaryResume).toHaveBeenCalledWith(RESUME_UUID, USER_ID);
+  });
+
+  it('returns 404, not 500, for a resume the caller does not own', async () => {
+    setPrimaryResume.mockRejectedValue(new AppError(404, 'Resume not found.'));
+
+    const res = await request(app).put(url);
+
+    expect(res.status).toBe(404);
+    expect(res.body.message).toBe('Resume not found.');
+  });
+
+  it('returns 400 when the resume upload has not completed', async () => {
+    setPrimaryResume.mockRejectedValue(new AppError(400, 'Resume upload is not complete.'));
+
+    const res = await request(app).put(url);
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('Resume upload is not complete.');
+  });
+
+  it('returns 400 without calling the service when resume_id is not a resume id', async () => {
+    const res = await request(app).put('/me/resumes/not-a-uuid/primary');
+
+    expect(res.status).toBe(400);
+    expect(setPrimaryResume).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 when the service throws a non-AppError', async () => {
+    setPrimaryResume.mockRejectedValue(new Error('boom'));
+
+    const res = await request(app).put(url);
+
+    expect(res.status).toBe(500);
+  });
+
+  it('returns 401 when the caller is not authenticated', async () => {
+    rejectAuth();
+
+    const res = await request(app).put(url);
+
+    expect(res.status).toBe(401);
+    expect(setPrimaryResume).not.toHaveBeenCalled();
   });
 });
 
