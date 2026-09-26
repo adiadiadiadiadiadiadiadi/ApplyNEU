@@ -35,7 +35,7 @@ export default function ProfileInterests() {
       if (!saveResp.ok) {
         throw new Error('Unable to save interests')
       }
-      navigate('/profile-settings')
+      navigate('/settings')
     } catch (err) {
       console.error('Error saving interests', err)
       setError('Could not save interests. Please try again.')
