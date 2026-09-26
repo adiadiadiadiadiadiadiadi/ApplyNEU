@@ -23,10 +23,6 @@ export default function ProfileSettings() {
   const [savingName, setSavingName] = useState(false)
   const [savingEmail, setSavingEmail] = useState(false)
   const [savingGrad, setSavingGrad] = useState(false)
-  const [resumeFile, setResumeFile] = useState<File | null>(null)
-  const [uploadingResume, setUploadingResume] = useState(false)
-  const [uploadError, setUploadError] = useState<string | null>(null)
-  const [currentResumeName, setCurrentResumeName] = useState('')
   const [emailError, setEmailError] = useState<string | null>(null)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -34,7 +30,6 @@ export default function ProfileSettings() {
   const [passwordError, setPasswordError] = useState<string | null>(null)
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
   const [savingPassword, setSavingPassword] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     if (!cachedProfile && status === 'idle') {
@@ -57,25 +52,6 @@ export default function ProfileSettings() {
     setSavedEmail(cachedProfile.email)
     setSavedGradYear(cachedProfile.gradYear)
   }, [cachedProfile])
-
-  useEffect(() => {
-    let cancelled = false
-    const loadLatestResume = async () => {
-      try {
-        const resp = await api.get('/me/resumes/latest')
-        if (cancelled || !resp.ok) return
-        const latest = await resp.json()
-        setCurrentResumeName((latest.file_name ?? '').toString())
-      } catch (err) {
-        console.error('Failed fetching latest resume', err)
-      }
-    }
-
-    void loadLatestResume()
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   // prevent page scroll while on profile settings
   useEffect(() => {
@@ -241,73 +217,6 @@ export default function ProfileSettings() {
       setPasswordError('Unexpected error updating password.')
     } finally {
       setSavingPassword(false)
-    }
-  }
-
-  const handleResumeUpload = async (fileToUpload?: File) => {
-    if (uploadingResume) return
-    const file = fileToUpload ?? resumeFile
-    if (!userId || !file) {
-      setUploadError('Select a PDF first')
-      return
-    }
-    setUploadingResume(true)
-    setUploadError(null)
-
-    try {
-      const presignResp = await api.post('/me/resumes/upload', {
-        file_name: file.name,
-        file_type: file.type,
-        file_size: file.size,
-      })
-
-      if (!presignResp.ok) {
-        throw new Error('Could not get upload URL')
-      }
-
-      const { uploadUrl, key, resumeId } = await presignResp.json()
-
-      const uploadResp = await fetch(uploadUrl, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': file.type,
-        },
-        body: file,
-      })
-
-      if (!uploadResp.ok) {
-        throw new Error('Upload failed')
-      }
-
-      const saveResp = await api.post('/resumes/save', {
-        resume_id: resumeId,
-        key,
-        file_name: file.name,
-        file_size_bytes: file.size,
-      })
-
-      if (!saveResp.ok) {
-        throw new Error('Could not save resume record')
-      }
-
-      let interests: string[] = []
-      try {
-        const interestsResp = await api.get(`/resumes/${resumeId}/possible-interests`)
-        if (interestsResp.ok) {
-          interests = await interestsResp.json()
-        }
-      } catch (err) {
-        console.error('Error fetching interests', err)
-      }
-
-      setCurrentResumeName(file.name)
-      setResumeFile(null)
-      navigate('/profile-settings/interests', { state: { interests, resumeId } })
-    } catch (err) {
-      console.error('Resume upload failed', err)
-      setUploadError('Could not upload resume. Please try again.')
-    } finally {
-      setUploadingResume(false)
     }
   }
 
@@ -479,41 +388,6 @@ export default function ProfileSettings() {
             </div>
           </form>
         </div>
-        <form className="profile-field" onSubmit={(event) => event.preventDefault()}>
-          <label htmlFor="profile-resume-input">resume (pdf)</label>
-          <div className="profile-input-row">
-            <input
-              id="profile-resume-display"
-              type="text"
-              readOnly
-              placeholder="choose a PDF"
-              value={resumeFile?.name ?? currentResumeName}
-              onClick={() => fileInputRef.current?.click()}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault()
-                  fileInputRef.current?.click()
-                }
-              }}
-            />
-            <input
-              ref={fileInputRef}
-              id="profile-resume-input"
-              type="file"
-              accept=".pdf"
-              style={{ display: 'none' }}
-              onChange={(event) => {
-                const file = event.target.files?.[0] ?? null
-                setResumeFile(file)
-                setUploadError(null)
-                if (file) {
-                  void handleResumeUpload(file)
-                }
-              }}
-            />
-          </div>
-          {uploadError && <div className="profile-upload-error">{uploadError}</div>}
-        </form>
       </div>
     </div>
   )

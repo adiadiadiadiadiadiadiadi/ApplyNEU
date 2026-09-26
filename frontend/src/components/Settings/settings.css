@@ -188,6 +188,170 @@
   color: #2ed4a4;
 }
 
+.resume-card {
+  margin-bottom: 20px;
+}
+
+.resume-pick-btn {
+  padding: 8px 16px;
+  border: 1px solid #2a2a2a;
+  border-radius: 10px;
+  background: #111;
+  color: #a0a0a0;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.resume-pick-btn:hover:not(:disabled),
+.resume-pick-btn:focus-visible {
+  background: #12372c;
+  border-color: #2f654d;
+  color: #2ed4a4;
+  outline: none;
+}
+
+.resume-pick-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.settings-back {
+  background: none;
+  border: none;
+  color: #8d8d8d;
+  font-size: 22px;
+  line-height: 1;
+  padding: 0 12px 0 0;
+  cursor: pointer;
+}
+
+.settings-back:hover,
+.settings-back:focus-visible {
+  color: #f0f0f0;
+  outline: none;
+}
+
+.resume-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.resume-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  min-height: 56px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  border-top: 1px solid #1c1c1c;
+}
+
+.resume-row:first-child {
+  border-top: none;
+}
+
+.resume-row__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.resume-row__name {
+  font-size: 14px;
+  color: #a5a5a5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resume-row__date {
+  font-size: 12px;
+  color: #6b6b6b;
+  white-space: nowrap;
+}
+
+.resume-row--selected .resume-row__name {
+  color: #f5f5f5;
+  font-weight: 600;
+}
+
+.resume-row__check {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1.5px solid #3a3a3a;
+  border-radius: 50%;
+  background: none;
+  color: #0b0b0b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.resume-row__check:hover:not(:disabled),
+.resume-row__check:focus-visible {
+  border-color: #6f6f6f;
+  outline: none;
+}
+
+.resume-row__check--on,
+.resume-row__check--on:hover:not(:disabled) {
+  background: #2ed4a4;
+  border-color: #2ed4a4;
+  cursor: default;
+}
+
+.resume-row__check:disabled {
+  cursor: default;
+}
+
+/* The row itself carries no padding so the button can fill it edge to edge,
+   making the whole row the click target rather than just the glyph. */
+.resume-row--add {
+  padding: 0;
+}
+
+.resume-row__add {
+  flex: 1;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #6f6f6f;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.resume-row__add:hover:not(:disabled),
+.resume-row__add:focus-visible {
+  color: #2ed4a4;
+  outline: none;
+}
+
+.resume-row__add:disabled {
+  cursor: default;
+  font-size: 13px;
+}
+
+.resume-error {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: #f87171;
+}
+
 /* Override global centering from index.css for this view */
 body {
   background: #0b0b0b;

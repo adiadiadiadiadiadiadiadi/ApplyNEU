@@ -9,8 +9,16 @@ import './settings.css'
 type ResumeRow = {
   resume_id: string
   file_name: string
+  created_at?: string
   upload_complete?: boolean
   is_primary?: boolean
+}
+
+const formatUploadDate = (value?: string) => {
+  if (!value) return ''
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 const LIST_SUPPRESSOR = 'resumes-list'
@@ -38,32 +46,39 @@ export default function Resumes() {
   useEffect(() => {
     let cancelled = false
 
-    // The list call is allowed to fail: an older backend 404s it and the /latest
-    // fallback below still renders. Suppressed so that 404 cannot trip the global
+    // The list is the source of truth; /primary only covers the list call erroring
+    // out, so an empty list stays empty rather than resurfacing a resume the filter
+    // below deliberately dropped. Suppressed so a 404 cannot trip the global
     // interceptor into replacing this screen with the /error page.
     const loadResumes = async () => {
       suppressErrorRedirect(LIST_SUPPRESSOR)
       try {
         const listResp = await api.get('/me/resumes')
         if (cancelled) return
+
         if (listResp.ok) {
           const rows = await listResp.json()
           const uploaded = Array.isArray(rows)
             ? rows.filter((row: ResumeRow) => row.upload_complete !== false)
             : []
+          setResumes(uploaded)
           if (uploaded.length) {
-            setResumes(uploaded)
             setSelectedId((uploaded.find((row: ResumeRow) => row.is_primary) ?? uploaded[0]).resume_id)
-            return
           }
+          return
         }
 
-        const latestResp = await api.get('/me/resumes/latest')
-        if (cancelled || !latestResp.ok) return
-        const latest = await latestResp.json()
-        if (!latest?.resume_id) return
-        setResumes([{ resume_id: latest.resume_id, file_name: latest.file_name ?? '' }])
-        setSelectedId(latest.resume_id)
+        const primaryResp = await api.get('/me/resumes/primary')
+        if (cancelled || !primaryResp.ok) return
+        const primary = await primaryResp.json()
+        if (!primary?.resume_id) return
+        setResumes([{
+          resume_id: primary.resume_id,
+          file_name: primary.file_name ?? '',
+          created_at: primary.created_at,
+          is_primary: true,
+        }])
+        setSelectedId(primary.resume_id)
       } catch (err) {
         console.error('Failed fetching resumes', err)
       } finally {
@@ -188,7 +203,14 @@ export default function Resumes() {
                   key={resume.resume_id}
                   className={`resume-row ${isSelected ? 'resume-row--selected' : ''}`}
                 >
-                  <span className="resume-row__name">{resume.file_name}</span>
+                  <span className="resume-row__meta">
+                    <span className="resume-row__name">{resume.file_name}</span>
+                    {formatUploadDate(resume.created_at) && (
+                      <span className="resume-row__date">
+                        uploaded {formatUploadDate(resume.created_at)}
+                      </span>
+                    )}
+                  </span>
                   <button
                     type="button"
                     className={`resume-row__check ${isSelected ? 'resume-row__check--on' : ''}`}
