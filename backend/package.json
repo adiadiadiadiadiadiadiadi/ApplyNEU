@@ -8,6 +8,7 @@
   },
   "scripts": {
     "test": "NODE_ENV=test NODE_OPTIONS='--experimental-vm-modules' jest --runInBand",
+    "test:integration": "NODE_ENV=test NODE_OPTIONS='--experimental-vm-modules' jest --runInBand --config jest.integration.config.cjs",
     "dev": "nodemon --exec tsx src/app.ts",
     "worker": "nodemon --exec tsx src/workers/resumeEnrichmentWorker.ts",
     "db:reset": "tsx scripts/reset-db.ts",
