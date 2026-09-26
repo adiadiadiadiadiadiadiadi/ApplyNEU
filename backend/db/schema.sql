@@ -29,7 +29,8 @@ CREATE TABLE public.jobs (
     job_id uuid DEFAULT gen_random_uuid() NOT NULL,
     title text NOT NULL,
     description text NOT NULL,
-    company text NOT NULL
+    company text NOT NULL,
+    description_hash text NOT NULL
 );
 
 CREATE TABLE public.preferences (
@@ -80,7 +81,7 @@ ALTER TABLE ONLY public.job_applications
     ADD CONSTRAINT job_applications_pkey PRIMARY KEY (application_id);
 
 ALTER TABLE ONLY public.jobs
-    ADD CONSTRAINT jobs_company_title_uniq UNIQUE (company, title);
+    ADD CONSTRAINT jobs_company_title_hash_uniq UNIQUE (company, title, description_hash);
 
 ALTER TABLE ONLY public.jobs
     ADD CONSTRAINT jobs_pkey PRIMARY KEY (job_id);
