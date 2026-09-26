@@ -6,7 +6,8 @@ const getUploadUrl =
   jest.fn<(user_id: string, file_name: string, file_type: string, file_size: number) => Promise<any>>();
 const completeResumeUpload = jest.fn<(resume_id: string, key: string, user_id: string) => Promise<any>>();
 const getPossibleInterests = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
-const getLatestResume = jest.fn<(user_id: string) => Promise<any>>();
+const getPrimaryResume = jest.fn<(user_id: string) => Promise<any>>();
+const listResumes = jest.fn<(user_id: string) => Promise<any>>();
 const getResumeInterests = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
 const updateResumeInterests = jest.fn<(resume_id: string, interests: string[], user_id: string) => Promise<any>>();
 const getResumeSearchTerms = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
@@ -27,7 +28,8 @@ jest.unstable_mockModule('../../src/services/resume/resume.service.ts', () => ({
   getUploadUrl,
   completeResumeUpload,
   getPossibleInterests,
-  getLatestResume,
+  getPrimaryResume,
+  listResumes,
   getResumeInterests,
   updateResumeInterests,
   getResumeSearchTerms,
@@ -60,7 +62,8 @@ beforeEach(() => {
   getUploadUrl.mockReset();
   completeResumeUpload.mockReset();
   getPossibleInterests.mockReset();
-  getLatestResume.mockReset();
+  getPrimaryResume.mockReset();
+  listResumes.mockReset();
   getResumeInterests.mockReset();
   updateResumeInterests.mockReset();
   getResumeSearchTerms.mockReset();
@@ -254,22 +257,22 @@ describe('GET /resumes/:resume_id/possible-interests', () => {
   });
 });
 
-describe('GET /me/resumes/latest', () => {
-  const url = '/me/resumes/latest';
+describe('GET /me/resumes/primary', () => {
+  const url = '/me/resumes/primary';
 
-  it('returns 200 and the latest resume record', async () => {
+  it('returns 200 and the primary resume record', async () => {
     const resume = { resume_id: RESUME_ID, file_name: 'cv.pdf', key: KEY, file_size_bytes: 12345, created_at: '2026-01-01' };
-    getLatestResume.mockResolvedValue(resume);
+    getPrimaryResume.mockResolvedValue(resume);
 
     const res = await request(app).get(url);
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual(resume);
-    expect(getLatestResume).toHaveBeenCalledWith(USER_ID);
+    expect(getPrimaryResume).toHaveBeenCalledWith(USER_ID);
   });
 
   it('propagates a 404 AppError when no resume exists for the user', async () => {
-    getLatestResume.mockRejectedValue(new AppError(404, 'Resume not found.'));
+    getPrimaryResume.mockRejectedValue(new AppError(404, 'Resume not found.'));
 
     const res = await request(app).get(url);
 
@@ -283,7 +286,43 @@ describe('GET /me/resumes/latest', () => {
     const res = await request(app).get(url);
 
     expect(res.status).toBe(401);
-    expect(getLatestResume).not.toHaveBeenCalled();
+    expect(getPrimaryResume).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /me/resumes', () => {
+  const url = '/me/resumes';
+
+  it('returns 200 and the caller\'s resumes', async () => {
+    const resumes = [
+      { resume_id: RESUME_ID, file_name: 'cv.pdf', created_at: '2026-01-02', upload_complete: true },
+      { resume_id: 'resume-456', file_name: 'old.pdf', created_at: '2026-01-01', upload_complete: true },
+    ];
+    listResumes.mockResolvedValue(resumes);
+
+    const res = await request(app).get(url);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual(resumes);
+    expect(listResumes).toHaveBeenCalledWith(USER_ID);
+  });
+
+  it('returns 200 and an empty list when the user has no resumes', async () => {
+    listResumes.mockResolvedValue([]);
+
+    const res = await request(app).get(url);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it('returns 401 when the caller is not authenticated', async () => {
+    rejectAuth();
+
+    const res = await request(app).get(url);
+
+    expect(res.status).toBe(401);
+    expect(listResumes).not.toHaveBeenCalled();
   });
 });
 

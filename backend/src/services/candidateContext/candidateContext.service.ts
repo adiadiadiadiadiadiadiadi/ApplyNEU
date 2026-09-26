@@ -4,8 +4,8 @@ import { normalizeAndHash } from '../../utils/hash.ts';
 import type { CandidateContextResponse } from '../../types/candidateContext.ts';
 
 /**
- * Gathers everything needed to reason about a candidate: their most recent
- * resume, their matching preferences and their profile.
+ * Gathers everything needed to reason about a candidate: their primary resume
+ * (falling back to their newest), their matching preferences and their profile.
  * @param user_id - ID of the user
  */
 export const getCandidateContext = async (user_id: string): Promise<CandidateContextResponse> => {
@@ -26,7 +26,7 @@ export const getCandidateContext = async (user_id: string): Promise<CandidateCon
                 SELECT resume_text, search_terms, interests
                 FROM resumes
                 WHERE user_id = p.user_id AND upload_complete = true
-                ORDER BY created_at DESC
+                ORDER BY (resume_id = pref.primary_resume_id) DESC NULLS LAST, created_at DESC
                 LIMIT 1
             ) r ON true
             WHERE p.user_id::text = $1;

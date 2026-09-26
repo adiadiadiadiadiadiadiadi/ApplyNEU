@@ -6,6 +6,7 @@ import { AppError } from '../../errors/AppError.ts';
 import { pool } from '../../db/index.ts';
 import Anthropic from '@anthropic-ai/sdk';
 import { withRetry } from '../../utils/retry.ts';
+import type { ResumeSummary } from '../../types/resumes.ts';
 
 const s3Client = new S3Client({
     region: process.env.AWS_REGION || 'us-east-2',
@@ -142,6 +143,12 @@ export const completeResumeUpload = async (resume_id: string, key: string, user_
         const result = await pool.query(
             `UPDATE resumes SET upload_complete = true, resume_text = $1 WHERE resume_id = $2 RETURNING *`,
             [resume_text, resume_id]
+        );
+
+        // Point the user at what they just uploaded rather than letting recency imply it
+        await pool.query(
+            `UPDATE preferences SET primary_resume_id = $1 WHERE user_id::text = $2`,
+            [resume_id, user_id]
         );
 
         // Delete this user's earlier unpruned resume now that a new one exists
@@ -286,17 +293,43 @@ export const getResumeSearchTerms = async (resume_id: string, user_id: string) =
 };
 
 /**
- * Retrieves metadata (no full text) for the user's most recently uploaded resume.
+ * Lists metadata (no full text) for every resume the user has uploaded, newest first.
  * @param user_id - ID of the user
  */
-export const getLatestResume = async (user_id: string) => {
+export const listResumes = async (user_id: string): Promise<ResumeSummary[]> => {
+    try {
+        const result = await pool.query(
+            `
+            SELECT resume_id, file_name, created_at, upload_complete
+            FROM resumes
+            WHERE user_id::text = $1
+            ORDER BY created_at DESC;
+            `,
+            [user_id]
+        );
+        return result.rows;
+    } catch (error) {
+        if (error instanceof AppError) throw error;
+        throw new AppError(500, 'Error fetching resumes.');
+    }
+};
+
+/**
+ * Retrieves metadata (no full text) for the user's primary resume, falling back to their
+ * newest when no primary is set, so a user whose primary was pruned still resolves to one.
+ * @param user_id - ID of the user
+ */
+export const getPrimaryResume = async (user_id: string) => {
     try {
         const result = await pool.query(
             `
             SELECT resume_id, file_name, key, file_size_bytes, created_at
             FROM resumes
             WHERE user_id::text = $1
-            ORDER BY created_at DESC
+            ORDER BY (resume_id = (
+                         SELECT primary_resume_id FROM preferences WHERE user_id::text = $1
+                     )) DESC NULLS LAST,
+                     created_at DESC
             LIMIT 1;
             `,
             [user_id]
@@ -305,6 +338,6 @@ export const getLatestResume = async (user_id: string) => {
         return result.rows[0];
     } catch (error) {
         if (error instanceof AppError) throw error;
-        throw new AppError(500, 'Error fetching latest resume.');
+        throw new AppError(500, 'Error fetching primary resume.');
     }
 };

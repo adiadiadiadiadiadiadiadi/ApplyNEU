@@ -22,3 +22,10 @@ export interface ResumeSaveRequest extends Request {
 }
 
 export type PossibleInterestsRequest = Request<{ resume_id: string }>;
+
+export interface ResumeSummary {
+  resume_id: string;
+  file_name: string;
+  created_at: string;
+  upload_complete: boolean;
+}

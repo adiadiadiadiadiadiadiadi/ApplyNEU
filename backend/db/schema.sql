@@ -40,7 +40,8 @@ CREATE TABLE public.preferences (
     recent_jobs boolean DEFAULT true NOT NULL,
     job_match public.job_match_sensitivity DEFAULT 'low'::public.job_match_sensitivity NOT NULL,
     email_notifications boolean DEFAULT true NOT NULL,
-    unpaid_roles boolean DEFAULT false NOT NULL
+    unpaid_roles boolean DEFAULT false NOT NULL,
+    primary_resume_id uuid
 );
 
 CREATE TABLE public.profile (
@@ -95,6 +96,11 @@ ALTER TABLE ONLY public.profile
 ALTER TABLE ONLY public.resumes
     ADD CONSTRAINT resumes_pkey PRIMARY KEY (resume_id);
 
+-- Logically redundant given resumes_pkey, but a foreign key can only reference columns
+-- carrying a unique constraint of exactly that shape, and preferences points at both.
+ALTER TABLE ONLY public.resumes
+    ADD CONSTRAINT resumes_id_user_uniq UNIQUE (resume_id, user_id);
+
 ALTER TABLE ONLY public.tasks
     ADD CONSTRAINT tasks_pkey PRIMARY KEY (task_id);
 
@@ -113,6 +119,15 @@ ALTER TABLE ONLY public.job_applications
 
 ALTER TABLE ONLY public.preferences
     ADD CONSTRAINT preferences_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(user_id) ON DELETE CASCADE;
+
+-- Carrying user_id into the reference is what keeps a user's primary pointed at their own
+-- resume: preferences.user_id is the primary key, so the two user ids have to agree.
+--
+-- The column list on SET NULL is required, not decoration: a bare SET NULL nulls every
+-- referencing column, and user_id is this table's NOT NULL primary key, so deleting a
+-- resume someone had chosen would fail outright instead of clearing their pointer.
+ALTER TABLE ONLY public.preferences
+    ADD CONSTRAINT preferences_primary_resume_fkey FOREIGN KEY (primary_resume_id, user_id) REFERENCES public.resumes(resume_id, user_id) ON DELETE SET NULL (primary_resume_id);
 
 ALTER TABLE ONLY public.profile
     ADD CONSTRAINT profile_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(user_id) ON DELETE CASCADE;
