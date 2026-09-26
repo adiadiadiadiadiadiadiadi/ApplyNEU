@@ -41,20 +41,20 @@
 
 .stat-pill-label {
   display: block;
-  font-size: 0.65rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: rgba(255, 255, 255, 0.38);
-  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: lowercase;
+  color: #a3a3a3;
   margin-bottom: 0.25rem;
 }
 
 .stat-pill-value {
   display: block;
-  font-size: 1.75rem;
-  font-weight: 800;
+  font-size: 28px;
+  font-weight: 700;
   line-height: 1;
-  color: rgba(255, 255, 255, 0.95);
+  letter-spacing: -0.01em;
+  color: #f2f2f2;
   font-variant-numeric: tabular-nums;
 }
 
@@ -137,7 +137,6 @@
 .panel-label {
   font-size: 0.85rem;
   font-weight: bolder;
-  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: rgba(255, 255, 255, 0.4);
@@ -151,7 +150,6 @@
 
 .panel-count {
   font-size: 0.72rem;
-  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
   color: rgba(255, 255, 255, 0.35);
 }
 
@@ -163,7 +161,6 @@
   font-size: 0.9rem;
   color: rgba(255, 255, 255, 0.32);
   padding: 0.75rem 0;
-  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
 }
 
 .panel-empty {
@@ -173,7 +170,6 @@
   justify-content: center;
   font-size: 0.95rem;
   color: rgba(255, 255, 255, 0.3);
-  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
 }
 
 /* =========================================================
@@ -225,7 +221,6 @@
 
 .legend-count {
   font-size: 0.8rem;
-  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.88);
 }
@@ -248,7 +243,6 @@
 
 .tasks-remaining {
   font-size: 0.72rem;
-  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
   color: rgba(255, 255, 255, 0.35);
   margin: 0 0 0.5rem 0.25rem;
 }
@@ -485,7 +479,6 @@
   align-items: center;
   gap: 0.4rem;
   font-size: 0.78rem;
-  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-weight: 700;
@@ -553,7 +546,6 @@
 
 .app-date {
   font-size: 0.78rem;
-  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
   color: rgba(255, 255, 255, 0.38);
 }
 
@@ -572,7 +564,6 @@
   border: none;
   color: rgba(255, 255, 255, 0.45);
   cursor: pointer;
-  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
   text-transform: lowercase;
   text-decoration: none;
 }

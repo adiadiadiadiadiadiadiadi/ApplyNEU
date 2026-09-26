@@ -2,19 +2,16 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { api } from '../../lib/api'
-import { useAppSelector } from '../../store'
+import { useAppDispatch, useAppSelector } from '../../store'
+import { fetchUserProfile, setProfileDetails } from '../../store/userSlice'
 import './profile.css'
-
-type ProfileHeader = {
-  name: string
-  email: string
-}
 
 export default function ProfileSettings() {
   const navigate = useNavigate()
+  const dispatch = useAppDispatch()
   const cachedProfile = useAppSelector((state) => state.user.profile)
-  const [header, setHeader] = useState<ProfileHeader>({ name: '', email: '' })
-  const [userId, setUserId] = useState('')
+  const status = useAppSelector((state) => state.user.status)
+  const userId = cachedProfile?.id ?? ''
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [email, setEmail] = useState('')
@@ -40,89 +37,44 @@ export default function ProfileSettings() {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
-    if (cachedProfile) {
-      setUserId((prev) => prev || cachedProfile.id)
-      if (!firstName) setFirstName(cachedProfile.firstName)
-      if (!lastName) setLastName(cachedProfile.lastName)
-      if (!email) setEmail(cachedProfile.email)
-      if (!gradYear) setGradYear(cachedProfile.gradYear)
-      setSavedFirstName((prev) => prev || cachedProfile.firstName)
-      setSavedLastName((prev) => prev || cachedProfile.lastName)
-      setSavedEmail((prev) => prev || cachedProfile.email)
-      setSavedGradYear((prev) => prev || cachedProfile.gradYear)
-      setHeader((prev) => {
-        if (prev.name || prev.email) return prev
-        const full = `${cachedProfile.firstName} ${cachedProfile.lastName}`.trim()
-        return { name: full || cachedProfile.email, email: cachedProfile.email }
-      })
+    if (!cachedProfile && status === 'idle') {
+      void dispatch(fetchUserProfile())
     }
-  }, [cachedProfile, firstName, lastName, email, gradYear])
+  }, [dispatch, cachedProfile, status])
+
+  // Seed the inputs from the cached profile once. Later cache updates are
+  // echoes of this page's own saves, and re-seeding would clobber live edits.
+  const seeded = useRef(false)
+  useEffect(() => {
+    if (!cachedProfile || seeded.current) return
+    seeded.current = true
+    setFirstName(cachedProfile.firstName)
+    setLastName(cachedProfile.lastName)
+    setEmail(cachedProfile.email)
+    setGradYear(cachedProfile.gradYear)
+    setSavedFirstName(cachedProfile.firstName)
+    setSavedLastName(cachedProfile.lastName)
+    setSavedEmail(cachedProfile.email)
+    setSavedGradYear(cachedProfile.gradYear)
+  }, [cachedProfile])
 
   useEffect(() => {
-    const loadName = async () => {
-      const { data } = await supabase.auth.getUser()
-      const user = data.user
-      if (!user) return
-
-      setUserId(user.id)
-
-      const first = (user.user_metadata?.first_name ?? '').toString().trim()
-      const last = (user.user_metadata?.last_name ?? '').toString().trim()
-      const grad = (user.user_metadata?.grad_year ?? '').toString().trim()
-      const full = `${first} ${last}`.trim()
-      const emailFromAuth = (user.email ?? '').trim()
-
+    let cancelled = false
+    const loadLatestResume = async () => {
       try {
-        const resp = await api.get('/me')
-        if (resp.ok) {
-          const userRow = await resp.json()
-          const first = (userRow.first_name ?? '').toString()
-          const last = (userRow.last_name ?? '').toString()
-          const emailVal = (userRow.email ?? '').toString()
-          const gradVal = (userRow.grad_year ?? '').toString()
-          setFirstName(first)
-          setLastName(last)
-          setEmail(emailVal)
-          setGradYear(gradVal)
-          setSavedFirstName(first)
-          setSavedLastName(last)
-          setSavedEmail(emailVal)
-          setSavedGradYear(gradVal)
-          const dbFull = `${userRow.first_name ?? ''} ${userRow.last_name ?? ''}`.trim()
-          setHeader({
-            name: dbFull || userRow.email || '',
-            email: (userRow.email ?? '').toString(),
-          })
-          try {
-            const latestResumeResp = await api.get('/me/resumes/latest')
-            if (latestResumeResp.ok) {
-              const latest = await latestResumeResp.json()
-              setCurrentResumeName((latest.file_name ?? '').toString())
-            }
-          } catch (err) {
-            console.error('Failed fetching latest resume', err)
-          }
-          return
-        }
+        const resp = await api.get('/me/resumes/latest')
+        if (cancelled || !resp.ok) return
+        const latest = await resp.json()
+        setCurrentResumeName((latest.file_name ?? '').toString())
       } catch (err) {
-        console.error('Failed fetching user from backend', err)
+        console.error('Failed fetching latest resume', err)
       }
-
-      setFirstName(first)
-      setLastName(last)
-      setEmail(emailFromAuth)
-      setGradYear(grad)
-      setSavedFirstName(first)
-      setSavedLastName(last)
-      setSavedEmail(emailFromAuth)
-      setSavedGradYear(grad)
-      setHeader({
-        name: full || emailFromAuth || '',
-        email: emailFromAuth,
-      })
     }
 
-    void loadName()
+    void loadLatestResume()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   // prevent page scroll while on profile settings
@@ -178,18 +130,21 @@ export default function ProfileSettings() {
       }
 
       const updated = await resp.json()
-      setFirstName(updated.first_name ?? finalFirst)
-      setLastName(updated.last_name ?? finalLast)
-      setEmail(updated.email ?? finalEmail)
-      setGradYear((updated.grad_year ?? gradYearNumber).toString())
-      setSavedFirstName(updated.first_name ?? finalFirst)
-      setSavedLastName(updated.last_name ?? finalLast)
-      setSavedEmail(updated.email ?? finalEmail)
-      setSavedGradYear((updated.grad_year ?? gradYearNumber).toString())
-      setHeader((prev) => {
-        const full = `${updated.first_name ?? finalFirst} ${updated.last_name ?? finalLast}`.trim()
-        return { ...prev, name: full || prev.email, email: updated.email ?? finalEmail }
-      })
+      const nextDetails = {
+        firstName: (updated.first_name ?? finalFirst).toString(),
+        lastName: (updated.last_name ?? finalLast).toString(),
+        email: (updated.email ?? finalEmail).toString(),
+        gradYear: (updated.grad_year ?? gradYearNumber).toString(),
+      }
+      setFirstName(nextDetails.firstName)
+      setLastName(nextDetails.lastName)
+      setEmail(nextDetails.email)
+      setGradYear(nextDetails.gradYear)
+      setSavedFirstName(nextDetails.firstName)
+      setSavedLastName(nextDetails.lastName)
+      setSavedEmail(nextDetails.email)
+      setSavedGradYear(nextDetails.gradYear)
+      dispatch(setProfileDetails(nextDetails))
     } catch (err) {
       console.error('Error updating user in postgres', err)
     } finally {
@@ -356,8 +311,22 @@ export default function ProfileSettings() {
     }
   }
 
-  if (!header.name || !header.email) {
-    return <div className="profile-blank profile-loading page-stagger">loading...</div>
+  if (!cachedProfile) {
+    if (status === 'failed') {
+      return (
+        <div className="profile-blank profile-loading">
+          <span className="profile-subtext">could not load your profile.</span>
+          <button
+            type="button"
+            className="profile-check-button"
+            onClick={() => void dispatch(fetchUserProfile())}
+          >
+            retry
+          </button>
+        </div>
+      )
+    }
+    return <div className="profile-blank profile-loading">loading...</div>
   }
 
   return (

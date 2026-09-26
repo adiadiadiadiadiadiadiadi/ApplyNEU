@@ -7,10 +7,17 @@
   overflow: hidden;
 }
 
+/* page-stagger is display: contents, which would erase this element's box --
+   and with it the background and the 100vh that anchor the page. */
+.profile-blank.page-stagger {
+  display: block;
+}
+
 .profile-loading {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 0.75rem;
   color: rgba(230, 230, 230, 0.9);
   font-size: 1.4rem;
 }

@@ -34,6 +34,10 @@ type PreferencePayload = Partial<
   Pick<UserProfile, 'waitForApproval' | 'recent_jobs' | 'job_match' | 'unpaid_roles' | 'email_notifications'>
 >
 
+type ProfileDetailsPayload = Partial<
+  Pick<UserProfile, 'firstName' | 'lastName' | 'email' | 'gradYear'>
+>
+
 export const fetchUserProfile = createAsyncThunk<UserProfile, void, { rejectValue: string }>(
   'user/fetchProfile',
   async (_arg, { rejectWithValue }) => {
@@ -144,6 +148,10 @@ const userSlice = createSlice({
       if (!state.profile) return
       state.profile = { ...state.profile, ...action.payload }
     },
+    setProfileDetails: (state, action: { payload: ProfileDetailsPayload }) => {
+      if (!state.profile) return
+      state.profile = { ...state.profile, ...action.payload }
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -166,5 +174,5 @@ const userSlice = createSlice({
   },
 })
 
-export const { setPreferences } = userSlice.actions
+export const { setPreferences, setProfileDetails } = userSlice.actions
 export default userSlice.reducer
