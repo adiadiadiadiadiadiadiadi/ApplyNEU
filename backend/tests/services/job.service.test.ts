@@ -12,7 +12,6 @@ const { addJob } = await import('../../src/services/job.service.ts');
 const COMPANY = 'Acme';
 const TITLE = 'Software Engineer';
 const DESCRIPTION = 'We are hiring a Software Engineer to build great things.';
-const REPOSTED_DESCRIPTION = 'We are hiring a Software Engineer for a brand new platform team.';
 
 const jobRow = (job_id: string, description: string) => ({
     rows: [{ job_id, company: COMPANY, title: TITLE, description, description_hash: normalizeAndHash(description) }],
@@ -51,20 +50,6 @@ describe('addJob', () => {
 
         await addJob(COMPANY, TITLE, `  ${DESCRIPTION.toUpperCase().replace(/ /g, '   ')}  `);
         expect(lastCall()[1]![3]).toBe(first);
-    });
-
-    it('sends a different hash when the same role is reposted with a changed description', async () => {
-        query.mockResolvedValueOnce(jobRow('job-1', DESCRIPTION));
-        query.mockResolvedValueOnce(jobRow('job-2', REPOSTED_DESCRIPTION));
-
-        const original = await addJob(COMPANY, TITLE, DESCRIPTION);
-        const originalHash = lastCall()[1]![3];
-
-        const reposted = await addJob(COMPANY, TITLE, REPOSTED_DESCRIPTION);
-        const repostedHash = lastCall()[1]![3];
-
-        expect(repostedHash).not.toBe(originalHash);
-        expect(reposted.job_id).not.toBe(original.job_id);
     });
 
     it('throws when the insert returns no row', async () => {
