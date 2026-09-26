@@ -50,7 +50,13 @@ const normalizeEmployerInstructions = (input: any): EmployerInstruction[] => {
 export const sendJobDescription = async (user_id: string, job_description: string, company: string, title: string) => {
   try {
     const resumeResult = await pool.query(
-      `SELECT * FROM resumes WHERE user_id::text = $1 ORDER BY created_at DESC LIMIT 1;`,
+      `SELECT * FROM resumes
+       WHERE user_id::text = $1
+       ORDER BY (resume_id = (
+                    SELECT primary_resume_id FROM preferences WHERE user_id::text = $1
+                )) DESC NULLS LAST,
+                created_at DESC
+       LIMIT 1;`,
       [user_id]
     );
     if (!resumeResult.rows.length) throw new AppError(404, 'Resume not found.');

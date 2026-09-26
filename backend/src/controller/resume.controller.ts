@@ -4,7 +4,7 @@ import type {
   ResumeSaveRequest,
   PossibleInterestsRequest,
 } from '../types/resumes.ts';
-import { getUploadUrl, completeResumeUpload, getPossibleInterests, getLatestResume, getResumeSearchTerms, getResumeInterests, updateResumeInterests } from '../services/resume/resume.service.ts';
+import { getUploadUrl, completeResumeUpload, getPossibleInterests, getPrimaryResume, listResumes, getResumeSearchTerms, getResumeInterests, updateResumeInterests } from '../services/resume/resume.service.ts';
 import { getSearchTerms as generateSearchTerms } from '../services/user/user.ai.service.ts';
 import { validateUploadUrl, validateSaveResume, validateResumeIdParam, validateUpdateResumeInterests } from './middleware/validators/resume.validate.ts';
 import type { Request } from 'express';
@@ -98,14 +98,21 @@ export const meResumeController = (): express.Router => {
         res.status(200).json(url);
     };
 
-    /** GET /me/resumes/latest — return the most recently uploaded resume record for the caller. */
-    const getLatestResumeRoute = async (req: Request, res: Response) => {
-        const result = await getLatestResume(req.auth!.userId);
+    /** GET /me/resumes/primary — return the caller's primary resume record. */
+    const getPrimaryResumeRoute = async (req: Request, res: Response) => {
+        const result = await getPrimaryResume(req.auth!.userId);
+        res.status(200).json(result);
+    };
+
+    /** GET /me/resumes — list the caller's resumes, newest first. */
+    const listResumesRoute = async (req: Request, res: Response) => {
+        const result = await listResumes(req.auth!.userId);
         res.status(200).json(result);
     };
 
     router.post('/upload', validateUploadUrl, asyncHandler(getUploadUrlRoute));
-    router.get('/latest', asyncHandler(getLatestResumeRoute));
+    router.get('/primary', asyncHandler(getPrimaryResumeRoute));
+    router.get('/', asyncHandler(listResumesRoute));
 
     return router;
 };
