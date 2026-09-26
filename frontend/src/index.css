@@ -56,6 +56,13 @@ button:focus-visible {
   box-shadow: none;
 }
 
+/* Form controls don't inherit font-family from :root the way other elements do. */
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
 /* Left Navigation Icons - Global */
 .left-nav-icons {
   position: fixed;
