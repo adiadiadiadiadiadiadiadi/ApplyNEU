@@ -12,6 +12,7 @@ import Profile from './components/Profile/profile'
 import ProfileSettings from './components/Profile/profileSettings'
 import ProfileInterests from './components/Profile/profileInterests'
 import Settings from './components/Settings/settings'
+import Resumes from './components/Settings/resumes'
 import { FetchErrorProvider } from './components/common/FetchError'
 import { setNavigate } from './lib/navigation'
 import Unauthorized from './components/NotFound/unauthorized'
@@ -109,12 +110,17 @@ function AppRoutes() {
         <Route path="/automation" element={<Automation />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/profile-settings" element={<ProfileSettings />} />
-        <Route path="/profile-settings/interests" element={<ProfileInterests />} />
+        <Route path="/settings/interests" element={<ProfileInterests />} />
+        <Route path="/settings/resumes" element={<Resumes />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
       {/* Onboarding completion flips this route tree in before navigate('/') runs,
-          so /onboarding has to resolve to home rather than the catch-all 404. */}
+          so /onboarding has to resolve to home rather than the catch-all 404.
+          Signing in does the same thing from /login and /signup -- the session
+          arrives while the url still points at the auth screen. */}
       <Route path="/onboarding" element={<Navigate to="/" replace />} />
+      <Route path="/login" element={<Navigate to="/" replace />} />
+      <Route path="/signup" element={<Navigate to="/" replace />} />
       <Route path="/401" element={<Unauthorized />} />
       <Route path="/404" element={<NotFound />} />
       <Route path="/500" element={<ServerError />} />

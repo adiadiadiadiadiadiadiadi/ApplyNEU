@@ -3,10 +3,11 @@ import type {
   ResumeMetadataRequest,
   ResumeSaveRequest,
   PossibleInterestsRequest,
+  SetPrimaryResumeRequest,
 } from '../types/resumes.ts';
-import { getUploadUrl, completeResumeUpload, getPossibleInterests, getLatestResume, getResumeSearchTerms, getResumeInterests, updateResumeInterests } from '../services/resume/resume.service.ts';
+import { getUploadUrl, completeResumeUpload, getPossibleInterests, getPrimaryResume, listResumes, setPrimaryResume, getResumeSearchTerms, getResumeInterests, updateResumeInterests } from '../services/resume/resume.service.ts';
 import { getSearchTerms as generateSearchTerms } from '../services/user/user.ai.service.ts';
-import { validateUploadUrl, validateSaveResume, validateResumeIdParam, validateUpdateResumeInterests } from './middleware/validators/resume.validate.ts';
+import { validateUploadUrl, validateSaveResume, validateResumeIdParam, validateUpdateResumeInterests, validateSetPrimaryResume } from './middleware/validators/resume.validate.ts';
 import type { Request } from 'express';
 import { authenticate } from './middleware/authenticate.ts';
 import asyncHandler from './middleware/handlers/asyncHandler.ts';
@@ -98,14 +99,29 @@ export const meResumeController = (): express.Router => {
         res.status(200).json(url);
     };
 
-    /** GET /me/resumes/latest — return the most recently uploaded resume record for the caller. */
-    const getLatestResumeRoute = async (req: Request, res: Response) => {
-        const result = await getLatestResume(req.auth!.userId);
+    /** GET /me/resumes/primary — return the caller's primary resume record. */
+    const getPrimaryResumeRoute = async (req: Request, res: Response) => {
+        const result = await getPrimaryResume(req.auth!.userId);
+        res.status(200).json(result);
+    };
+
+    /** GET /me/resumes — list the caller's resumes, newest first. */
+    const listResumesRoute = async (req: Request, res: Response) => {
+        const result = await listResumes(req.auth!.userId);
+        res.status(200).json(result);
+    };
+
+    /** PUT /me/resumes/:resume_id/primary — point the caller's preferences at this resume. */
+    const setPrimaryResumeRoute = async (req: SetPrimaryResumeRequest, res: Response) => {
+        const { resume_id } = req.params;
+        const result = await setPrimaryResume(resume_id, req.auth!.userId);
         res.status(200).json(result);
     };
 
     router.post('/upload', validateUploadUrl, asyncHandler(getUploadUrlRoute));
-    router.get('/latest', asyncHandler(getLatestResumeRoute));
+    router.get('/primary', asyncHandler(getPrimaryResumeRoute));
+    router.get('/', asyncHandler(listResumesRoute));
+    router.put('/:resume_id/primary', validateSetPrimaryResume, asyncHandler(setPrimaryResumeRoute));
 
     return router;
 };

@@ -43,10 +43,10 @@ export const refreshSearchTerms = async (isPoll = false) => {
     if (!isPoll) await refreshExistingTasks()
 
     if (!cachedResumeId) {
-      const latestResumeResp = await api.get('/me/resumes/latest')
-      if (!latestResumeResp.ok) { if (!isPoll) addLog('Error occured. Could not fetch resume. Retrying...'); return; }
-      const latestResume = await latestResumeResp.json()
-      const resumeId = latestResume?.resume_id
+      const primaryResumeResp = await api.get('/me/resumes/primary')
+      if (!primaryResumeResp.ok) { if (!isPoll) addLog('Error occured. Could not fetch resume. Retrying...'); return; }
+      const primaryResume = await primaryResumeResp.json()
+      const resumeId = primaryResume?.resume_id
       if (!resumeId) { if (!isPoll) addLog('No resume found. Retrying...'); return; }
       cachedResumeId = String(resumeId)
     }

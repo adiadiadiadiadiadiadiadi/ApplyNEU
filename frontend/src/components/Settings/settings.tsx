@@ -1,5 +1,6 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { api } from '../../lib/api'
 import { useAppDispatch, useAppSelector } from '../../store'
 import { fetchUserProfile, saveUserPreferences, setPreferences } from '../../store/userSlice'
 import ComponentLoader from '../common/ComponentLoader'
@@ -11,6 +12,7 @@ export default function Settings() {
   const profile = useAppSelector((state) => state.user.profile)
   const status = useAppSelector((state) => state.user.status)
   const loadError = useAppSelector((state) => state.user.error)
+  const [currentResumeName, setCurrentResumeName] = useState('')
 
   const waitForApproval = profile?.waitForApproval ?? false
   const recentJobs = profile?.recent_jobs ?? false
@@ -24,6 +26,25 @@ export default function Settings() {
       void dispatch(fetchUserProfile())
     }
   }, [dispatch, profile, status])
+
+  useEffect(() => {
+    let cancelled = false
+    const loadPrimaryResume = async () => {
+      try {
+        const resp = await api.get('/me/resumes/primary')
+        if (cancelled || !resp.ok) return
+        const primary = await resp.json()
+        setCurrentResumeName((primary.file_name ?? '').toString())
+      } catch (err) {
+        console.error('Failed fetching primary resume', err)
+      }
+    }
+
+    void loadPrimaryResume()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const updatePrefs = (prefs: Partial<{ waitForApproval: boolean; recent_jobs: boolean; job_match: 'low' | 'medium' | 'high'; unpaid_roles: boolean; email_notifications: boolean }>) => {
     dispatch(setPreferences(prefs))
@@ -90,6 +111,22 @@ export default function Settings() {
           <div>
             <p className="profile-title">profile settings</p>
             <p className="profile-subtitle">view and edit account details</p>
+          </div>
+          <span className="profile-arrow" aria-hidden="true">
+            →
+          </span>
+        </div>
+
+        <div
+          className="settings-card profile-card"
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate('/settings/resumes')}
+          onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && navigate('/settings/resumes')}
+        >
+          <div>
+            <p className="profile-title">primary resume</p>
+            <p className="profile-subtitle">{currentResumeName || 'no resume uploaded yet'}</p>
           </div>
           <span className="profile-arrow" aria-hidden="true">
             →
