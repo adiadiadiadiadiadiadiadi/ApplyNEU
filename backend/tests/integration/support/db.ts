@@ -1,9 +1,9 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe } from '@jest/globals';
 import { Client, type QueryResult } from 'pg';
-import { adminUrl, dropTestDatabase, provisionTestDatabase } from './database.ts';
+import { adminConfig, describeAdminTarget, dropTestDatabase, provisionTestDatabase } from './database.ts';
 
 const canReachPostgres = async () => {
-  const client = new Client({ connectionString: adminUrl(), connectionTimeoutMillis: 2000 });
+  const client = new Client({ ...adminConfig(), connectionTimeoutMillis: 2000 });
   try {
     await client.connect();
     await client.end();
@@ -17,7 +17,7 @@ export const databaseAvailable = await canReachPostgres();
 
 if (!databaseAvailable) {
   console.warn(
-    `Skipping integration tests: no Postgres at ${adminUrl()}. Start one with "docker compose --profile test up -d postgres-test".`
+    `Skipping integration tests: no Postgres at ${describeAdminTarget()}. Start one with "docker compose --profile test up -d postgres-test".`
   );
 }
 
@@ -35,7 +35,7 @@ export const useTestDatabase = () => {
   beforeAll(async () => {
     const provisioned = await provisionTestDatabase();
     database = provisioned.database;
-    client = new Client({ connectionString: provisioned.url });
+    client = new Client(provisioned.config);
     await client.connect();
   }, 60_000);
 

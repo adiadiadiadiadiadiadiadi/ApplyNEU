@@ -120,7 +120,11 @@ jobs:
         working-directory: backend
         env:
           NODE_ENV: test
-          TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+          PGHOST: localhost
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGDATABASE: postgres
         run: npm run test:integration
 
       - name: Test frontend

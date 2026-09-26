@@ -1,14 +1,18 @@
 import { readFile } from 'node:fs/promises';
-import { Client } from 'pg';
 import { fileURLToPath } from 'node:url';
+import { Client, type ClientConfig } from 'pg';
 
 const SCHEMA_PATH = fileURLToPath(new URL('../../../db/schema.sql', import.meta.url));
 
-export const ADMIN_URL_ENV = 'TEST_DATABASE_URL';
-export const TEST_DB_URL_ENV = 'APPLYNEU_TEST_DATABASE_URL';
-export const TEST_DB_NAME_ENV = 'APPLYNEU_TEST_DATABASE_NAME';
-
-const DEFAULT_ADMIN_URL = 'postgres://postgres:postgres@localhost:5433/postgres';
+// Defaults match the throwaway postgres-test service in docker-compose.yml; each piece is
+// overridable through the standard libpq variables (PGHOST, PGPORT, PGUSER, PGPASSWORD).
+const ADMIN_DEFAULTS = {
+  host: 'localhost',
+  port: 5433,
+  user: 'postgres',
+  password: 'postgres',
+  database: 'postgres',
+};
 
 // Supabase owns auth.users in the real database, and schema.sql points public.users at it.
 // The disposable database gets the two columns the schema and its signup trigger touch.
@@ -20,31 +24,36 @@ const AUTH_SCHEMA = `
   );
 `;
 
-export const adminUrl = () => process.env[ADMIN_URL_ENV] ?? DEFAULT_ADMIN_URL;
+export const adminConfig = (): ClientConfig => ({
+  host: process.env.PGHOST ?? ADMIN_DEFAULTS.host,
+  port: Number(process.env.PGPORT ?? ADMIN_DEFAULTS.port),
+  user: process.env.PGUSER ?? ADMIN_DEFAULTS.user,
+  password: process.env.PGPASSWORD ?? ADMIN_DEFAULTS.password,
+  database: process.env.PGDATABASE ?? ADMIN_DEFAULTS.database,
+});
 
-const withUrlDatabase = (url: string, database: string) => {
-  const parsed = new URL(url);
-  parsed.pathname = `/${database}`;
-  return parsed.toString();
+export const describeAdminTarget = () => {
+  const { host, port, database } = adminConfig();
+  return `${host}:${port}/${database}`;
 };
 
-const connect = async (url: string) => {
-  const client = new Client({ connectionString: url });
+const connect = async (config: ClientConfig) => {
+  const client = new Client(config);
   await client.connect();
   return client;
 };
 
 export const provisionTestDatabase = async () => {
   const database = `applyneu_test_${process.pid}_${Date.now().toString(36)}`;
-  const admin = await connect(adminUrl());
+  const admin = await connect(adminConfig());
   try {
     await admin.query(`CREATE DATABASE "${database}"`);
   } finally {
     await admin.end();
   }
 
-  const url = withUrlDatabase(adminUrl(), database);
-  const target = await connect(url);
+  const config = { ...adminConfig(), database };
+  const target = await connect(config);
   try {
     await target.query(AUTH_SCHEMA);
     await target.query(await readFile(SCHEMA_PATH, 'utf8'));
@@ -52,11 +61,11 @@ export const provisionTestDatabase = async () => {
     await target.end();
   }
 
-  return { database, url };
+  return { database, config };
 };
 
 export const dropTestDatabase = async (database: string) => {
-  const admin = await connect(adminUrl());
+  const admin = await connect(adminConfig());
   try {
     await admin.query(`DROP DATABASE IF EXISTS "${database}" WITH (FORCE)`);
   } finally {

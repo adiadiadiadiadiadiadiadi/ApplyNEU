@@ -12,8 +12,9 @@ cd backend && npm run test:integration
 ```
 
 `npm test` runs the unit suite only and never touches a database. `npm run test:integration`
-points at `TEST_DATABASE_URL` (default `postgres://postgres:postgres@localhost:5433/postgres`)
-and skips every test, exiting 0, when nothing is listening there.
+points at the `postgres-test` service above by default, overridable through the standard
+libpq variables (`PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`), and skips every test, exiting 0,
+when nothing is listening there.
 
 ## How isolation works
 
