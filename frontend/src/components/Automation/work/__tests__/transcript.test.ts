@@ -10,7 +10,7 @@ vi.mock('../../../../lib/api', () => {
         if (path.includes('/job-types')) return json({ job_types: ['Co-op'] })
         if (path.includes('/preferences')) return json({ wait_for_approval: false, recent_jobs: true, unpaid_roles: false })
         if (path.includes('/tasks')) return json([])
-        if (path.includes('/latest')) return json({ resume_id: 'r1' })
+        if (path.includes('/resumes/primary')) return json({ resume_id: 'r1' })
         if (path.includes('search-terms')) return json({ search_terms: ['software'] })
         return json({})
       }),
