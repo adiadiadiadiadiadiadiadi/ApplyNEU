@@ -7,6 +7,8 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 type EmployerInstruction = { instruction: string; description: string };
 
+export type JobMatchSensitivity = 'low' | 'medium' | 'high';
+
 const NON_REQUIRED_TASK_PATTERN = /\b(ad[\s-]?block(?:er)?|pop[\s-]?up(?: blocker)?|clear (?:your )?cache|cookies?|switch (?:to )?(?:another|different) browser|disable (?:browser )?extensions?|enable javascript|incognito|private mode|vpn|proxy|firewall|antivirus|troubleshoot|workaround|tip|optional|recommended|preference)\b/i;
 
 /**
@@ -60,7 +62,7 @@ export const sendJobDescription = async (user_id: string, job_description: strin
       [user_id]
     );
     const jobMatchRaw = (prefsResult.rows[0]?.job_match ?? 'medium').toString().toLowerCase();
-    const jobMatchSensitivity: 'low' | 'medium' | 'high' =
+    const jobMatchSensitivity: JobMatchSensitivity =
       jobMatchRaw === 'high' ? 'high' : jobMatchRaw === 'low' ? 'low' : 'medium';
 
     const message = await withRetry(() => anthropic.messages.create({
