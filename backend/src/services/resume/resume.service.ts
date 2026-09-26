@@ -6,7 +6,7 @@ import { AppError } from '../../errors/AppError.ts';
 import { pool } from '../../db/index.ts';
 import Anthropic from '@anthropic-ai/sdk';
 import { withRetry } from '../../utils/retry.ts';
-import type { ResumeSummary } from '../../types/resumes.ts';
+import type { ResumeSummary, PrimaryResumeUpdate } from '../../types/resumes.ts';
 
 const s3Client = new S3Client({
     region: process.env.AWS_REGION || 'us-east-2',
@@ -300,10 +300,12 @@ export const listResumes = async (user_id: string): Promise<ResumeSummary[]> => 
     try {
         const result = await pool.query(
             `
-            SELECT resume_id, file_name, created_at, upload_complete
-            FROM resumes
-            WHERE user_id::text = $1
-            ORDER BY created_at DESC;
+            SELECT r.resume_id, r.file_name, r.created_at, r.upload_complete,
+                   (r.resume_id = p.primary_resume_id) IS TRUE AS is_primary
+            FROM resumes r
+            LEFT JOIN preferences p ON p.user_id = r.user_id
+            WHERE r.user_id::text = $1
+            ORDER BY r.created_at DESC;
             `,
             [user_id]
         );
@@ -311,6 +313,38 @@ export const listResumes = async (user_id: string): Promise<ResumeSummary[]> => 
     } catch (error) {
         if (error instanceof AppError) throw error;
         throw new AppError(500, 'Error fetching resumes.');
+    }
+};
+
+/**
+ * Points the user's preferences at the given resume.
+ *
+ * The composite (resume_id, user_id) foreign key already refuses a resume the caller
+ * does not own, but a constraint violation surfaces as a 500; the ownership read here
+ * turns that into a 404 and leaves the constraint as the backstop against a resume
+ * deleted between the two statements.
+ * @param resume_id - ID of the resume to make primary
+ * @param user_id - Caller's authenticated user ID; must own the resume
+ */
+export const setPrimaryResume = async (resume_id: string, user_id: string): Promise<PrimaryResumeUpdate> => {
+    try {
+        const owned = await pool.query(
+            `SELECT upload_complete FROM resumes WHERE resume_id = $1 AND user_id::text = $2;`,
+            [resume_id, user_id]
+        );
+        if (owned.rows.length === 0) throw new AppError(404, 'Resume not found.');
+        if (!owned.rows[0].upload_complete) throw new AppError(400, 'Resume upload is not complete.');
+
+        const result = await pool.query(
+            `UPDATE preferences SET primary_resume_id = $1 WHERE user_id::text = $2 RETURNING primary_resume_id;`,
+            [resume_id, user_id]
+        );
+        if (result.rows.length === 0) throw new AppError(404, 'Preferences not found.');
+
+        return { primary_resume_id: result.rows[0].primary_resume_id };
+    } catch (error) {
+        if (error instanceof AppError) throw error;
+        throw new AppError(500, 'Error setting primary resume.');
     }
 };
 

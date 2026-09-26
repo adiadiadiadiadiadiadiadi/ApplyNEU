@@ -18,7 +18,7 @@ jest.unstable_mockModule('@aws-sdk/client-s3', () => ({
     PutObjectCommand: class {},
 }));
 
-const { getPrimaryResume, completeResumeUpload } = await import('../../src/services/resume/resume.service.ts');
+const { getPrimaryResume, completeResumeUpload, listResumes, setPrimaryResume } = await import('../../src/services/resume/resume.service.ts');
 const { getCandidateContext } = await import('../../src/services/candidateContext/candidateContext.service.ts');
 
 const createUser = async () => {
@@ -100,6 +100,50 @@ describeWithDatabase('primary resume against Postgres', () => {
         const context = await getCandidateContext(user);
 
         expect(context.resume.resume_text).toBe('text of newer.pdf');
+    });
+
+    it('listResumes returns the resumes newest first, flagging the chosen one', async () => {
+        await setPrimary(user, older);
+
+        const rows = await listResumes(user);
+
+        expect(rows.map((row) => row.resume_id)).toEqual([newer, older]);
+        expect(rows.map((row) => row.is_primary)).toEqual([false, true]);
+    });
+
+    it('listResumes flags nothing when no primary is set', async () => {
+        const rows = await listResumes(user);
+
+        expect(rows.every((row) => row.is_primary === false)).toBe(true);
+    });
+
+    it('setPrimaryResume moves the pointer', async () => {
+        expect(await setPrimaryResume(older, user)).toEqual({ primary_resume_id: older });
+
+        expect(await readPrimary(user)).toBe(older);
+    });
+
+    it('setPrimaryResume 404s on a resume the caller does not own, leaving the pointer alone', async () => {
+        await setPrimary(user, older);
+        const stranger = await createUser();
+        const theirResume = await addResume(stranger, 'stranger.pdf', '2026-03-01T00:00:00Z');
+
+        await expect(setPrimaryResume(theirResume, user)).rejects.toMatchObject({ status: 404 });
+
+        expect(await readPrimary(user)).toBe(older);
+    });
+
+    it('setPrimaryResume rejects a resume whose upload never completed', async () => {
+        const pending = randomUUID();
+        await db.pool.query(
+            `INSERT INTO resumes (resume_id, key, created_at, user_id, file_name, file_size_bytes, resume_text, upload_complete)
+             VALUES ($1, $2, '2026-02-01T00:00:00Z', $3, 'pending.pdf', 1024, '', false)`,
+            [pending, `resumes/${pending}.pdf`, user]
+        );
+
+        await expect(setPrimaryResume(pending, user)).rejects.toMatchObject({ status: 400 });
+
+        expect(await readPrimary(user)).toBeNull();
     });
 
     it('completing an upload makes that resume the primary', async () => {

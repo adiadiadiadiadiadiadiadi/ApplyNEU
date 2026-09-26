@@ -38,3 +38,8 @@ export const validateUpdateResumeInterests = [
     body('interests').notEmpty().withMessage('interests is required.'),
     handleValidation,
 ];
+
+export const validateSetPrimaryResume = [
+    param('resume_id').isUUID().withMessage('resume_id must be a valid resume id.'),
+    handleValidation,
+];
