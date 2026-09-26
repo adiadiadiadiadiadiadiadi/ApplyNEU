@@ -1,7 +1,30 @@
 import { getUserId } from '../../../lib/supabase'
 import { api } from '../../../lib/api'
-import { addLog, setState } from './automationStore'
+import { addLog, getState, setState } from './automationStore'
 import { setExistingTasks } from '../symplicity/tasks'
+
+let cachedResumeId: string | null = null
+
+const refreshExistingTasks = async () => {
+  try {
+    const tasksResp = await api.get('/me/tasks')
+    if (!tasksResp.ok) return
+    const tasksData = await tasksResp.json().catch(() => [])
+    const taskKeys = Array.isArray(tasksData)
+      ? tasksData
+          .map((t: any) => {
+            const text = String(t?.text ?? '').trim()
+            const appId = t?.application_id ? String(t.application_id) : 'global'
+            if (!text) return null
+            return `${appId}::${text.toLowerCase()}`
+          })
+          .filter(Boolean) as string[]
+      : []
+    setExistingTasks(taskKeys)
+  } catch (_err) {
+    // ignore
+  }
+}
 
 /**
  * Search terms plus the existing-task index a run dedupes against. The screen owns
@@ -15,40 +38,32 @@ export const refreshSearchTerms = async (isPoll = false) => {
       if (!isPoll) addLog('Error occured: no user found. Retrying...')
       return
     }
-    try {
-      const tasksResp = await api.get('/me/tasks')
-      if (tasksResp.ok) {
-        const tasksData = await tasksResp.json().catch(() => [])
-        const taskKeys = Array.isArray(tasksData)
-          ? tasksData
-              .map((t: any) => {
-                const text = String(t?.text ?? '').trim()
-                const appId = t?.application_id ? String(t.application_id) : 'global'
-                if (!text) return null
-                return `${appId}::${text.toLowerCase()}`
-              })
-              .filter(Boolean) as string[]
-          : []
-        setExistingTasks(taskKeys)
-      }
-    } catch (_err) {
-      // ignore
+    // Polls only need the search terms: the task index is a run-start concern and
+    // the resume id does not change between polls.
+    if (!isPoll) await refreshExistingTasks()
+
+    if (!cachedResumeId) {
+      const primaryResumeResp = await api.get('/me/resumes/primary')
+      if (!primaryResumeResp.ok) { if (!isPoll) addLog('Error occured. Could not fetch resume. Retrying...'); return; }
+      const primaryResume = await primaryResumeResp.json()
+      const resumeId = primaryResume?.resume_id
+      if (!resumeId) { if (!isPoll) addLog('No resume found. Retrying...'); return; }
+      cachedResumeId = String(resumeId)
     }
 
-    const latestResumeResp = await api.get('/me/resumes/latest')
-    if (!latestResumeResp.ok) { if (!isPoll) addLog('Error occured. Could not fetch resume. Retrying...'); return; }
-    const latestResume = await latestResumeResp.json()
-    const resumeId = latestResume?.resume_id
-    if (!resumeId) { if (!isPoll) addLog('No resume found. Retrying...'); return; }
-
-    const response = await api.get(`/resumes/${resumeId}/search-terms`)
-    if (!response.ok) { if (!isPoll) addLog('Error occured. Could not fetch search terms. Retrying...'); return; }
+    const response = await api.get(`/resumes/${cachedResumeId}/search-terms`)
+    if (!response.ok) {
+      cachedResumeId = null
+      if (!isPoll) addLog('Error occured. Could not fetch search terms. Retrying...')
+      return
+    }
 
     const data = await response.json()
     const terms = Array.isArray(data?.search_terms) ? data.search_terms : []
-    // Enrichment is async: an empty list means the worker hasn't written search
-    // terms yet, so the screen stays "not ready" and automation stays disabled.
-    setState({ searchTerms: terms, searchTermsReady: terms.length > 0 })
+    const ready = terms.length > 0
+    const current = getState()
+    if (current.searchTermsReady === ready && current.searchTerms.join('\u0000') === terms.join('\u0000')) return
+    setState({ searchTerms: terms, searchTermsReady: ready })
   } catch (_error) {
     if (!isPoll) addLog('Error occured. Could not get search terms.')
   }
