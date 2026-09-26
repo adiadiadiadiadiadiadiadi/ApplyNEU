@@ -52,7 +52,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   const saveInterests = async (resumeId: string): Promise<boolean> => {
     try {
       // Saving interests also kicks off resume enrichment server-side (the worker
-      // caches the short resume and generates search terms from these interests).
+      // generates search terms from these interests).
       const response = await api.put(`/resumes/${resumeId}/interests`, { interests: selectedInterests })
       return response.ok
     } catch (error) {

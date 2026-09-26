@@ -3,7 +3,6 @@
 import 'dotenv/config';
 import { Worker } from 'bullmq';
 import { getSearchTerms } from '../services/user/user.ai.service.ts';
-import { cacheShortResume } from '../services/resume/ai.resume.service.ts';
 import { bullConnection } from '../queues/connection.ts';
 
 const worker = new Worker('resume-enrichment', async (job) => {
@@ -13,7 +12,6 @@ const worker = new Worker('resume-enrichment', async (job) => {
     try {
         await Promise.all([
             getSearchTerms(resume_id),
-            cacheShortResume(resume_id)
         ]);
         console.log(`[resume-enrichment] job ${job.id} finished (resume_id=${resume_id}) in ${Date.now() - start}ms`);
     } catch (err) {

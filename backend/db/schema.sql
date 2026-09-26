@@ -57,7 +57,6 @@ CREATE TABLE public.resumes (
     file_name text NOT NULL,
     file_size_bytes integer NOT NULL,
     resume_text text NOT NULL,
-    short_resume jsonb,
     upload_complete boolean DEFAULT false,
     search_terms text[] DEFAULT '{}'::text[] NOT NULL,
     interests text[] DEFAULT '{}'::text[] NOT NULL
