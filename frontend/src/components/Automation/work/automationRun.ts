@@ -36,9 +36,7 @@ export const ensureGreeted = () => {
 }
 
 const runFromDashboard = async (webview: AutomationWebview) => {
-  // Search terms overlap, so the same posting surfaces under several of them in one
-  // run. Per-run and in-memory, so a (company, title) collision costs at most one
-  // posting until the next run.
+  // Saving API calls when search terms overlap
   const seenJobs = new Set<string>()
 
   const jobCardCount = (): Promise<number> => webview.executeJavaScript(`
