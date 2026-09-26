@@ -9,6 +9,9 @@ import { ensureGreeted, pause, resume, start } from './work/automationRun'
 // A run holds its own key for as long as it lasts (see automationRun).
 const SCREEN_SUPPRESSOR = 'automation-screen'
 
+const POLL_MIN_MS = 4000
+const POLL_MAX_MS = 30000
+
 /**
  * A view of a run, not its owner -- status, logs, prompts and the loop itself live
  * in the automationRun singleton, so navigating away leaves the run untouched.
@@ -34,10 +37,36 @@ export default function Automation() {
   // Until search terms exist, poll so the screen unlocks automatically once the
   // resume-enrichment worker finishes (a few seconds after onboarding submit).
   // Screen-scoped on purpose: a run already has the terms it started with.
+  // Backs off and pauses while hidden so a stalled enrichment does not spin.
   useEffect(() => {
     if (searchTermsReady === true) return
-    const id = setInterval(() => { refreshSearchTerms(true) }, 4000)
-    return () => clearInterval(id)
+    let timer: ReturnType<typeof setTimeout>
+    let delay = POLL_MIN_MS
+    let stopped = false
+
+    const tick = async () => {
+      if (stopped) return
+      if (document.visibilityState === 'visible') {
+        await refreshSearchTerms(true)
+        delay = Math.min(delay * 1.5, POLL_MAX_MS)
+      }
+      if (!stopped) timer = setTimeout(tick, delay)
+    }
+
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible' || stopped) return
+      clearTimeout(timer)
+      delay = POLL_MIN_MS
+      tick()
+    }
+
+    timer = setTimeout(tick, delay)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      stopped = true
+      clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [searchTermsReady])
 
   useEffect(() => {
