@@ -78,9 +78,9 @@ export default function Settings() {
   )
 
   const renderLoading = () => (
-    <div className="settings-inner stagger-children">
+    <div className="settings-inner settings-inner--loading stagger-children">
       <h1 className="settings-title">settings</h1>
-      <ComponentLoader label="loading preferences" />
+      <ComponentLoader fullPage label="loading preferences" />
     </div>
   )
 

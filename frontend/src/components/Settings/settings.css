@@ -14,6 +14,13 @@
   max-width: 920px;
 }
 
+/* 112px is the .settings-page vertical padding, so the loader centers in what is left. */
+.settings-inner--loading {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 112px);
+}
+
 .settings-title {
   font-size: 28px;
   font-weight: 700;

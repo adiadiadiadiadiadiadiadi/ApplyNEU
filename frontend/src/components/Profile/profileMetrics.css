@@ -238,6 +238,12 @@
   min-height: 40px;
 }
 
+/* The loader centres itself on both axes, so it only needs the body's full height. */
+.metrics-chart-body > .component-loader {
+  height: 100%;
+  padding: 0;
+}
+
 .metrics-legend {
   display: flex;
   flex-wrap: wrap;
