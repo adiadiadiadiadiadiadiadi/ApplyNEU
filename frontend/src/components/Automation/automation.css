@@ -615,22 +615,6 @@
   }
 }
 
-.automation-loading-title {
-  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
-  font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.8);
-  margin: 0;
-  font-weight: normal;
-}
-
-.automation-loading-detail {
-  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
-  font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.45);
-  margin: 0;
-  text-align: center;
-  max-width: 22rem;
-  line-height: 1.5;
 /* Shown when the applier can't find what it needs and is waiting on the user. */
 .handoff-banner {
   display: flex;
