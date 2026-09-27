@@ -8,6 +8,7 @@ export interface CandidateContextResponse {
   };
   preferences: {
     job_match: JobMatchSensitivity;
+    wait_for_approval: boolean;
     job_types: string[];
     unpaid_roles: boolean;
     recent_jobs: boolean;

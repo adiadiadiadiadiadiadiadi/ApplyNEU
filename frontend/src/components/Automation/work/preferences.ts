@@ -1,6 +1,5 @@
 import { toBool } from './automationHelpers'
-import { getUserId } from '../../../lib/supabase'
-import { api } from '../../../lib/api'
+import { loadCandidateContext } from './candidateContext'
 
 let waitForApprovalPref = true
 let recentJobsPref = true
@@ -10,21 +9,14 @@ let preferencesLoaded = false
 /** Fetched once per session; returns the approval preference the caller usually wants. */
 export async function loadUserPreferences() {
   if (preferencesLoaded) return waitForApprovalPref
-  const userId = await getUserId()
-  if (!userId) return waitForApprovalPref
-  try {
-    const resp = await api.get('/me/preferences')
-    if (resp.ok) {
-      const data = await resp.json().catch(() => ({}))
-      waitForApprovalPref = toBool(data.wait_for_approval ?? data.waitForApproval, true)
-      recentJobsPref = toBool(data.recent_jobs ?? data.recentJobs, true)
-      unpaidRolesPref = toBool(data.unpaid_roles ?? data.upaid_roles, false)
-    }
-  } catch (_err) {
-    // ignore preference fetch errors
-  } finally {
-    preferencesLoaded = true
+  const result = await loadCandidateContext()
+  if (result.ok) {
+    const prefs = result.context.preferences
+    waitForApprovalPref = toBool(prefs?.wait_for_approval, true)
+    recentJobsPref = toBool(prefs?.recent_jobs, true)
+    unpaidRolesPref = toBool(prefs?.unpaid_roles, false)
   }
+  preferencesLoaded = true
   return waitForApprovalPref
 }
 
