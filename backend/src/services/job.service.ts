@@ -1,6 +1,7 @@
 import { pool } from '../db/index.ts';
 import Anthropic from '@anthropic-ai/sdk';
 import { AppError } from '../errors/AppError.ts';
+import { getCandidateContext } from './candidateContext/candidateContext.service.ts';
 import { withRetry } from '../utils/retry.ts';
 import { normalizeAndHash } from '../utils/hash.ts';
 
@@ -49,27 +50,16 @@ const normalizeEmployerInstructions = (input: any): EmployerInstruction[] => {
  */
 export const sendJobDescription = async (user_id: string, job_description: string, company: string, title: string) => {
   try {
-    const resumeResult = await pool.query(
-      `SELECT * FROM resumes
-       WHERE user_id::text = $1
-       ORDER BY (resume_id = (
-                    SELECT primary_resume_id FROM preferences WHERE user_id::text = $1
-                )) DESC NULLS LAST,
-                created_at DESC
-       LIMIT 1;`,
-      [user_id]
-    );
-    if (!resumeResult.rows.length) throw new AppError(404, 'Resume not found.');
+    const context = await getCandidateContext(user_id).catch((error) => {
+      if (error instanceof AppError && error.status === 404) throw new AppError(404, 'Resume not found.');
+      throw error;
+    });
 
-    const row = resumeResult.rows[0];
-    const resume = row.resume_text;
+    const resume = context.resume.resume_text;
     if (!resume) throw new AppError(404, 'Resume not found.');
 
-    const prefsResult = await pool.query(
-      `SELECT job_match FROM preferences WHERE user_id::text = $1 LIMIT 1;`,
-      [user_id]
-    );
-    const jobMatchRaw = (prefsResult.rows[0]?.job_match ?? 'medium').toString().toLowerCase();
+    const gradYear = context.profile.grad_year;
+    const jobMatchRaw = (context.preferences.job_match ?? 'medium').toString().toLowerCase();
     const jobMatchSensitivity: JobMatchSensitivity =
       jobMatchRaw === 'high' ? 'high' : jobMatchRaw === 'low' ? 'low' : 'medium';
 
@@ -84,6 +74,10 @@ export const sendJobDescription = async (user_id: string, job_description: strin
           COMPANY: ${company}
           TITLE: ${title}
 
+          CANDIDATE GRADUATION YEAR: ${gradYear}
+          - Treat the graduation year as the candidate's seniority: it is the authoritative signal,
+            so do not infer their level from the role titles on their resume.
+
           MATCH SENSITIVITY: ${jobMatchSensitivity.toUpperCase()}
           - LOW (not strict): Be lenient and favor APPLY if the resume plausibly covers several required skills/responsibilities; only DO_NOT_APPLY for clear mismatches.
           - MEDIUM (pretty strict): Balanced judgment (default). Apply when the user meets a good amount of requirements; DO_NOT_APPLY when clearly unqualified.
@@ -93,6 +87,7 @@ export const sendJobDescription = async (user_id: string, job_description: strin
           Rules:
           - Extract the job description's explicit requirements: skills, tools/tech stack, responsibilities, and required years/level.
           - Compare those requirements to the user's resume. Focus on REQUIRED skills/tech/tools and must-have experience.
+          - Judge any required years/level against the graduation year above rather than against resume job titles.
           - Be practical and lean toward APPLY when the user meets a good amount of required skills/responsibilities (use sensitivity rules above).
           - If the user reasonably fits the required skills/responsibilities, return APPLY.
           - When the resume misses key REQUIRED skills/tech/experience from the job description, choose DO_NOT_APPLY (stricter if sensitivity is HIGH).
@@ -154,6 +149,7 @@ export const sendJobDescription = async (user_id: string, job_description: strin
           }
 
           USER PROFILE:
+          GRADUATION YEAR: ${gradYear}
           ${resume}
 
           JOB DESCRIPTION:
