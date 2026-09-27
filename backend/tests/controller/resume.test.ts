@@ -5,6 +5,7 @@ import { AppError } from '../../src/errors/AppError.ts';
 
 const getUploadUrl =
   jest.fn<(user_id: string, file_name: string, file_type: string, file_size: number) => Promise<any>>();
+const getViewUrl = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
 const completeResumeUpload = jest.fn<(resume_id: string, key: string, user_id: string) => Promise<any>>();
 const getPossibleInterests = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
 const getPrimaryResume = jest.fn<(user_id: string) => Promise<any>>();
@@ -28,6 +29,7 @@ const authenticate = jest.fn((req: any, _res: any, next: any) => {
 
 jest.unstable_mockModule('../../src/services/resume/resume.service.ts', () => ({
   getUploadUrl,
+  getViewUrl,
   completeResumeUpload,
   getPossibleInterests,
   getPrimaryResume,

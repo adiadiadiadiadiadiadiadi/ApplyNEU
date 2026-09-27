@@ -18,7 +18,7 @@ jest.unstable_mockModule('@aws-sdk/client-s3', () => ({
     PutObjectCommand: class {},
 }));
 
-const { getPrimaryResume, completeResumeUpload, listResumes, setPrimaryResume } = await import('../../src/services/resume/resume.service.ts');
+const { getPrimaryResume, completeResumeUpload, listResumes, setPrimaryResume, updateResumeInterests } = await import('../../src/services/resume/resume.service.ts');
 const { getCandidateContext } = await import('../../src/services/candidateContext/candidateContext.service.ts');
 
 const createUser = async () => {
@@ -30,12 +30,25 @@ const createUser = async () => {
     return rows[0].id as string;
 };
 
-const addResume = async (user_id: string, file_name: string, created_at: string) => {
+// Enriched by default: only an enriched resume can be made primary, which most of
+// these cases need as a starting point.
+const addResume = async (user_id: string, file_name: string, created_at: string, enriched = true) => {
+    const resume_id = randomUUID();
+    const tags = enriched ? '{ai}' : '{}';
+    await db.pool.query(
+        `INSERT INTO resumes (resume_id, key, created_at, user_id, file_name, file_size_bytes, resume_text, upload_complete, search_terms, interests)
+         VALUES ($1, $2, $3, $4, $5, 1024, $6, true, $7, $7)`,
+        [resume_id, `resumes/${resume_id}.pdf`, created_at, user_id, file_name, `text of ${file_name}`, tags]
+    );
+    return resume_id;
+};
+
+const addUnfinishedResume = async (user_id: string) => {
     const resume_id = randomUUID();
     await db.pool.query(
         `INSERT INTO resumes (resume_id, key, created_at, user_id, file_name, file_size_bytes, resume_text, upload_complete, search_terms, interests)
-         VALUES ($1, $2, $3, $4, $5, 1024, $6, true, '{}', '{}')`,
-        [resume_id, `resumes/${resume_id}.pdf`, created_at, user_id, file_name, `text of ${file_name}`]
+         VALUES ($1, $2, '2026-02-01T00:00:00Z', $3, 'uploaded.pdf', 1024, '', false, '{}', '{}')`,
+        [resume_id, `resumes/${resume_id}.pdf`, user_id]
     );
     return resume_id;
 };
@@ -117,6 +130,22 @@ describeWithDatabase('primary resume against Postgres', () => {
         expect(rows.every((row) => row.is_primary === false)).toBe(true);
     });
 
+    it('listResumes marks a resume enriched only once it has both interests and search terms', async () => {
+        await db.pool.query(`UPDATE resumes SET search_terms = '{}' WHERE resume_id = $1`, [older]);
+
+        const rows = await listResumes(user);
+
+        expect(rows.find((row) => row.resume_id === older)?.enriched).toBe(false);
+        expect(rows.find((row) => row.resume_id === newer)?.enriched).toBe(true);
+    });
+
+    it('setPrimaryResume rejects a resume that has interests but no search terms yet', async () => {
+        await db.pool.query(`UPDATE resumes SET search_terms = '{}' WHERE resume_id = $1`, [newer]);
+
+        await expect(setPrimaryResume(newer, user)).rejects.toMatchObject({ status: 400 });
+        expect(await readPrimary(user)).toBeNull();
+    });
+
     it('setPrimaryResume moves the pointer', async () => {
         expect(await setPrimaryResume(older, user)).toEqual({ primary_resume_id: older });
 
@@ -146,18 +175,32 @@ describeWithDatabase('primary resume against Postgres', () => {
         expect(await readPrimary(user)).toBeNull();
     });
 
-    it('completing an upload makes that resume the primary', async () => {
+    it('completing an upload leaves the pointer on the resume the user was already running', async () => {
         await setPrimary(user, older);
-        const uploaded = randomUUID();
-        await db.pool.query(
-            `INSERT INTO resumes (resume_id, key, created_at, user_id, file_name, file_size_bytes, resume_text, upload_complete, search_terms, interests)
-             VALUES ($1, $2, '2026-02-01T00:00:00Z', $3, 'uploaded.pdf', 1024, '', false, '{}', '{}')`,
-            [uploaded, `resumes/${uploaded}.pdf`, user]
-        );
+        const uploaded = await addUnfinishedResume(user);
 
         await completeResumeUpload(uploaded, `resumes/${uploaded}.pdf`, user);
 
+        expect(await readPrimary(user)).toBe(older);
+    });
+
+    it('saving interests makes that resume the primary', async () => {
+        await setPrimary(user, older);
+        const uploaded = await addUnfinishedResume(user);
+        await completeResumeUpload(uploaded, `resumes/${uploaded}.pdf`, user);
+
+        await updateResumeInterests(uploaded, ['ai'], user);
+
         expect(await readPrimary(user)).toBe(uploaded);
         expect((await getPrimaryResume(user)).resume_id).toBe(uploaded);
+    });
+
+    it('saving interests on an unfinished upload leaves the pointer alone', async () => {
+        await setPrimary(user, older);
+        const uploaded = await addUnfinishedResume(user);
+
+        await updateResumeInterests(uploaded, ['ai'], user);
+
+        expect(await readPrimary(user)).toBe(older);
     });
 });

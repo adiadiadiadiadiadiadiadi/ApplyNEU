@@ -29,6 +29,7 @@ export interface ResumeSummary {
   created_at: string;
   upload_complete: boolean;
   is_primary: boolean;
+  enriched: boolean;
 }
 
 export interface PrimaryResumeUpdate {

@@ -61,6 +61,49 @@ export const getUploadUrl = async (user_id: string, file_name: string, file_type
 };
 
 /**
+ * Generates a short-lived presigned S3 GET URL for one of the caller's resumes.
+ * The response headers are signed in so the PDF renders in a viewer rather than
+ * downloading as the opaque uuid the S3 key uses.
+ * @param resume_id - ID of the resume to view
+ * @param user_id - Caller's authenticated user ID; must own the resume
+ * @returns Presigned view URL, its expiry in seconds, and the original filename
+ */
+export const getViewUrl = async (resume_id: string, user_id: string) => {
+    const EXPIRES_IN = 300;
+
+    try {
+        const owned = await pool.query(
+            `SELECT key, file_name, upload_complete FROM resumes WHERE resume_id = $1 AND user_id::text = $2;`,
+            [resume_id, user_id]
+        );
+        if (owned.rows.length === 0) throw new AppError(404, 'Resume not found.');
+
+        const { key, file_name, upload_complete } = owned.rows[0];
+        if (!upload_complete) throw new AppError(404, 'Resume not found.');
+        if (!key) throw new AppError(404, 'Resume not found.');
+
+        const command = new GetObjectCommand({
+            Bucket: process.env.S3_BUCKET_NAME!,
+            Key: key,
+            ResponseContentType: 'application/pdf',
+            ResponseContentDisposition: `inline; filename="${file_name.replace(/[\\"]/g, '')}"`,
+        });
+
+        const viewUrl = await getSignedUrl(s3Client, command, { expiresIn: EXPIRES_IN });
+
+        return {
+            viewUrl,
+            expiresIn: EXPIRES_IN,
+            fileName: file_name,
+        };
+    } catch (error) {
+        if (error instanceof AppError) throw error;
+        throw new AppError(500, 'Failed to generate view URL.');
+    }
+};
+
+
+/**
  * Collects an async byte stream into a single Buffer.
  * Returns an empty Buffer when stream is null (e.g. empty S3 object).
  */
@@ -144,25 +187,6 @@ export const completeResumeUpload = async (resume_id: string, key: string, user_
             `UPDATE resumes SET upload_complete = true, resume_text = $1 WHERE resume_id = $2 RETURNING *`,
             [resume_text, resume_id]
         );
-
-        // Point the user at what they just uploaded rather than letting recency imply it
-        await pool.query(
-            `UPDATE preferences SET primary_resume_id = $1 WHERE user_id::text = $2`,
-            [resume_id, user_id]
-        );
-
-        // Delete this user's earlier unpruned resume now that a new one exists
-        try {
-            await pool.query(
-                `DELETE FROM resumes
-                 WHERE user_id::text = $1
-                   AND resume_id <> $2
-                   AND search_terms IS NULL`,
-                [user_id, resume_id]
-            );
-        } catch (cleanupError) {
-            console.error('Failed to prune orphaned resumes:', cleanupError);
-        }
 
         return result.rows[0];
     } catch (error) {
@@ -251,7 +275,11 @@ export const getResumeInterests = async (resume_id: string, user_id: string) => 
 };
 
 /**
- * Replaces the interest tags on a specific resume.
+ * Replaces the interest tags on a specific resume and points the user's preferences at it.
+ *
+ * Interests are the gate on becoming primary, so this is the earliest point a resume is
+ * eligible; the upload itself deliberately leaves the pointer alone, which keeps an
+ * abandoned interests picker from demoting the resume the user was already running on.
  * Search terms are derived from these interests, but that generation is handled
  * asynchronously by the resume-enrichment worker (enqueued by the route after
  * this save), so it is not done here.
@@ -266,6 +294,14 @@ export const updateResumeInterests = async (resume_id: string, interests: string
             [interests, resume_id, user_id]
         );
         if (result.rows.length === 0) throw new AppError(404, 'Resume not found.');
+
+        if (result.rows[0].upload_complete) {
+            await pool.query(
+                `UPDATE preferences SET primary_resume_id = $1 WHERE user_id::text = $2`,
+                [resume_id, user_id]
+            );
+        }
+
         return result.rows[0];
     } catch (error) {
         if (error instanceof AppError) throw error;
@@ -301,7 +337,8 @@ export const listResumes = async (user_id: string): Promise<ResumeSummary[]> => 
         const result = await pool.query(
             `
             SELECT r.resume_id, r.file_name, r.created_at, r.upload_complete,
-                   (r.resume_id = p.primary_resume_id) IS TRUE AS is_primary
+                   (r.resume_id = p.primary_resume_id) IS TRUE AS is_primary,
+                   (cardinality(r.search_terms) > 0 AND cardinality(r.interests) > 0) AS enriched
             FROM resumes r
             LEFT JOIN preferences p ON p.user_id = r.user_id
             WHERE r.user_id::text = $1
@@ -319,6 +356,9 @@ export const listResumes = async (user_id: string): Promise<ResumeSummary[]> => 
 /**
  * Points the user's preferences at the given resume.
  *
+ * Refuses a resume that has not been enriched: without interests and the search terms
+ * derived from them an automation run has nothing to search on, so it would stall.
+ *
  * The composite (resume_id, user_id) foreign key already refuses a resume the caller
  * does not own, but a constraint violation surfaces as a 500; the ownership read here
  * turns that into a 404 and leaves the constraint as the backstop against a resume
@@ -329,11 +369,14 @@ export const listResumes = async (user_id: string): Promise<ResumeSummary[]> => 
 export const setPrimaryResume = async (resume_id: string, user_id: string): Promise<PrimaryResumeUpdate> => {
     try {
         const owned = await pool.query(
-            `SELECT upload_complete FROM resumes WHERE resume_id = $1 AND user_id::text = $2;`,
+            `SELECT upload_complete,
+                    (cardinality(search_terms) > 0 AND cardinality(interests) > 0) AS enriched
+             FROM resumes WHERE resume_id = $1 AND user_id::text = $2;`,
             [resume_id, user_id]
         );
         if (owned.rows.length === 0) throw new AppError(404, 'Resume not found.');
         if (!owned.rows[0].upload_complete) throw new AppError(400, 'Resume upload is not complete.');
+        if (!owned.rows[0].enriched) throw new AppError(400, 'Resume has no interests or search terms yet.');
 
         const result = await pool.query(
             `UPDATE preferences SET primary_resume_id = $1 WHERE user_id::text = $2 RETURNING primary_resume_id;`,
