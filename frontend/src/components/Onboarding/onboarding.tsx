@@ -1,8 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { api } from '../../lib/api'
+import { suppressErrorRedirect, releaseErrorRedirect } from '../../lib/fetchErrorControl'
 import './onboarding.css'
+
+const SCREEN_SUPPRESSOR = 'onboarding-screen'
+
+const isPlausibleGradYear = (year: number) => Number.isInteger(year) && year >= 2000 && year <= 2040
 
 interface OnboardingProps {
   onComplete: () => void
@@ -16,10 +21,74 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [resumeId, setResumeId] = useState<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [gradYear, setGradYear] = useState('')
   const [interests, setInterests] = useState<string[]>([])
   const [selectedInterests, setSelectedInterests] = useState<string[]>([])
   const jobTypes = ['Co-op', 'Full Time / Part Time', 'Internship']
   const [selectedJobTypes, setSelectedJobTypes] = useState<string[]>([])
+
+  // Onboarding reports its own failures inline; a dead backend should not bounce a
+  // half-finished signup to the full-page /error screen.
+  useEffect(() => {
+    suppressErrorRedirect(SCREEN_SUPPRESSOR)
+    return () => releaseErrorRedirect(SCREEN_SUPPRESSOR)
+  }, [])
+
+  useEffect(() => {
+    const prefillDetails = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      const metadata = user?.user_metadata ?? {}
+      // OAuth providers hand back a single display name, email signup sets the parts.
+      const [derivedFirst = '', ...derivedRest] = (metadata.full_name ?? metadata.name ?? '')
+        .toString()
+        .trim()
+        .split(/\s+/)
+
+      let profile: Record<string, unknown> = {}
+      try {
+        const response = await api.get('/me')
+        if (response.ok) profile = await response.json()
+      } catch (error) {
+        console.error('Error fetching profile:', error)
+      }
+
+      // The signup trigger writes blanks for providers that supply no name, so treat
+      // empty strings as missing rather than as a value to prefill with.
+      const firstPresent = (...values: unknown[]) =>
+        values.map((value) => (value ?? '').toString().trim()).find((value) => value !== '') ?? ''
+
+      setFirstName(firstPresent(profile.first_name, metadata.first_name, derivedFirst))
+      setLastName(firstPresent(profile.last_name, metadata.last_name, derivedRest.join(' ')))
+      // The signup trigger stores 0 when a provider gives no graduation year; that
+      // placeholder must not reach the field as a prefilled value.
+      const gradYearCandidate = firstPresent(profile.grad_year, metadata.graduation_year)
+      const gradYearNumber = Number.parseInt(gradYearCandidate, 10)
+      setGradYear(isPlausibleGradYear(gradYearNumber) ? gradYearCandidate : '')
+    }
+
+    void prefillDetails()
+  }, [])
+
+  const saveDetails = async (): Promise<string | null> => {
+    const year = Number.parseInt(gradYear, 10)
+    if (!isPlausibleGradYear(year)) {
+      return 'please enter a valid graduation year.'
+    }
+
+    try {
+      const response = await api.put('/me', {
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        grad_year: year,
+      })
+      return response.ok ? null : 'could not save your details. please try again.'
+    } catch (error) {
+      console.error('Error saving details:', error)
+      return 'could not save your details. please try again.'
+    }
+  }
 
   const fetchInterests = async (resumeId: string) => {
     try {
@@ -95,6 +164,13 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     setStepError(null)
 
     if (step === 1) {
+      setLoading(true)
+      const error = await saveDetails()
+      setLoading(false)
+      if (error) {
+        setStepError(error)
+        return
+      }
       setStep(2)
       return
     }
@@ -264,21 +340,32 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
           <div className="onboarding-step">
             <h1 className="onboarding-title">welcome</h1>
             <p className="onboarding-description">
-              welcome to your personal co-op application tracker and assistant.
+              let's start with the basics.
             </p>
-            <div className="onboarding-features">
-              <div className="feature-item">
-                <span className="feature-icon">✓</span>
-                <span className="feature-text">track all your applications in one place</span>
-              </div>
-              <div className="feature-item">
-                <span className="feature-icon">✓</span>
-                <span className="feature-text">automated application assistance</span>
-              </div>
-              <div className="feature-item">
-                <span className="feature-icon">✓</span>
-                <span className="feature-text">deadline reminders and task management</span>
-              </div>
+            <div className="onboarding-form">
+              <input
+                type="text"
+                placeholder="first name"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                className="onboarding-input"
+              />
+              <input
+                type="text"
+                placeholder="last name"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                className="onboarding-input"
+              />
+              <input
+                type="number"
+                placeholder="graduation year"
+                value={gradYear}
+                onChange={(e) => setGradYear(e.target.value)}
+                className="onboarding-input"
+                min="2000"
+                max="2040"
+              />
             </div>
           </div>
         )}
@@ -387,6 +474,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
             className="onboarding-button onboarding-button--primary"
             disabled={
               loading ||
+              (step === 1 && (!firstName.trim() || !lastName.trim() || !gradYear.trim())) ||
               (step === 2 && selectedJobTypes.length === 0) ||
               (step === 3 && !uploadedFile) ||
               (step === 4 && selectedInterests.length === 0)
