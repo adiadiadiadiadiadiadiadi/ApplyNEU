@@ -15,9 +15,6 @@ export default function RequestError() {
   const heading = status ? String(status) : 'Error'
   const detail = message || statusText || 'Something went wrong.'
 
-  // Go back to the page that failed so it remounts and refetches — an actual retry.
-  const tryAgain = () => (window.history.length > 1 ? navigate(-1) : navigate('/'))
-
   return (
     <div className="unauthorized-container">
       <h1 className="unauthorized-code">{heading}</h1>
@@ -26,9 +23,9 @@ export default function RequestError() {
         <a
           href="#"
           className="unauthorized-link"
-          onClick={(e) => { e.preventDefault(); tryAgain() }}
+          onClick={(e) => { e.preventDefault(); navigate('/') }}
         >
-          Try again.
+          Back to home
         </a>
       </p>
     </div>

@@ -14,14 +14,14 @@ export const validateAddUser = [
     body('user_id').notEmpty().withMessage('user_id is required.'),
     body('first_name').notEmpty().withMessage('first_name is required.'),
     body('last_name').notEmpty().withMessage('last_name is required.'),
-    body('grad_year').notEmpty().withMessage('grad_year is required.'),
+    body('grad_year').isInt({ min: 2000, max: 2040 }).withMessage('grad_year must be between 2000 and 2040.'),
     handleValidation,
 ];
 
 export const validateUpdateUser = [
     body('first_name').notEmpty().withMessage('first_name is required.'),
     body('last_name').notEmpty().withMessage('last_name is required.'),
-    body('grad_year').notEmpty().withMessage('grad_year is required.'),
+    body('grad_year').isInt({ min: 2000, max: 2040 }).withMessage('grad_year must be between 2000 and 2040.'),
     handleValidation,
 ];
 

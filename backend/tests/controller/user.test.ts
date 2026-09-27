@@ -80,7 +80,7 @@ describe('POST /users/new', () => {
     expect(addUser).toHaveBeenCalledWith(USER_ID, 'Ada', 'Lovelace', 2026);
   });
 
-  it.each(['user_id', 'first_name', 'last_name', 'grad_year'])(
+  it.each(['user_id', 'first_name', 'last_name'])(
     'returns 400 when %s is missing',
     async (field) => {
       const body: Record<string, unknown> = { ...validUserBody };
@@ -90,6 +90,20 @@ describe('POST /users/new', () => {
 
       expect(res.status).toBe(400);
       expect(res.body.message).toBe(`${field} is required.`);
+      expect(addUser).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([undefined, 0, 1999, 2041, 'soon'])(
+    'returns 400 when grad_year is %s',
+    async (grad_year) => {
+      const body: Record<string, unknown> = { ...validUserBody, grad_year };
+      if (grad_year === undefined) delete body.grad_year;
+
+      const res = await request(app).post('/users/new').send(body);
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toBe('grad_year must be between 2000 and 2040.');
       expect(addUser).not.toHaveBeenCalled();
     }
   );
@@ -189,7 +203,7 @@ describe('PUT /me', () => {
     expect(updateUser).toHaveBeenCalledWith(USER_ID, 'Grace', 'Hopper', 2027);
   });
 
-  it.each(['first_name', 'last_name', 'grad_year'])(
+  it.each(['first_name', 'last_name'])(
     'returns 400 when %s is missing',
     async (field) => {
       const body: Record<string, unknown> = { ...updateBody };
@@ -199,6 +213,20 @@ describe('PUT /me', () => {
 
       expect(res.status).toBe(400);
       expect(res.body.message).toBe(`${field} is required.`);
+      expect(updateUser).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([undefined, 0, 1999, 2041, 'soon'])(
+    'returns 400 when grad_year is %s',
+    async (grad_year) => {
+      const body: Record<string, unknown> = { ...updateBody, grad_year };
+      if (grad_year === undefined) delete body.grad_year;
+
+      const res = await request(app).put('/me').send(body);
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toBe('grad_year must be between 2000 and 2040.');
       expect(updateUser).not.toHaveBeenCalled();
     }
   );
