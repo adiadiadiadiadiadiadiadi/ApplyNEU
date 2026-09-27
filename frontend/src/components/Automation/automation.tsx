@@ -120,18 +120,8 @@ export default function Automation() {
         </div>
       </div>
       {searchTermsReady !== true && (
-        <div className="automation-loading-screen" role="status" aria-live="polite">
+        <div className="automation-loading-screen" role="status" aria-label="loading">
           <div className="automation-loading-spinner" aria-hidden="true" />
-          <p className="automation-loading-title">
-            {searchTermsReady === null
-              ? 'checking your job search setup'
-              : 'setting up your job search'}
-          </p>
-          <p className="automation-loading-detail">
-            {searchTermsReady === null
-              ? 'One moment…'
-              : 'Analyzing your resume. Automation will unlock in a moment.'}
-          </p>
         </div>
       )}
       {handoffPrompt && (
