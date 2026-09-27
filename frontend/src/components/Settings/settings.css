@@ -42,7 +42,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 20px;
+  margin-bottom: 10px;
   cursor: pointer;
   transition: border-color 0.2s ease, transform 0.2s ease;
 }
@@ -71,7 +71,7 @@
 }
 
 .prefs-card {
-  margin-top: 12px;
+  margin-top: 0;
 }
 
 .prefs-heading {
@@ -285,6 +285,107 @@
 .resume-row--selected .resume-row__name {
   color: #f5f5f5;
   font-weight: 600;
+}
+
+.resume-row__actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.resume-row__warn {
+  display: flex;
+  align-items: center;
+  color: #e0a640;
+}
+
+.resume-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.resume-viewer__panel {
+  display: flex;
+  flex-direction: column;
+  width: min(900px, 100%);
+  height: 100%;
+  border: 1px solid #1c1c1c;
+  border-radius: 12px;
+  background: #0f0f0f;
+  overflow: hidden;
+}
+
+.resume-viewer__bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #1c1c1c;
+}
+
+.resume-viewer__name {
+  font-size: 13px;
+  color: #a5a5a5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resume-viewer__close {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: #6f6f6f;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.resume-viewer__close:hover,
+.resume-viewer__close:focus-visible {
+  color: #f5f5f5;
+  outline: none;
+}
+
+.resume-row__view {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: #6f6f6f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.resume-row__view:hover:not(:disabled),
+.resume-row__view:focus-visible {
+  color: #2ed4a4;
+  outline: none;
+}
+
+.resume-row__view:disabled {
+  cursor: default;
+  color: #3a3a3a;
 }
 
 .resume-row__check {

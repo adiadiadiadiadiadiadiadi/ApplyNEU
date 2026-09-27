@@ -5,7 +5,7 @@ import type {
   PossibleInterestsRequest,
   SetPrimaryResumeRequest,
 } from '../types/resumes.ts';
-import { getUploadUrl, completeResumeUpload, getPossibleInterests, getPrimaryResume, listResumes, setPrimaryResume, getResumeSearchTerms, getResumeInterests, updateResumeInterests } from '../services/resume/resume.service.ts';
+import { getUploadUrl, getViewUrl, completeResumeUpload, getPossibleInterests, getPrimaryResume, listResumes, setPrimaryResume, getResumeSearchTerms, getResumeInterests, updateResumeInterests } from '../services/resume/resume.service.ts';
 import { getSearchTerms as generateSearchTerms } from '../services/user/user.ai.service.ts';
 import { validateUploadUrl, validateSaveResume, validateResumeIdParam, validateUpdateResumeInterests, validateSetPrimaryResume } from './middleware/validators/resume.validate.ts';
 import type { Request } from 'express';
@@ -99,6 +99,13 @@ export const meResumeController = (): express.Router => {
         res.status(200).json(url);
     };
 
+    /** GET /me/resumes/:resume_id/view — generate a presigned S3 URL for the client to view a resume directly. */
+    const getViewUrlRoute = async (req: SetPrimaryResumeRequest, res: Response) => {
+        const { resume_id } = req.params;
+        const url = await getViewUrl(resume_id, req.auth!.userId);
+        res.status(200).json(url);
+    };
+
     /** GET /me/resumes/primary — return the caller's primary resume record. */
     const getPrimaryResumeRoute = async (req: Request, res: Response) => {
         const result = await getPrimaryResume(req.auth!.userId);
@@ -119,6 +126,7 @@ export const meResumeController = (): express.Router => {
     };
 
     router.post('/upload', validateUploadUrl, asyncHandler(getUploadUrlRoute));
+    router.get('/:resume_id/view', validateResumeIdParam, asyncHandler(getViewUrlRoute));
     router.get('/primary', asyncHandler(getPrimaryResumeRoute));
     router.get('/', asyncHandler(listResumesRoute));
     router.put('/:resume_id/primary', validateSetPrimaryResume, asyncHandler(setPrimaryResumeRoute));
