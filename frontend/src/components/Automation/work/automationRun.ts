@@ -7,6 +7,7 @@ import { applyPanelFilters } from '../symplicity/filters'
 import {
   closeModalIfPresent, waitForDividerSubmissionAndClose, waitForModalOpen,
 } from '../symplicity/submission'
+import { scrapeJobDescription } from '../symplicity/description'
 import { getUserId } from '../../../lib/supabase'
 import { api } from '../../../lib/api'
 import { ApplicationStatus } from '../../../lib/types'
@@ -496,58 +497,7 @@ const runFromDashboard = async (webview: AutomationWebview) => {
             return '';
           })()).toString().toLowerCase().trim();
           await sleep(100)
-          const descResult = await webview.executeJavaScript(`
-            (async () => {
-              const normalize = (el) => (el?.innerText || el?.textContent || '').trim();
-              const stripNoise = (text) =>
-                text
-                  .split('\\n')
-                  .map(t => t.trim())
-                  .filter(t =>
-                    t.length > 0 &&
-                    !/home\\/jobs\\/search/i.test(t) &&
-                    !/keywords/i.test(t) &&
-                    !/location/i.test(t) &&
-                    !/distance/i.test(t) &&
-                    !/show me/i.test(t) &&
-                    !/all jobs/i.test(t)
-                  )
-                  .join(' ');
-              const serializeBlock = (el) => {
-                let text = el ? (el.innerText || el.textContent || '') : '';
-                const links = Array.from(el?.querySelectorAll('a') || []);
-                links.forEach(a => {
-                  const display = (a.innerText || a.textContent || 'link').trim();
-                  const href = a.href || a.getAttribute('href') || '';
-                  if (href && display.length) {
-                    const replacement = \`\${display} (\${href})\`;
-                    // replace first occurrence of display to avoid over-replacement
-                    text = text.replace(display, replacement);
-                  }
-                });
-                return text.trim();
-              };
-
-              // Wait for a job description heading to appear (up to ~4s)
-              let heading = null;
-              for (let i = 0; i < 16; i++) {
-                heading = Array.from(document.querySelectorAll('h1,h2,h3,h4,strong,b'))
-                  .find(h => /job description/i.test(h.innerText || ''));
-                if (heading) break;
-                await new Promise(r => setTimeout(r, 250));
-              }
-              if (!heading) return '';
-
-              const scope = heading.closest('section, article, div') || heading.parentElement;
-              if (!scope) return '';
-
-              const blocks = Array.from(scope.querySelectorAll('p, li, div'))
-                .map(serializeBlock)
-                .filter(t => t.length > 40);
-              const combined = stripNoise(blocks.join(' ').trim());
-              return combined;
-            })();
-          `)
+          const descResult = await scrapeJobDescription(webview)
 
           // Send description to backend for decision and optionally apply
           try {
