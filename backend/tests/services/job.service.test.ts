@@ -52,6 +52,7 @@ const candidateContext = (
     },
     preferences: {
         job_match: 'high',
+        wait_for_approval: true,
         job_types: ['co-op'],
         unpaid_roles: false,
         recent_jobs: true,
@@ -100,6 +101,7 @@ describe('sendJobDescription', () => {
             candidateContext({
                 preferences: {
                     job_match: undefined as any,
+                    wait_for_approval: true,
                     job_types: [],
                     unpaid_roles: false,
                     recent_jobs: false,

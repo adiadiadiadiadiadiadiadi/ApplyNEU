@@ -14,6 +14,7 @@ import jobController, { meJobController } from './controller/job.controller.ts';
 import taskController, { meTaskController } from './controller/task.controller.ts';
 import { meApplicationController } from './controller/application.controller.ts';
 import { mePreferenceController } from './controller/preference.controller.ts';
+import { meContextController } from './controller/context.controller.ts';
 import { authenticate } from './controller/middleware/authenticate.ts';
 import errorHandler from './controller/middleware/handlers/errorHandler.ts';
 
@@ -61,6 +62,7 @@ meRouter.use('/resumes', meResumeController());
 meRouter.use('/jobs', meJobController());
 meRouter.use('/tasks', meTaskController());
 meRouter.use('/applications', meApplicationController());
+meRouter.use('/context', meContextController());
 app.use('/me', meRouter);
 
 app.use(errorHandler);

@@ -16,6 +16,7 @@ export const getCandidateContext = async (user_id: string): Promise<CandidateCon
                    r.search_terms,
                    r.interests,
                    pref.job_match,
+                   pref.wait_for_approval,
                    pref.job_types,
                    pref.unpaid_roles,
                    pref.recent_jobs,
@@ -44,6 +45,7 @@ export const getCandidateContext = async (user_id: string): Promise<CandidateCon
             },
             preferences: {
                 job_match: row.job_match,
+                wait_for_approval: row.wait_for_approval,
                 job_types: row.job_types,
                 unpaid_roles: row.unpaid_roles,
                 recent_jobs: row.recent_jobs,

@@ -1,9 +1,8 @@
 import { getUserId } from '../../../lib/supabase'
 import { api } from '../../../lib/api'
+import { loadCandidateContext } from './candidateContext'
 import { addLog, getState, setState } from './automationStore'
 import { setExistingTasks } from '../symplicity/tasks'
-
-let cachedResumeId: string | null = null
 
 const refreshExistingTasks = async () => {
   try {
@@ -38,28 +37,22 @@ export const refreshSearchTerms = async (isPoll = false) => {
       if (!isPoll) addLog('Error occured: no user found. Retrying...')
       return
     }
-    // Polls only need the search terms: the task index is a run-start concern and
-    // the resume id does not change between polls.
+    // Polls only need the search terms: the task index is a run-start concern.
     if (!isPoll) await refreshExistingTasks()
 
-    if (!cachedResumeId) {
-      const primaryResumeResp = await api.get('/me/resumes/primary')
-      if (!primaryResumeResp.ok) { if (!isPoll) addLog('Error occured. Could not fetch resume. Retrying...'); return; }
-      const primaryResume = await primaryResumeResp.json()
-      const resumeId = primaryResume?.resume_id
-      if (!resumeId) { if (!isPoll) addLog('No resume found. Retrying...'); return; }
-      cachedResumeId = String(resumeId)
-    }
-
-    const response = await api.get(`/resumes/${cachedResumeId}/search-terms`)
-    if (!response.ok) {
-      cachedResumeId = null
-      if (!isPoll) addLog('Error occured. Could not fetch search terms. Retrying...')
+    const result = await loadCandidateContext(isPoll)
+    if (!result.ok) {
+      if (!isPoll) {
+        addLog(result.status === 404
+          ? 'No resume found. Retrying...'
+          : 'Error occured. Could not fetch search terms. Retrying...')
+      }
       return
     }
 
-    const data = await response.json()
-    const terms = Array.isArray(data?.search_terms) ? data.search_terms : []
+    const terms: string[] = Array.isArray(result.context.resume?.search_terms)
+      ? result.context.resume.search_terms
+      : []
     const ready = terms.length > 0
     const current = getState()
     if (current.searchTermsReady === ready && current.searchTerms.join('\u0000') === terms.join('\u0000')) return

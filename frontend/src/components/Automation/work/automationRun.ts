@@ -21,6 +21,7 @@ import { addEmployerTasks, clearTasksForApplication } from '../symplicity/tasks'
 import { requestApprovalForJob, withHumanFallback } from './approval'
 import { retry, sleep, waitForResume } from './pacing'
 import { loadUserPreferences, prefersRecentJobs, allowsUnpaidRoles } from './preferences'
+import { loadCandidateContext } from './candidateContext'
 
 const jobKey = (company: unknown, title: unknown) =>
   `${String(company ?? '').trim().toLowerCase()}::${String(title ?? '').trim().toLowerCase()}`
@@ -101,10 +102,11 @@ const runFromDashboard = async (webview: AutomationWebview) => {
     const userId = await getUserId();
     if (!userId) { addLog('Unable to fetch job types (no user).'); return }
     try {
-      const resp = await api.get('/me/preferences/job-types')
-      if (!resp.ok) { addLog('Failed to fetch job types.'); return }
-      const data = await resp.json()
-      const jobTypes: string[] = Array.isArray(data?.job_types) ? data.job_types : []
+      const result = await loadCandidateContext()
+      if (!result.ok) { addLog('Failed to fetch job types.'); return }
+      const jobTypes: string[] = Array.isArray(result.context.preferences?.job_types)
+        ? result.context.preferences.job_types
+        : []
       if (!jobTypes.length) {
         addLog('No job types set; skipping filters.')
         return

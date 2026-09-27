@@ -10,6 +10,7 @@ const profile = (): CandidateContextResponse => ({
     },
     preferences: {
         job_match: 'low',
+        wait_for_approval: true,
         job_types: ['co-op', 'internship'],
         unpaid_roles: false,
         recent_jobs: true,

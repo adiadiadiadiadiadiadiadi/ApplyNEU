@@ -7,11 +7,12 @@ vi.mock('../../../../lib/api', () => {
   return {
     api: {
       get: vi.fn(async (path: string) => {
-        if (path.includes('/job-types')) return json({ job_types: ['Co-op'] })
-        if (path.includes('/preferences')) return json({ wait_for_approval: false, recent_jobs: true, unpaid_roles: false })
+        if (path.includes('/me/context')) return json({
+          resume: { resume_text: 'Backend engineer.', search_terms: ['software'], interests: [] },
+          preferences: { job_match: 'medium', wait_for_approval: false, job_types: ['Co-op'], unpaid_roles: false, recent_jobs: true },
+          profile: { grad_year: 2027 },
+        })
         if (path.includes('/tasks')) return json([])
-        if (path.includes('/resumes/primary')) return json({ resume_id: 'r1' })
-        if (path.includes('search-terms')) return json({ search_terms: ['software'] })
         return json({})
       }),
       post: vi.fn(async (path: string) => {
