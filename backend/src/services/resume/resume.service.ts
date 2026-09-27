@@ -1,7 +1,7 @@
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import pdfParse from 'pdf-parse';
-import { randomBytes } from 'crypto';
+import { randomUUID } from 'crypto';
 import { AppError } from '../../errors/AppError.ts';
 import { pool } from '../../db/index.ts';
 import Anthropic from '@anthropic-ai/sdk';
@@ -35,7 +35,7 @@ export const getUploadUrl = async (user_id: string, file_name: string, file_type
             throw new AppError(400, 'Only PDFs under 10MB allowed.');
         }
 
-        const uniqueId = randomBytes(16).toString('hex');
+        const uniqueId = randomUUID();
         const s3Key = `resumes/${uniqueId}.pdf`;
 
         const command = new PutObjectCommand({
