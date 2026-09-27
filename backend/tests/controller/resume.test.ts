@@ -1,5 +1,6 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import request from 'supertest';
+import { randomUUID } from 'node:crypto';
 import { AppError } from '../../src/errors/AppError.ts';
 
 const getUploadUrl =
@@ -53,7 +54,10 @@ jest.unstable_mockModule('../../src/controller/middleware/authenticate.ts', () =
 const { app } = await import('../../src/app.ts');
 
 const RESUME_ID = 'resume-123';
-const RESUME_UUID = '7f1c1a3e-2b5d-4c7a-9f10-8e2d4b6a1c33';
+// Generated the same way getUploadUrl mints resume ids. A hand-written fixture that
+// happened to be RFC-conformant is exactly what hid isUUID() rejecting seven in eight
+// of the ids the service was actually producing.
+const RESUME_UUID = randomUUID();
 const KEY = 'resumes/abc123.pdf';
 
 const rejectAuth = () =>
