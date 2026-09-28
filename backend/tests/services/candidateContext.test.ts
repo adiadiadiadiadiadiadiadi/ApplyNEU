@@ -28,6 +28,12 @@ describe('renderCandidateContext', () => {
         expect(rendered).not.toMatch(/job_match|sensitivity|unpaid|recent/i);
         expect(rendered).not.toContain('low');
     });
+
+    it('omits job types, interests and search terms', () => {
+        const rendered = renderCandidateContext(profile());
+        expect(rendered).not.toMatch(/DESIRED JOB TYPES|INTERESTS|SEARCH TERMS/);
+        expect(rendered).not.toMatch(/co-op|internship|distributed systems|platform/);
+    });
 });
 
 describe('candidateHash', () => {
@@ -40,11 +46,21 @@ describe('candidateHash', () => {
         expect(candidateHash(high)).toBe(candidateHash(low));
     });
 
-    it('changes when an interest signal changes', () => {
+    it('does not change when interests, search terms or job types change', () => {
         const base = profile();
         const changed: CandidateContextResponse = {
             ...base,
-            resume: { ...base.resume, interests: ['compilers'] },
+            resume: { ...base.resume, interests: ['compilers'], search_terms: ['frontend'] },
+            preferences: { ...base.preferences, job_types: ['full-time'] },
+        };
+        expect(candidateHash(changed)).toBe(candidateHash(base));
+    });
+
+    it('changes when the resume changes', () => {
+        const base = profile();
+        const changed: CandidateContextResponse = {
+            ...base,
+            resume: { ...base.resume, resume_text: 'Frontend engineer. React.' },
         };
         expect(candidateHash(changed)).not.toBe(candidateHash(base));
     });
