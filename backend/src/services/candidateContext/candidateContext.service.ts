@@ -67,14 +67,10 @@ export const getCandidateContext = async (user_id: string): Promise<CandidateCon
  * job_match here would invalidate every cached score whenever the user retunes it.
  */
 export const renderCandidateContext = (context: CandidateContextResponse): string => {
-    const { resume, preferences, profile } = context;
-    const list = (values: string[]) => values.join(', ') || 'none specified';
+    const { resume, profile } = context;
 
     return [
         `GRADUATION YEAR: ${profile.grad_year}`,
-        `DESIRED JOB TYPES: ${list(preferences.job_types)}`,
-        `INTERESTS: ${list(resume.interests)}`,
-        `SEARCH TERMS: ${list(resume.search_terms)}`,
         `RESUME:`,
         resume.resume_text,
     ].join('\n');
@@ -92,8 +88,7 @@ You are a job application scorer. Rate from 0 to 100 how well the JOB suits the 
 Return the number only. Do not decide whether to apply -- the cutoff is applied elsewhere.
 
 INTEREST AND DOMAIN FIT:
-The candidate's INTERESTS, DESIRED JOB TYPES, SEARCH TERMS and the field their RESUME is
-built in define the kind of work they want.
+The field the candidate's RESUME is built in defines the kind of work they want.
 - A role outside that field scores below 20 regardless of how well the candidate meets its
   listed requirements. Transferable or generic skills never lift an unrelated role above it.
 - Within the candidate's field, score on how closely the role's requirements match their
