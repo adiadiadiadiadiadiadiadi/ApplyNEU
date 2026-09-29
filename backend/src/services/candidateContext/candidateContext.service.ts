@@ -71,6 +71,7 @@ export const renderCandidateContext = (context: CandidateContextResponse): strin
 
     return [
         `GRADUATION YEAR: ${profile.grad_year}`,
+        `INTERESTS: ${resume.interests.join(', ') || 'none specified'}`,
         `RESUME:`,
         resume.resume_text,
     ].join('\n');
@@ -88,7 +89,7 @@ You are a job application scorer. Rate from 0 to 100 how well the JOB suits the 
 Return the number only. Do not decide whether to apply -- the cutoff is applied elsewhere.
 
 INTEREST AND DOMAIN FIT:
-The field the candidate's RESUME is built in defines the kind of work they want.
+The candidate's INTERESTS and the field their RESUME is built in define the kind of work they want.
 - A role outside that field scores below 20 regardless of how well the candidate meets its
   listed requirements. Transferable or generic skills never lift an unrelated role above it.
 - Within the candidate's field, score on how closely the role's requirements match their
