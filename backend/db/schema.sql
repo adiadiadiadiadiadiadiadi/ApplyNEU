@@ -30,7 +30,17 @@ CREATE TABLE public.jobs (
     title text NOT NULL,
     description text NOT NULL,
     company text NOT NULL,
-    description_hash text NOT NULL
+    description_hash text NOT NULL,
+    employer_instructions jsonb
+);
+
+CREATE TABLE public.job_matches (
+    user_id uuid NOT NULL,
+    job_id uuid NOT NULL,
+    candidate_hash text NOT NULL,
+    scoring_version smallint NOT NULL,
+    match_score smallint NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 CREATE TABLE public.preferences (
@@ -87,6 +97,12 @@ ALTER TABLE ONLY public.jobs
 ALTER TABLE ONLY public.jobs
     ADD CONSTRAINT jobs_pkey PRIMARY KEY (job_id);
 
+ALTER TABLE ONLY public.job_matches
+    ADD CONSTRAINT job_matches_pkey PRIMARY KEY (user_id, job_id);
+
+ALTER TABLE ONLY public.job_matches
+    ADD CONSTRAINT job_matches_score_range CHECK (match_score BETWEEN 0 AND 100);
+
 ALTER TABLE ONLY public.preferences
     ADD CONSTRAINT preferences_pkey PRIMARY KEY (user_id);
 
@@ -109,6 +125,10 @@ ALTER TABLE ONLY public.users
 
 CREATE INDEX idx_resumes_user_id ON public.resumes USING btree (user_id);
 
+-- The primary key leads with user_id, so it cannot serve lookups by job_id alone; without
+-- this, every job delete would scan the whole table to cascade.
+CREATE INDEX idx_job_matches_job_id ON public.job_matches USING btree (job_id);
+
 CREATE UNIQUE INDEX unique_user_job ON public.job_applications USING btree (job_id, user_id);
 
 ALTER TABLE ONLY public.job_applications
@@ -116,6 +136,12 @@ ALTER TABLE ONLY public.job_applications
 
 ALTER TABLE ONLY public.job_applications
     ADD CONSTRAINT job_applications_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(user_id) ON DELETE CASCADE;
+
+ALTER TABLE ONLY public.job_matches
+    ADD CONSTRAINT job_matches_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.jobs(job_id) ON DELETE CASCADE;
+
+ALTER TABLE ONLY public.job_matches
+    ADD CONSTRAINT job_matches_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(user_id) ON DELETE CASCADE;
 
 ALTER TABLE ONLY public.preferences
     ADD CONSTRAINT preferences_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(user_id) ON DELETE CASCADE;
@@ -141,8 +167,8 @@ ALTER TABLE ONLY public.tasks
 ALTER TABLE ONLY public.tasks
     ADD CONSTRAINT tasks_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(user_id) ON DELETE CASCADE;
 
--- Deleting a user in Supabase Auth now cascades through profile, preferences, resumes, 
--- tasks and job_applications, which all cascade off public.users. Without this the rows would orphan silently.
+-- Deleting a user in Supabase Auth now cascades through profile, preferences, resumes,
+-- tasks, job_applications and job_matches, which all cascade off public.users. Without this the rows would orphan silently.
 ALTER TABLE ONLY public.users
     ADD CONSTRAINT users_user_id_auth_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
 
@@ -152,6 +178,7 @@ ALTER TABLE public.preferences ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.resumes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.jobs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.job_applications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.job_matches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
 
 -- Give every new signup their starter rows: the users record every other table points

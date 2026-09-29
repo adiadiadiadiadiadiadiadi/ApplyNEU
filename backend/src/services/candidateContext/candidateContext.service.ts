@@ -71,6 +71,7 @@ export const renderCandidateContext = (context: CandidateContextResponse): strin
 
     return [
         `GRADUATION YEAR: ${profile.grad_year}`,
+        `INTERESTS: ${resume.interests.join(', ') || 'none specified'}`,
         `RESUME:`,
         resume.resume_text,
     ].join('\n');
@@ -80,15 +81,22 @@ export const candidateHash = (context: CandidateContextResponse): string =>
     normalizeAndHash(renderCandidateContext(context));
 
 /**
+ * Stored on every job_matches row; a row scored under a different version is stale. Bump it
+ * when a change to SCORING_RULES or the model should invalidate existing scores.
+ */
+export const SCORING_VERSION = 1;
+
+/**
  * Scoring rules shared by every job in a run. Kept out of renderCandidateContext so that
- * editing this wording does not change candidate_hash and invalidate cached scores.
+ * editing this wording does not change candidate_hash and invalidate cached scores; bump
+ * SCORING_VERSION when a change should.
  */
 export const SCORING_RULES = `
 You are a job application scorer. Rate from 0 to 100 how well the JOB suits the CANDIDATE.
 Return the number only. Do not decide whether to apply -- the cutoff is applied elsewhere.
 
 INTEREST AND DOMAIN FIT:
-The field the candidate's RESUME is built in defines the kind of work they want.
+The candidate's INTERESTS and the field their RESUME is built in define the kind of work they want.
 - A role outside that field scores below 20 regardless of how well the candidate meets its
   listed requirements. Transferable or generic skills never lift an unrelated role above it.
 - Within the candidate's field, score on how closely the role's requirements match their
