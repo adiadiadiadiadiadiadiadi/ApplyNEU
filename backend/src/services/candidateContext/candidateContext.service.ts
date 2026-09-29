@@ -81,8 +81,15 @@ export const candidateHash = (context: CandidateContextResponse): string =>
     normalizeAndHash(renderCandidateContext(context));
 
 /**
+ * Stored on every job_matches row; a row scored under a different version is stale. Bump it
+ * when a change to SCORING_RULES or the model should invalidate existing scores.
+ */
+export const SCORING_VERSION = 1;
+
+/**
  * Scoring rules shared by every job in a run. Kept out of renderCandidateContext so that
- * editing this wording does not change candidate_hash and invalidate cached scores.
+ * editing this wording does not change candidate_hash and invalidate cached scores; bump
+ * SCORING_VERSION when a change should.
  */
 export const SCORING_RULES = `
 You are a job application scorer. Rate from 0 to 100 how well the JOB suits the CANDIDATE.
