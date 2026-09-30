@@ -101,6 +101,10 @@ describeWithDatabase('primary resume against Postgres', () => {
         expect((await getPrimaryResume(user)).resume_id).toBe(newer);
     });
 
+    it('getPrimaryResume returns null for a user with no resumes', async () => {
+        expect(await getPrimaryResume(await createUser())).toBeNull();
+    });
+
     it('getCandidateContext renders the chosen resume, not the newest', async () => {
         await setPrimary(user, older);
 

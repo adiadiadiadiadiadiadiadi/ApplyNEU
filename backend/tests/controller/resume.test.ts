@@ -281,13 +281,13 @@ describe('GET /me/resumes/primary', () => {
     expect(getPrimaryResume).toHaveBeenCalledWith(USER_ID);
   });
 
-  it('propagates a 404 AppError when no resume exists for the user', async () => {
-    getPrimaryResume.mockRejectedValue(new AppError(404, 'Resume not found.'));
+  it('returns 200 and null when no resume exists for the user', async () => {
+    getPrimaryResume.mockResolvedValue(null);
 
     const res = await request(app).get(url);
 
-    expect(res.status).toBe(404);
-    expect(res.body.message).toBe('Resume not found.');
+    expect(res.status).toBe(200);
+    expect(res.body).toBeNull();
   });
 
   it('returns 401 when the caller is not authenticated', async () => {

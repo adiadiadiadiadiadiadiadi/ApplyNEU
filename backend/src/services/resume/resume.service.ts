@@ -411,8 +411,7 @@ export const getPrimaryResume = async (user_id: string) => {
             `,
             [user_id]
         );
-        if (result.rows.length === 0) throw new AppError(404, 'Resume not found.');
-        return result.rows[0];
+        return result.rows[0] ?? null;
     } catch (error) {
         if (error instanceof AppError) throw error;
         throw new AppError(500, 'Error fetching primary resume.');

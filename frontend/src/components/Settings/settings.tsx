@@ -34,7 +34,7 @@ export default function Settings() {
         const resp = await api.get('/me/resumes/primary')
         if (cancelled || !resp.ok) return
         const primary = await resp.json()
-        setCurrentResumeName((primary.file_name ?? '').toString())
+        setCurrentResumeName((primary?.file_name ?? '').toString())
       } catch (err) {
         console.error('Failed fetching primary resume', err)
       }
