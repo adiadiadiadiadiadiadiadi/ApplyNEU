@@ -14,6 +14,8 @@ const setPrimaryResume = jest.fn<(resume_id: string, user_id: string) => Promise
 const getResumeInterests = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
 const updateResumeInterests = jest.fn<(resume_id: string, interests: string[], user_id: string) => Promise<any>>();
 const getResumeSearchTerms = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
+const retryEnrichment = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
+const setEnrichmentStatus = jest.fn<(resume_id: string, status: string) => Promise<any>>();
 
 // Both default to resolving.
 const generateSearchTerms = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
@@ -38,6 +40,8 @@ jest.unstable_mockModule('../../src/services/resume/resume.service.ts', () => ({
   getResumeInterests,
   updateResumeInterests,
   getResumeSearchTerms,
+  retryEnrichment,
+  setEnrichmentStatus,
 }));
 
 jest.unstable_mockModule('../../src/services/user/user.ai.service.ts', () => ({
@@ -79,6 +83,8 @@ beforeEach(() => {
   getResumeSearchTerms.mockReset();
   generateSearchTerms.mockReset();
   queueAdd.mockReset();
+  retryEnrichment.mockReset();
+  setEnrichmentStatus.mockReset();
   authenticate.mockReset();
   authenticate.mockImplementation((req: any, _res: any, next: any) => {
     req.auth = { userId: USER_ID };
@@ -281,13 +287,13 @@ describe('GET /me/resumes/primary', () => {
     expect(getPrimaryResume).toHaveBeenCalledWith(USER_ID);
   });
 
-  it('propagates a 404 AppError when no resume exists for the user', async () => {
-    getPrimaryResume.mockRejectedValue(new AppError(404, 'Resume not found.'));
+  it('returns 200 and null when no resume exists for the user', async () => {
+    getPrimaryResume.mockResolvedValue(null);
 
     const res = await request(app).get(url);
 
-    expect(res.status).toBe(404);
-    expect(res.body.message).toBe('Resume not found.');
+    expect(res.status).toBe(200);
+    expect(res.body).toBeNull();
   });
 
   it('returns 401 when the caller is not authenticated', async () => {
@@ -450,9 +456,19 @@ describe('PUT /resumes/:resume_id/interests', () => {
     expect(queueAdd).toHaveBeenCalledWith(
       'enrich',
       { resume_id: RESUME_ID },
-      expect.objectContaining({ jobId: RESUME_ID, attempts: 3 }),
+      expect.objectContaining({ jobId: RESUME_ID, attempts: 3, removeOnComplete: true, removeOnFail: true }),
     );
     expect(generateSearchTerms).not.toHaveBeenCalled();
+  });
+
+  it('marks enrichment failed when the job cannot be enqueued', async () => {
+    updateResumeInterests.mockResolvedValue({ resume_id: RESUME_ID, interests });
+    queueAdd.mockRejectedValue(new Error('redis down'));
+
+    const res = await request(app).put(url).send({ interests });
+
+    expect(res.status).toBe(500);
+    expect(setEnrichmentStatus).toHaveBeenCalledWith(RESUME_ID, 'failed');
   });
 
   it('returns 400 when interests is missing', async () => {
@@ -546,6 +562,72 @@ describe('PUT /resumes/:resume_id/search-terms', () => {
 
     expect(res.status).toBe(401);
     expect(generateSearchTerms).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /resumes/:resume_id/enrichment/retry', () => {
+  const url = `/resumes/${RESUME_ID}/enrichment/retry`;
+
+  it('returns 202 with the pending status and re-enqueues enrichment', async () => {
+    retryEnrichment.mockResolvedValue({ resume_id: RESUME_ID, enrichment_status: 'pending' });
+
+    const res = await request(app).post(url).send({});
+
+    expect(res.status).toBe(202);
+    expect(res.body).toEqual({ resume_id: RESUME_ID, enrichment_status: 'pending' });
+    expect(retryEnrichment).toHaveBeenCalledWith(RESUME_ID, USER_ID);
+    expect(queueAdd).toHaveBeenCalledWith(
+      'enrich',
+      { resume_id: RESUME_ID },
+      expect.objectContaining({ jobId: RESUME_ID, attempts: 3 }),
+    );
+  });
+
+  it('ignores a status in the body', async () => {
+    retryEnrichment.mockResolvedValue({ resume_id: RESUME_ID, enrichment_status: 'pending' });
+
+    const res = await request(app).post(url).send({ enrichment_status: 'complete' });
+
+    expect(res.status).toBe(202);
+    expect(res.body.enrichment_status).toBe('pending');
+    expect(setEnrichmentStatus).not.toHaveBeenCalled();
+  });
+
+  it('propagates a 409 without enqueueing when the resume is not in a failed state', async () => {
+    retryEnrichment.mockRejectedValue(new AppError(409, 'Only a failed enrichment with interests can be retried.'));
+
+    const res = await request(app).post(url).send({});
+
+    expect(res.status).toBe(409);
+    expect(queueAdd).not.toHaveBeenCalled();
+  });
+
+  it('propagates a 429 without enqueueing once the retry limit is reached', async () => {
+    retryEnrichment.mockRejectedValue(new AppError(429, 'Enrichment retry limit reached.'));
+
+    const res = await request(app).post(url).send({});
+
+    expect(res.status).toBe(429);
+    expect(queueAdd).not.toHaveBeenCalled();
+  });
+
+  it('marks enrichment failed again when the retry cannot be enqueued', async () => {
+    retryEnrichment.mockResolvedValue({ resume_id: RESUME_ID, enrichment_status: 'pending' });
+    queueAdd.mockRejectedValue(new Error('redis down'));
+
+    const res = await request(app).post(url).send({});
+
+    expect(res.status).toBe(500);
+    expect(setEnrichmentStatus).toHaveBeenCalledWith(RESUME_ID, 'failed');
+  });
+
+  it('returns 401 when the caller is not authenticated', async () => {
+    rejectAuth();
+
+    const res = await request(app).post(url).send({});
+
+    expect(res.status).toBe(401);
+    expect(retryEnrichment).not.toHaveBeenCalled();
   });
 });
 

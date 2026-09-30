@@ -23,13 +23,16 @@ export interface ResumeSaveRequest extends Request {
 
 export type PossibleInterestsRequest = Request<{ resume_id: string }>;
 
+export type EnrichmentStatus = 'none' | 'pending' | 'failed' | 'complete';
+
 export interface ResumeSummary {
   resume_id: string;
   file_name: string;
   created_at: string;
   upload_complete: boolean;
   is_primary: boolean;
-  enriched: boolean;
+  enrichment_status: EnrichmentStatus;
+  can_retry: boolean;
 }
 
 export interface PrimaryResumeUpdate {

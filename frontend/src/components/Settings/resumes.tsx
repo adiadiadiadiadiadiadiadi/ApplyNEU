@@ -8,13 +8,16 @@ import ComponentLoader from '../common/ComponentLoader'
 import PdfViewer from '../common/PdfViewer'
 import './settings.css'
 
+type EnrichmentStatus = 'none' | 'pending' | 'failed' | 'complete'
+
 type ResumeRow = {
   resume_id: string
   file_name: string
   created_at?: string
   upload_complete?: boolean
   is_primary?: boolean
-  enriched?: boolean
+  enrichment_status?: EnrichmentStatus
+  can_retry?: boolean
 }
 
 const formatUploadDate = (value?: string) => {
@@ -27,6 +30,9 @@ const formatUploadDate = (value?: string) => {
 const LIST_SUPPRESSOR = 'resumes-list'
 const SELECT_SUPPRESSOR = 'resumes-select'
 const VIEW_SUPPRESSOR = 'resumes-view'
+const POLL_SUPPRESSOR = 'resumes-poll'
+const RETRY_SUPPRESSOR = 'resumes-retry'
+const POLL_INTERVAL_MS = 3000
 
 export default function Resumes() {
   const navigate = useNavigate()
@@ -39,6 +45,7 @@ export default function Resumes() {
   const [selectedId, setSelectedId] = useState('')
   const [selecting, setSelecting] = useState<string | null>(null)
   const [viewing, setViewing] = useState<string | null>(null)
+  const [retrying, setRetrying] = useState<string | null>(null)
   const [viewer, setViewer] = useState<{ url: string; fileName: string } | null>(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -109,6 +116,74 @@ export default function Resumes() {
     }
   }, [])
 
+  const hasPending = resumes.some((row) => row.enrichment_status === 'pending')
+
+  useEffect(() => {
+    if (!hasPending) return
+    let cancelled = false
+
+    const refreshStatuses = async () => {
+      suppressErrorRedirect(POLL_SUPPRESSOR)
+      try {
+        const resp = await api.get('/me/resumes')
+        if (cancelled || !resp.ok) return
+        const rows = await resp.json()
+        if (cancelled || !Array.isArray(rows)) return
+        const latestById = new Map<string, ResumeRow>(
+          rows.map((row: ResumeRow) => [row.resume_id, row])
+        )
+        setResumes((current) =>
+          current.map((row) => {
+            const latest = latestById.get(row.resume_id)
+            return latest
+              ? { ...row, enrichment_status: latest.enrichment_status, can_retry: latest.can_retry }
+              : row
+          })
+        )
+      } catch (err) {
+        console.error('Failed refreshing resume statuses', err)
+      } finally {
+        releaseErrorRedirect(POLL_SUPPRESSOR)
+      }
+    }
+
+    const timer = window.setInterval(() => void refreshStatuses(), POLL_INTERVAL_MS)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [hasPending])
+
+  const retryEnrichment = async (resumeId: string) => {
+    if (retrying) return
+    setRetrying(resumeId)
+    setError(null)
+    suppressErrorRedirect(RETRY_SUPPRESSOR)
+    try {
+      const resp = await api.post(`/resumes/${resumeId}/enrichment/retry`, {})
+      if (resp.status === 429) {
+        setResumes((current) =>
+          current.map((row) => (row.resume_id === resumeId ? { ...row, can_retry: false } : row))
+        )
+        return
+      }
+      if (!resp.ok && resp.status !== 409) {
+        throw new Error('Could not retry enrichment')
+      }
+      setResumes((current) =>
+        current.map((row) =>
+          row.resume_id === resumeId ? { ...row, enrichment_status: 'pending' } : row
+        )
+      )
+    } catch (err) {
+      console.error('Failed retrying enrichment', err)
+      setError('Could not retry generating search terms. Please try again.')
+    } finally {
+      releaseErrorRedirect(RETRY_SUPPRESSOR)
+      setRetrying(null)
+    }
+  }
+
   const viewResume = async (resumeId: string) => {
     if (viewing || uploading) return
     setViewing(resumeId)
@@ -165,6 +240,16 @@ export default function Resumes() {
     }
     setUploading(true)
     setError(null)
+    const placeholderId = `uploading-${Date.now()}`
+    setResumes((current) => [
+      {
+        resume_id: placeholderId,
+        file_name: file.name,
+        created_at: new Date().toISOString(),
+        enrichment_status: 'pending',
+      },
+      ...current,
+    ])
 
     try {
       const presignResp = await api.post('/me/resumes/upload', {
@@ -215,6 +300,7 @@ export default function Resumes() {
       navigate('/settings/interests', { state: { interests, resumeId } })
     } catch (err) {
       console.error('Resume upload failed', err)
+      setResumes((current) => current.filter((row) => row.resume_id !== placeholderId))
       setError('Could not upload resume. Please try again.')
     } finally {
       setUploading(false)
@@ -243,7 +329,9 @@ export default function Resumes() {
             <ul className="resume-list" role="radiogroup" aria-label="primary resume">
               {resumes.map((resume) => {
                 const isSelected = resume.resume_id === selectedId
-                const isEnriched = resume.enriched !== false
+                const enrichment = resume.enrichment_status ?? 'complete'
+                const isEnriched = enrichment === 'complete'
+                const retriesExhausted = enrichment === 'failed' && resume.can_retry === false
                 return (
                   <li
                     key={resume.resume_id}
@@ -258,12 +346,35 @@ export default function Resumes() {
                       )}
                     </span>
                     <span className="resume-row__actions">
-                      {!isEnriched && (
+                      {enrichment === 'pending' && (
+                        <span
+                          className="resume-row__pending"
+                          role="status"
+                          aria-label="Generating search terms"
+                          title="generating search terms"
+                        />
+                      )}
+                      {enrichment === 'failed' && !retriesExhausted && (
+                        <button
+                          type="button"
+                          className="resume-row__retry"
+                          aria-label={`Retry generating search terms for ${resume.file_name}`}
+                          title="generating search terms failed, retry"
+                          onClick={() => void retryEnrichment(resume.resume_id)}
+                          disabled={retrying !== null || uploading}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                            <path d="M3 3v5h5" />
+                          </svg>
+                        </button>
+                      )}
+                      {(enrichment === 'none' || retriesExhausted) && (
                         <span
                           className="resume-row__warn"
                           role="img"
-                          aria-label="Not enriched yet: no interests or search terms"
-                          title="not enriched yet: no interests or search terms"
+                          aria-label={retriesExhausted ? 'Internal server error. Please try again later.' : 'No interests yet'}
+                          title={retriesExhausted ? 'internal server error. please try again later.' : 'no interests yet'}
                         >
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
@@ -291,7 +402,15 @@ export default function Resumes() {
                         role="radio"
                         aria-checked={isSelected}
                         aria-label={`Use ${resume.file_name}`}
-                        title={isEnriched ? undefined : 'add interests to this resume before making it primary'}
+                        title={
+                          enrichment === 'none'
+                            ? 'add interests to this resume before making it primary'
+                            : enrichment === 'pending'
+                              ? 'still generating search terms for this resume'
+                              : enrichment === 'failed'
+                                ? 'retry generating search terms before making this resume primary'
+                                : undefined
+                        }
                         onClick={() => !isSelected && void selectResume(resume.resume_id)}
                         disabled={!isEnriched || selecting !== null || viewing !== null || uploading}
                       >
@@ -314,7 +433,7 @@ export default function Resumes() {
                   onClick={() => fileInputRef.current?.click()}
                   disabled={uploading || selecting !== null}
                 >
-                  {uploading ? 'uploading...' : '+'}
+                  +
                 </button>
               </li>
             </ul>

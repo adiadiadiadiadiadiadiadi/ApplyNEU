@@ -5,13 +5,38 @@ import type {
   PossibleInterestsRequest,
   SetPrimaryResumeRequest,
 } from '../types/resumes.ts';
-import { getUploadUrl, getViewUrl, completeResumeUpload, getPossibleInterests, getPrimaryResume, listResumes, setPrimaryResume, getResumeSearchTerms, getResumeInterests, updateResumeInterests } from '../services/resume/resume.service.ts';
+import { getUploadUrl, getViewUrl, completeResumeUpload, getPossibleInterests, getPrimaryResume, listResumes, setPrimaryResume, getResumeSearchTerms, getResumeInterests, updateResumeInterests, retryEnrichment, setEnrichmentStatus } from '../services/resume/resume.service.ts';
 import { getSearchTerms as generateSearchTerms } from '../services/user/user.ai.service.ts';
 import { validateUploadUrl, validateSaveResume, validateResumeIdParam, validateUpdateResumeInterests, validateSetPrimaryResume } from './middleware/validators/resume.validate.ts';
 import type { Request } from 'express';
 import { authenticate } from './middleware/authenticate.ts';
 import asyncHandler from './middleware/handlers/asyncHandler.ts';
 import { getResumeEnrichmentQueue } from '../queues/resumeEnrichmentQueue.ts';
+
+/**
+ * Enqueues the enrichment job for a resume that has just been marked pending.
+ * Finished jobs are removed straight away because BullMQ silently ignores an add whose
+ * job id is still retained, which would leave a retried resume pending forever. If the
+ * enqueue fails the resume is marked failed so the retry action is offered instead.
+ */
+const startEnrichment = async (resume_id: string) => {
+    try {
+        await getResumeEnrichmentQueue().add(
+            'enrich',
+            { resume_id },
+            {
+                jobId: resume_id,
+                attempts: 3,
+                backoff: { type: 'exponential', delay: 5000 },
+                removeOnComplete: true,
+                removeOnFail: true,
+            }
+        );
+    } catch (error) {
+        await setEnrichmentStatus(resume_id, 'failed');
+        throw error;
+    }
+};
 
 const resumeController = (): express.Router => {
     const router = express.Router();
@@ -50,19 +75,17 @@ const resumeController = (): express.Router => {
         // Enqueue after interests are saved (the worker reads them) and before
         // responding, so a queue outage fails the request and the user can retry
         // rather than finishing onboarding with a resume that never gets enriched.
-        await getResumeEnrichmentQueue().add(
-            'enrich',
-            { resume_id },
-            {
-                jobId: resume_id,
-                attempts: 3,
-                backoff: { type: 'exponential', delay: 5000 },
-                removeOnComplete: 1000,
-                removeOnFail: 5000,
-            }
-        );
+        await startEnrichment(resume_id);
 
         res.status(200).json(result);
+    };
+
+    /** POST /:resume_id/enrichment/retry — re-enqueue enrichment for a resume whose last run failed. */
+    const retryEnrichmentRoute = async (req: Request<{ resume_id: string }>, res: Response) => {
+        const { resume_id } = req.params;
+        const result = await retryEnrichment(resume_id, req.auth!.userId);
+        await startEnrichment(resume_id);
+        res.status(202).json(result);
     };
 
     /** GET /:resume_id/search-terms — return the stored search terms for a specific resume. */
@@ -83,6 +106,7 @@ const resumeController = (): express.Router => {
     router.get('/:resume_id/possible-interests', validateResumeIdParam, authenticate, asyncHandler(getInterestsRoute));
     router.get('/:resume_id/interests', validateResumeIdParam, authenticate, asyncHandler(getResumeInterestsRoute));
     router.put('/:resume_id/interests', validateUpdateResumeInterests, authenticate, asyncHandler(updateResumeInterestsRoute));
+    router.post('/:resume_id/enrichment/retry', validateResumeIdParam, authenticate, asyncHandler(retryEnrichmentRoute));
     router.get('/:resume_id/search-terms', validateResumeIdParam, authenticate, asyncHandler(getSearchTermsRoute));
     router.put('/:resume_id/search-terms', validateResumeIdParam, authenticate, asyncHandler(updateSearchTermsRoute));
 
