@@ -219,3 +219,7 @@ select {
   }
 }
 
+.app-loading {
+  min-height: 100vh;
+  display: flex;
+}

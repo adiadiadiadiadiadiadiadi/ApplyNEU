@@ -14,6 +14,7 @@ import ProfileInterests from './components/Profile/profileInterests'
 import Settings from './components/Settings/settings'
 import Resumes from './components/Settings/resumes'
 import { FetchErrorProvider } from './components/common/FetchError'
+import ComponentLoader from './components/common/ComponentLoader'
 import { setNavigate } from './lib/navigation'
 import Unauthorized from './components/NotFound/unauthorized'
 import NotFound from './components/NotFound/notfound'
@@ -199,7 +200,9 @@ function App() {
   if (loading) {
     return (
       <FetchErrorProvider>
-        <div>loading...</div>
+        <div className="app-loading">
+          <ComponentLoader fullPage />
+        </div>
       </FetchErrorProvider>
     )
   }

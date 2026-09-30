@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { api } from '../../lib/api'
 import { useAppDispatch, useAppSelector } from '../../store'
 import { fetchUserProfile, setProfileDetails } from '../../store/userSlice'
+import ComponentLoader from '../common/ComponentLoader'
 import './profile.css'
 
 export default function ProfileSettings() {
@@ -235,7 +236,11 @@ export default function ProfileSettings() {
         </div>
       )
     }
-    return <div className="profile-blank profile-loading">loading...</div>
+    return (
+      <div className="profile-blank profile-loading">
+        <ComponentLoader fullPage label="loading profile" />
+      </div>
+    )
   }
 
   return (
