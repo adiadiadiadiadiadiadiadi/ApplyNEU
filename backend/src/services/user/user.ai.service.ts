@@ -104,8 +104,8 @@ export const getSearchTerms = async (resume_id: string, user_id?: string) => {
     try {
         const result = await pool.query(
             user_id
-                ? `UPDATE resumes SET search_terms = $1 WHERE resume_id = $2 AND user_id::text = $3 RETURNING *;`
-                : `UPDATE resumes SET search_terms = $1 WHERE resume_id = $2 RETURNING *;`,
+                ? `UPDATE resumes SET search_terms = $1, enrichment_status = 'complete' WHERE resume_id = $2 AND user_id::text = $3 RETURNING *;`
+                : `UPDATE resumes SET search_terms = $1, enrichment_status = 'complete' WHERE resume_id = $2 RETURNING *;`,
             user_id ? [search_terms, resume_id, user_id] : [search_terms, resume_id]
         );
         if (result.rows.length === 0) throw new AppError(404, 'Resume not found.');

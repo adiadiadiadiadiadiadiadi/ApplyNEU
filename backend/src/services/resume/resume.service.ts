@@ -6,7 +6,9 @@ import { AppError } from '../../errors/AppError.ts';
 import { pool } from '../../db/index.ts';
 import Anthropic from '@anthropic-ai/sdk';
 import { withRetry } from '../../utils/retry.ts';
-import type { ResumeSummary, PrimaryResumeUpdate } from '../../types/resumes.ts';
+import type { ResumeSummary, PrimaryResumeUpdate, EnrichmentStatus } from '../../types/resumes.ts';
+
+const MAX_ENRICHMENT_RETRIES = 3;
 
 const s3Client = new S3Client({
     region: process.env.AWS_REGION || 'us-east-2',
@@ -282,7 +284,7 @@ export const getResumeInterests = async (resume_id: string, user_id: string) => 
  * abandoned interests picker from demoting the resume the user was already running on.
  * Search terms are derived from these interests, but that generation is handled
  * asynchronously by the resume-enrichment worker (enqueued by the route after
- * this save), so it is not done here.
+ * this save), so it is not done here; the resume is marked pending until it finishes.
  * @param resume_id - ID of the resume
  * @param interests - Full replacement array of interest topic strings
  * @param user_id - Caller's authenticated user ID; must own the resume
@@ -290,7 +292,7 @@ export const getResumeInterests = async (resume_id: string, user_id: string) => 
 export const updateResumeInterests = async (resume_id: string, interests: string[], user_id: string) => {
     try {
         const result = await pool.query(
-            `UPDATE resumes SET interests = $1 WHERE resume_id = $2 AND user_id::text = $3 RETURNING *;`,
+            `UPDATE resumes SET interests = $1, enrichment_status = 'pending' WHERE resume_id = $2 AND user_id::text = $3 RETURNING *;`,
             [interests, resume_id, user_id]
         );
         if (result.rows.length === 0) throw new AppError(404, 'Resume not found.');
@@ -338,13 +340,14 @@ export const listResumes = async (user_id: string): Promise<ResumeSummary[]> => 
             `
             SELECT r.resume_id, r.file_name, r.created_at, r.upload_complete,
                    (r.resume_id = p.primary_resume_id) IS TRUE AS is_primary,
-                   (cardinality(r.search_terms) > 0 AND cardinality(r.interests) > 0) AS enriched
+                   r.enrichment_status,
+                   (r.enrichment_status = 'failed' AND r.enrichment_retries < $2) AS can_retry
             FROM resumes r
             LEFT JOIN preferences p ON p.user_id = r.user_id
             WHERE r.user_id::text = $1
             ORDER BY r.created_at DESC;
             `,
-            [user_id]
+            [user_id, MAX_ENRICHMENT_RETRIES]
         );
         return result.rows;
     } catch (error) {
@@ -356,8 +359,8 @@ export const listResumes = async (user_id: string): Promise<ResumeSummary[]> => 
 /**
  * Points the user's preferences at the given resume.
  *
- * Refuses a resume that has not been enriched: without interests and the search terms
- * derived from them an automation run has nothing to search on, so it would stall.
+ * Refuses a resume whose enrichment has not completed: without interests and the search
+ * terms derived from them an automation run has nothing to search on, so it would stall.
  *
  * The composite (resume_id, user_id) foreign key already refuses a resume the caller
  * does not own, but a constraint violation surfaces as a 500; the ownership read here
@@ -370,7 +373,7 @@ export const setPrimaryResume = async (resume_id: string, user_id: string): Prom
     try {
         const owned = await pool.query(
             `SELECT upload_complete,
-                    (cardinality(search_terms) > 0 AND cardinality(interests) > 0) AS enriched
+                    (enrichment_status = 'complete' AND cardinality(search_terms) > 0 AND cardinality(interests) > 0) AS enriched
              FROM resumes WHERE resume_id = $1 AND user_id::text = $2;`,
             [resume_id, user_id]
         );
@@ -392,9 +395,60 @@ export const setPrimaryResume = async (resume_id: string, user_id: string): Prom
 };
 
 /**
+ * Records the outcome of an enrichment run. Only the server calls this: the worker when
+ * a job exhausts its attempts, and the routes when the job cannot be enqueued.
+ * @param resume_id - ID of the resume
+ * @param status - New enrichment status
+ */
+export const setEnrichmentStatus = async (resume_id: string, status: EnrichmentStatus) => {
+    await pool.query(
+        `UPDATE resumes SET enrichment_status = $1 WHERE resume_id = $2;`,
+        [status, resume_id]
+    );
+};
+
+/**
+ * Moves a failed enrichment back to pending so the caller can re-enqueue it, counting
+ * the attempt against MAX_ENRICHMENT_RETRIES. A failure that keeps recurring is likely
+ * deterministic, so past the cap each click would only be another paid AI call.
+ * The status check is part of the UPDATE so two concurrent retries cannot both claim it.
+ * @param resume_id - ID of the resume to retry
+ * @param user_id - Caller's authenticated user ID; must own the resume
+ * @returns The resume id and its new status
+ */
+export const retryEnrichment = async (resume_id: string, user_id: string) => {
+    try {
+        const claimed = await pool.query(
+            `UPDATE resumes SET enrichment_status = 'pending', enrichment_retries = enrichment_retries + 1
+             WHERE resume_id = $1 AND user_id::text = $2
+               AND enrichment_status = 'failed' AND cardinality(interests) > 0
+               AND enrichment_retries < $3
+             RETURNING resume_id, enrichment_status;`,
+            [resume_id, user_id, MAX_ENRICHMENT_RETRIES]
+        );
+        if (claimed.rows.length > 0) return claimed.rows[0] as { resume_id: string; enrichment_status: EnrichmentStatus };
+
+        const owned = await pool.query(
+            `SELECT enrichment_status, enrichment_retries FROM resumes WHERE resume_id = $1 AND user_id::text = $2;`,
+            [resume_id, user_id]
+        );
+        if (owned.rows.length === 0) throw new AppError(404, 'Resume not found.');
+        const { enrichment_status, enrichment_retries } = owned.rows[0];
+        if (enrichment_status === 'failed' && enrichment_retries >= MAX_ENRICHMENT_RETRIES) {
+            throw new AppError(429, 'Enrichment retry limit reached.');
+        }
+        throw new AppError(409, 'Only a failed enrichment with interests can be retried.');
+    } catch (error) {
+        if (error instanceof AppError) throw error;
+        throw new AppError(500, 'Error retrying enrichment.');
+    }
+};
+
+/**
  * Retrieves metadata (no full text) for the user's primary resume, falling back to their
  * newest when no primary is set, so a user whose primary was pruned still resolves to one.
  * @param user_id - ID of the user
+ * @returns The resume, or null when the user has not uploaded one
  */
 export const getPrimaryResume = async (user_id: string) => {
     try {

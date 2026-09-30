@@ -3,6 +3,7 @@
 import 'dotenv/config';
 import { Worker } from 'bullmq';
 import { getSearchTerms } from '../services/user/user.ai.service.ts';
+import { setEnrichmentStatus } from '../services/resume/resume.service.ts';
 import { bullConnection } from '../queues/connection.ts';
 
 const worker = new Worker('resume-enrichment', async (job) => {
@@ -23,6 +24,12 @@ const worker = new Worker('resume-enrichment', async (job) => {
     concurrency: 5,
 });
 
-worker.on('failed', (job, err) => {
+worker.on('failed', async (job, err) => {
     console.error(`[resume-enrichment] job ${job?.id} failed:`, err);
+    if (!job || job.attemptsMade < (job.opts.attempts ?? 1)) return;
+    try {
+        await setEnrichmentStatus(job.data.resume_id, 'failed');
+    } catch (statusErr) {
+        console.error(`[resume-enrichment] could not mark resume_id=${job.data.resume_id} failed:`, statusErr);
+    }
 });

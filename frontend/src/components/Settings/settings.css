@@ -300,6 +300,50 @@
   color: #e0a640;
 }
 
+.resume-row__pending {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin: 0 4px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-top-color: rgba(255, 255, 255, 0.8);
+  animation: resume-row-spin 0.9s linear infinite;
+}
+
+@keyframes resume-row-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.resume-row__retry {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: #e0a640;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.resume-row__retry:hover:not(:disabled),
+.resume-row__retry:focus-visible {
+  color: #2ed4a4;
+  outline: none;
+}
+
+.resume-row__retry:disabled {
+  cursor: default;
+  color: #3a3a3a;
+}
+
 .resume-viewer {
   position: fixed;
   inset: 0;

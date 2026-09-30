@@ -18,7 +18,7 @@ jest.unstable_mockModule('@aws-sdk/client-s3', () => ({
     PutObjectCommand: class {},
 }));
 
-const { getPrimaryResume, completeResumeUpload, listResumes, setPrimaryResume, updateResumeInterests } = await import('../../src/services/resume/resume.service.ts');
+const { getPrimaryResume, completeResumeUpload, listResumes, setPrimaryResume, updateResumeInterests, retryEnrichment, setEnrichmentStatus } = await import('../../src/services/resume/resume.service.ts');
 const { getCandidateContext } = await import('../../src/services/candidateContext/candidateContext.service.ts');
 
 const createUser = async () => {
@@ -36,9 +36,9 @@ const addResume = async (user_id: string, file_name: string, created_at: string,
     const resume_id = randomUUID();
     const tags = enriched ? '{ai}' : '{}';
     await db.pool.query(
-        `INSERT INTO resumes (resume_id, key, created_at, user_id, file_name, file_size_bytes, resume_text, upload_complete, search_terms, interests)
-         VALUES ($1, $2, $3, $4, $5, 1024, $6, true, $7, $7)`,
-        [resume_id, `resumes/${resume_id}.pdf`, created_at, user_id, file_name, `text of ${file_name}`, tags]
+        `INSERT INTO resumes (resume_id, key, created_at, user_id, file_name, file_size_bytes, resume_text, upload_complete, search_terms, interests, enrichment_status)
+         VALUES ($1, $2, $3, $4, $5, 1024, $6, true, $7, $7, $8)`,
+        [resume_id, `resumes/${resume_id}.pdf`, created_at, user_id, file_name, `text of ${file_name}`, tags, enriched ? 'complete' : 'none']
     );
     return resume_id;
 };
@@ -134,13 +134,16 @@ describeWithDatabase('primary resume against Postgres', () => {
         expect(rows.every((row) => row.is_primary === false)).toBe(true);
     });
 
-    it('listResumes marks a resume enriched only once it has both interests and search terms', async () => {
-        await db.pool.query(`UPDATE resumes SET search_terms = '{}' WHERE resume_id = $1`, [older]);
+    it('listResumes reports each resume\'s enrichment status', async () => {
+        await db.pool.query(`UPDATE resumes SET search_terms = '{}', enrichment_status = 'pending' WHERE resume_id = $1`, [older]);
+        const bare = await addResume(user, 'bare.pdf', '2026-03-01T00:00:00Z', false);
 
         const rows = await listResumes(user);
+        const statusOf = (id: string) => rows.find((row) => row.resume_id === id)?.enrichment_status;
 
-        expect(rows.find((row) => row.resume_id === older)?.enriched).toBe(false);
-        expect(rows.find((row) => row.resume_id === newer)?.enriched).toBe(true);
+        expect(statusOf(older)).toBe('pending');
+        expect(statusOf(newer)).toBe('complete');
+        expect(statusOf(bare)).toBe('none');
     });
 
     it('setPrimaryResume rejects a resume that has interests but no search terms yet', async () => {
@@ -148,6 +151,65 @@ describeWithDatabase('primary resume against Postgres', () => {
 
         await expect(setPrimaryResume(newer, user)).rejects.toMatchObject({ status: 400 });
         expect(await readPrimary(user)).toBeNull();
+    });
+
+    it.each(['pending', 'failed'] as const)('setPrimaryResume rejects a resume whose enrichment is %s', async (status) => {
+        await setEnrichmentStatus(newer, status);
+
+        await expect(setPrimaryResume(newer, user)).rejects.toMatchObject({ status: 400 });
+        expect(await readPrimary(user)).toBeNull();
+    });
+
+    it('rejects an enrichment status outside the enum', async () => {
+        await expect(
+            db.pool.query(`UPDATE resumes SET enrichment_status = 'sending' WHERE resume_id = $1`, [newer])
+        ).rejects.toMatchObject({ code: '23514' });
+    });
+
+    it('saving interests marks enrichment pending', async () => {
+        await updateResumeInterests(newer, ['ai', 'ml'], user);
+
+        expect((await listResumes(user)).find((row) => row.resume_id === newer)?.enrichment_status).toBe('pending');
+    });
+
+    it('retryEnrichment moves a failed enrichment back to pending', async () => {
+        await setEnrichmentStatus(newer, 'failed');
+
+        expect(await retryEnrichment(newer, user)).toEqual({ resume_id: newer, enrichment_status: 'pending' });
+    });
+
+    it('retryEnrichment allows three retries, then refuses with 429 and stops offering one', async () => {
+        for (let attempt = 0; attempt < 3; attempt++) {
+            await setEnrichmentStatus(newer, 'failed');
+            expect((await listResumes(user)).find((row) => row.resume_id === newer)?.can_retry).toBe(true);
+            await retryEnrichment(newer, user);
+        }
+        await setEnrichmentStatus(newer, 'failed');
+
+        await expect(retryEnrichment(newer, user)).rejects.toMatchObject({ status: 429 });
+        expect((await listResumes(user)).find((row) => row.resume_id === newer)?.can_retry).toBe(false);
+    });
+
+    it.each(['none', 'pending', 'complete'] as const)('retryEnrichment refuses a resume whose enrichment is %s', async (status) => {
+        await setEnrichmentStatus(newer, status);
+
+        await expect(retryEnrichment(newer, user)).rejects.toMatchObject({ status: 409 });
+    });
+
+    it('retryEnrichment refuses a failed resume with no interests', async () => {
+        await db.pool.query(`UPDATE resumes SET interests = '{}', enrichment_status = 'failed' WHERE resume_id = $1`, [newer]);
+
+        await expect(retryEnrichment(newer, user)).rejects.toMatchObject({ status: 409 });
+    });
+
+    it('retryEnrichment 404s on a resume the caller does not own, leaving it failed', async () => {
+        const stranger = await createUser();
+        const theirResume = await addResume(stranger, 'stranger.pdf', '2026-03-01T00:00:00Z');
+        await setEnrichmentStatus(theirResume, 'failed');
+
+        await expect(retryEnrichment(theirResume, user)).rejects.toMatchObject({ status: 404 });
+
+        expect((await listResumes(stranger)).find((row) => row.resume_id === theirResume)?.enrichment_status).toBe('failed');
     });
 
     it('setPrimaryResume moves the pointer', async () => {
