@@ -19,8 +19,8 @@ const generateSearchTerms = async (resume_id: string, user_id?: string) => {
     try {
         const result = await pool.query(
             user_id
-                ? `SELECT resume_text, interests FROM resumes WHERE resume_id = $1 AND user_id::text = $2;`
-                : `SELECT resume_text, interests FROM resumes WHERE resume_id = $1;`,
+                ? `SELECT r.resume_text, p.interests FROM resumes r LEFT JOIN preferences p ON p.user_id = r.user_id WHERE r.resume_id = $1 AND r.user_id::text = $2;`
+                : `SELECT r.resume_text, p.interests FROM resumes r LEFT JOIN preferences p ON p.user_id = r.user_id WHERE r.resume_id = $1;`,
             user_id ? [resume_id, user_id] : [resume_id]
         );
 

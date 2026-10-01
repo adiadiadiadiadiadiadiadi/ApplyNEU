@@ -4,7 +4,7 @@ import { AppError } from '../errors/AppError.ts';
 export const getUserPreferences = async (user_id: string) => {
     try {
         const result = await pool.query(
-            `SELECT job_types, wait_for_approval, recent_jobs, job_match, unpaid_roles, email_notifications
+            `SELECT job_types, wait_for_approval, recent_jobs, job_match, unpaid_roles, email_notifications, interests
              FROM preferences WHERE user_id = $1;`,
             [user_id]
         );
@@ -62,7 +62,7 @@ export const updateUserPreferences = async (
                  unpaid_roles        = COALESCE($4, unpaid_roles),
                  email_notifications = COALESCE($5, email_notifications)
              WHERE user_id = $6
-             RETURNING job_types, wait_for_approval, recent_jobs, job_match, unpaid_roles, email_notifications;`,
+             RETURNING job_types, wait_for_approval, recent_jobs, job_match, unpaid_roles, email_notifications, interests;`,
             [wait_for_approval, recent_jobs, job_match, unpaid_roles, email_notifications, user_id]
         );
         if (result.rows.length === 0) throw new AppError(404, 'User not found.');

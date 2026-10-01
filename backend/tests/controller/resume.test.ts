@@ -11,7 +11,6 @@ const getPossibleInterests = jest.fn<(resume_id: string, user_id: string) => Pro
 const getPrimaryResume = jest.fn<(user_id: string) => Promise<any>>();
 const listResumes = jest.fn<(user_id: string) => Promise<any>>();
 const setPrimaryResume = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
-const getResumeInterests = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
 const updateResumeInterests = jest.fn<(resume_id: string, interests: string[], user_id: string) => Promise<any>>();
 const getResumeSearchTerms = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
 const retryEnrichment = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
@@ -37,7 +36,6 @@ jest.unstable_mockModule('../../src/services/resume/resume.service.ts', () => ({
   getPrimaryResume,
   listResumes,
   setPrimaryResume,
-  getResumeInterests,
   updateResumeInterests,
   getResumeSearchTerms,
   retryEnrichment,
@@ -78,7 +76,6 @@ beforeEach(() => {
   getPrimaryResume.mockReset();
   listResumes.mockReset();
   setPrimaryResume.mockReset();
-  getResumeInterests.mockReset();
   updateResumeInterests.mockReset();
   getResumeSearchTerms.mockReset();
   generateSearchTerms.mockReset();
@@ -398,38 +395,6 @@ describe('PUT /me/resumes/:resume_id/primary', () => {
   });
 });
 
-describe('GET /resumes/:resume_id/interests', () => {
-  const url = `/resumes/${RESUME_ID}/interests`;
-
-  it('returns 200 and the stored interests', async () => {
-    getResumeInterests.mockResolvedValue({ interests: ['Python', 'React'] });
-
-    const res = await request(app).get(url);
-
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ interests: ['Python', 'React'] });
-    expect(getResumeInterests).toHaveBeenCalledWith(RESUME_ID, USER_ID);
-  });
-
-  it('propagates a 404 AppError when the resume does not exist or is not owned by the caller', async () => {
-    getResumeInterests.mockRejectedValue(new AppError(404, 'Resume not found.'));
-
-    const res = await request(app).get(url);
-
-    expect(res.status).toBe(404);
-    expect(res.body.message).toBe('Resume not found.');
-  });
-
-  it('returns 401 when the caller is not authenticated', async () => {
-    rejectAuth();
-
-    const res = await request(app).get(url);
-
-    expect(res.status).toBe(401);
-    expect(getResumeInterests).not.toHaveBeenCalled();
-  });
-});
-
 describe('PUT /resumes/:resume_id/interests', () => {
   const url = `/resumes/${RESUME_ID}/interests`;
   const interests = ['Python', 'React', 'AWS'];
@@ -561,7 +526,7 @@ describe('POST /resumes/:resume_id/enrichment/retry', () => {
   });
 
   it('propagates a 409 without enqueueing when the resume is not in a failed state', async () => {
-    retryEnrichment.mockRejectedValue(new AppError(409, 'Only a failed enrichment with interests can be retried.'));
+    retryEnrichment.mockRejectedValue(new AppError(409, 'Only a failed enrichment can be retried.'));
 
     const res = await request(app).post(url).send({});
 

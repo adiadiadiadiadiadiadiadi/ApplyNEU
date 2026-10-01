@@ -48,7 +48,6 @@ const candidateContext = (
     resume: {
         resume_text: 'Backend engineer. Node, Postgres, TypeScript.',
         search_terms: ['backend'],
-        interests: ['distributed systems'],
     },
     preferences: {
         job_match: 'high',
@@ -56,6 +55,7 @@ const candidateContext = (
         job_types: ['co-op'],
         unpaid_roles: false,
         recent_jobs: true,
+        interests: ['distributed systems'],
     },
     profile: { grad_year: GRAD_YEAR },
     ...overrides,
@@ -105,6 +105,7 @@ describe('sendJobDescription', () => {
                     job_types: [],
                     unpaid_roles: false,
                     recent_jobs: false,
+                    interests: ['distributed systems'],
                 },
             })
         );
@@ -124,7 +125,7 @@ describe('sendJobDescription', () => {
 
     it('throws 404 Resume not found when the resume text is empty', async () => {
         getCandidateContext.mockResolvedValue(
-            candidateContext({ resume: { resume_text: '', search_terms: [], interests: [] } })
+            candidateContext({ resume: { resume_text: '', search_terms: [] } })
         );
 
         await expect(analyze()).rejects.toMatchObject({ status: 404, message: 'Resume not found.' });

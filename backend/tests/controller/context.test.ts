@@ -29,7 +29,6 @@ const CONTEXT = {
   resume: {
     resume_text: 'Backend engineer. Node, Postgres, TypeScript.',
     search_terms: ['backend'],
-    interests: ['distributed systems'],
   },
   preferences: {
     job_match: 'high',
@@ -37,6 +36,7 @@ const CONTEXT = {
     job_types: ['Co-op'],
     unpaid_roles: false,
     recent_jobs: true,
+    interests: ['distributed systems'],
   },
   profile: { grad_year: 2027 },
 };

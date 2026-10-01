@@ -14,17 +14,17 @@ export const getCandidateContext = async (user_id: string): Promise<CandidateCon
             `
             SELECT r.resume_text,
                    r.search_terms,
-                   r.interests,
                    pref.job_match,
                    pref.wait_for_approval,
                    pref.job_types,
                    pref.unpaid_roles,
                    pref.recent_jobs,
+                   pref.interests,
                    p.grad_year
             FROM profile p
             JOIN preferences pref ON pref.user_id = p.user_id
             JOIN LATERAL (
-                SELECT resume_text, search_terms, interests
+                SELECT resume_text, search_terms
                 FROM resumes
                 WHERE user_id = p.user_id AND upload_complete = true
                 ORDER BY (resume_id = pref.primary_resume_id) DESC NULLS LAST, created_at DESC
@@ -41,7 +41,6 @@ export const getCandidateContext = async (user_id: string): Promise<CandidateCon
             resume: {
                 resume_text: row.resume_text,
                 search_terms: row.search_terms,
-                interests: row.interests,
             },
             preferences: {
                 job_match: row.job_match,
@@ -49,6 +48,7 @@ export const getCandidateContext = async (user_id: string): Promise<CandidateCon
                 job_types: row.job_types,
                 unpaid_roles: row.unpaid_roles,
                 recent_jobs: row.recent_jobs,
+                interests: row.interests,
             },
             profile: {
                 grad_year: row.grad_year,
@@ -67,11 +67,11 @@ export const getCandidateContext = async (user_id: string): Promise<CandidateCon
  * job_match here would invalidate every cached score whenever the user retunes it.
  */
 export const renderCandidateContext = (context: CandidateContextResponse): string => {
-    const { resume, profile } = context;
+    const { resume, preferences, profile } = context;
 
     return [
         `GRADUATION YEAR: ${profile.grad_year}`,
-        `INTERESTS: ${resume.interests.join(', ') || 'none specified'}`,
+        `INTERESTS: ${preferences.interests.join(', ') || 'none specified'}`,
         `RESUME:`,
         resume.resume_text,
     ].join('\n');
