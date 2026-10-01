@@ -532,39 +532,6 @@ describe('GET /resumes/:resume_id/search-terms', () => {
   });
 });
 
-describe('PUT /resumes/:resume_id/search-terms', () => {
-  const url = `/resumes/${RESUME_ID}/search-terms`;
-
-  it('returns 200 and the regenerated search terms', async () => {
-    const terms = ['software engineer', 'backend', 'node'];
-    generateSearchTerms.mockResolvedValue(terms);
-
-    const res = await request(app).put(url).send({});
-
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual(terms);
-    expect(generateSearchTerms).toHaveBeenCalledWith(RESUME_ID, USER_ID);
-  });
-
-  it('returns 500 when the service throws a non-AppError', async () => {
-    generateSearchTerms.mockRejectedValue(new Error('boom'));
-
-    const res = await request(app).put(url).send({});
-
-    expect(res.status).toBe(500);
-    expect(res.body.message).toBe('Internal server error.');
-  });
-
-  it('returns 401 when the caller is not authenticated', async () => {
-    rejectAuth();
-
-    const res = await request(app).put(url).send({});
-
-    expect(res.status).toBe(401);
-    expect(generateSearchTerms).not.toHaveBeenCalled();
-  });
-});
-
 describe('POST /resumes/:resume_id/enrichment/retry', () => {
   const url = `/resumes/${RESUME_ID}/enrichment/retry`;
 

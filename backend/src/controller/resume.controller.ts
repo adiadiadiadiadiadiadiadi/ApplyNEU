@@ -6,7 +6,6 @@ import type {
   SetPrimaryResumeRequest,
 } from '../types/resumes.ts';
 import { getUploadUrl, getViewUrl, completeResumeUpload, getPossibleInterests, getPrimaryResume, listResumes, setPrimaryResume, getResumeSearchTerms, getResumeInterests, updateResumeInterests, retryEnrichment, setEnrichmentStatus } from '../services/resume/resume.service.ts';
-import { getSearchTerms as generateSearchTerms } from '../services/user/user.ai.service.ts';
 import { validateUploadUrl, validateSaveResume, validateResumeIdParam, validateUpdateResumeInterests, validateSetPrimaryResume } from './middleware/validators/resume.validate.ts';
 import type { Request } from 'express';
 import { authenticate } from './middleware/authenticate.ts';
@@ -95,20 +94,12 @@ const resumeController = (): express.Router => {
         res.status(200).json(result);
     };
 
-    /** PUT /:resume_id/search-terms — re-run AI to regenerate and store search terms for a specific resume. */
-    const updateSearchTermsRoute = async (req: Request<{ resume_id: string }>, res: Response) => {
-        const { resume_id } = req.params;
-        const result = await generateSearchTerms(resume_id, req.auth!.userId);
-        res.status(200).json(result);
-    };
-
     router.post('/save', validateSaveResume, authenticate, asyncHandler(completeResumeUploadRoute));
     router.get('/:resume_id/possible-interests', validateResumeIdParam, authenticate, asyncHandler(getInterestsRoute));
     router.get('/:resume_id/interests', validateResumeIdParam, authenticate, asyncHandler(getResumeInterestsRoute));
     router.put('/:resume_id/interests', validateUpdateResumeInterests, authenticate, asyncHandler(updateResumeInterestsRoute));
     router.post('/:resume_id/enrichment/retry', validateResumeIdParam, authenticate, asyncHandler(retryEnrichmentRoute));
     router.get('/:resume_id/search-terms', validateResumeIdParam, authenticate, asyncHandler(getSearchTermsRoute));
-    router.put('/:resume_id/search-terms', validateResumeIdParam, authenticate, asyncHandler(updateSearchTermsRoute));
 
     return router;
 };
