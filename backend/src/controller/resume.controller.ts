@@ -5,8 +5,8 @@ import type {
   PossibleInterestsRequest,
   SetPrimaryResumeRequest,
 } from '../types/resumes.ts';
-import { getUploadUrl, getViewUrl, completeResumeUpload, getPossibleInterests, getPrimaryResume, listResumes, setPrimaryResume, getResumeSearchTerms, getResumeInterests, updateResumeInterests, retryEnrichment, setEnrichmentStatus } from '../services/resume/resume.service.ts';
-import { validateUploadUrl, validateSaveResume, validateResumeIdParam, validateUpdateResumeInterests, validateSetPrimaryResume } from './middleware/validators/resume.validate.ts';
+import { getUploadUrl, getViewUrl, completeResumeUpload, getPossibleInterests, getPrimaryResume, listResumes, setPrimaryResume, getResumeSearchTerms, getResumeInterests, updateResumeInterests, retryEnrichment, setEnrichmentStatus, deleteResume } from '../services/resume/resume.service.ts';
+import { validateUploadUrl, validateSaveResume, validateResumeIdParam, validateUpdateResumeInterests, validateSetPrimaryResume, validateDeleteResume } from './middleware/validators/resume.validate.ts';
 import type { Request } from 'express';
 import { authenticate } from './middleware/authenticate.ts';
 import asyncHandler from './middleware/handlers/asyncHandler.ts';
@@ -140,11 +140,19 @@ export const meResumeController = (): express.Router => {
         res.status(200).json(result);
     };
 
+    /** DELETE /me/resumes/:resume_id — delete one of the caller's resumes. */
+    const deleteResumeRoute = async (req: SetPrimaryResumeRequest, res: Response) => {
+        const { resume_id } = req.params;
+        const result = await deleteResume(resume_id, req.auth!.userId);
+        res.status(200).json(result);
+    };
+
     router.post('/upload', validateUploadUrl, asyncHandler(getUploadUrlRoute));
     router.get('/:resume_id/view', validateResumeIdParam, asyncHandler(getViewUrlRoute));
     router.get('/primary', asyncHandler(getPrimaryResumeRoute));
     router.get('/', asyncHandler(listResumesRoute));
     router.put('/:resume_id/primary', validateSetPrimaryResume, asyncHandler(setPrimaryResumeRoute));
+    router.delete('/:resume_id', validateDeleteResume, asyncHandler(deleteResumeRoute));
 
     return router;
 };

@@ -18,7 +18,7 @@ jest.unstable_mockModule('@aws-sdk/client-s3', () => ({
     PutObjectCommand: class {},
 }));
 
-const { getPrimaryResume, completeResumeUpload, listResumes, setPrimaryResume, updateResumeInterests, retryEnrichment, setEnrichmentStatus } = await import('../../src/services/resume/resume.service.ts');
+const { getPrimaryResume, completeResumeUpload, listResumes, setPrimaryResume, updateResumeInterests, retryEnrichment, setEnrichmentStatus, deleteResume } = await import('../../src/services/resume/resume.service.ts');
 const { getCandidateContext } = await import('../../src/services/candidateContext/candidateContext.service.ts');
 
 const createUser = async () => {
@@ -210,6 +210,30 @@ describeWithDatabase('primary resume against Postgres', () => {
         await expect(retryEnrichment(theirResume, user)).rejects.toMatchObject({ status: 404 });
 
         expect((await listResumes(stranger)).find((row) => row.resume_id === theirResume)?.enrichment_status).toBe('failed');
+    });
+
+    it('deleteResume removes the row', async () => {
+        expect(await deleteResume(older, user)).toEqual({ resume_id: older });
+
+        expect((await listResumes(user)).map((row) => row.resume_id)).toEqual([newer]);
+    });
+
+    it('deleteResume 404s on a resume the caller does not own, leaving it in place', async () => {
+        const stranger = await createUser();
+        const theirResume = await addResume(stranger, 'stranger.pdf', '2026-03-01T00:00:00Z');
+
+        await expect(deleteResume(theirResume, user)).rejects.toMatchObject({ status: 404 });
+
+        expect((await listResumes(stranger)).map((row) => row.resume_id)).toEqual([theirResume]);
+    });
+
+    it('deleting the primary clears the pointer and falls back to the newest remaining resume', async () => {
+        await setPrimary(user, older);
+
+        await deleteResume(older, user);
+
+        expect(await readPrimary(user)).toBeNull();
+        expect((await getPrimaryResume(user))?.resume_id).toBe(newer);
     });
 
     it('setPrimaryResume moves the pointer', async () => {

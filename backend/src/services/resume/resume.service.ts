@@ -395,6 +395,28 @@ export const setPrimaryResume = async (resume_id: string, user_id: string): Prom
 };
 
 /**
+ * Deletes one of the caller's resumes. If it was the primary, the preferences foreign key
+ * clears the pointer and getPrimaryResume falls back to the newest remaining resume.
+ * 
+ * @param resume_id - ID of the resume to delete
+ * @param user_id - Caller's authenticated user ID; must own the resume
+ * @returns The deleted resume's id
+ */
+export const deleteResume = async (resume_id: string, user_id: string) => {
+    try {
+        const result = await pool.query(
+            `DELETE FROM resumes WHERE resume_id = $1 AND user_id::text = $2 RETURNING resume_id;`,
+            [resume_id, user_id]
+        );
+        if (result.rows.length === 0) throw new AppError(404, 'Resume not found.');
+        return result.rows[0] as { resume_id: string };
+    } catch (error) {
+        if (error instanceof AppError) throw error;
+        throw new AppError(500, 'Error deleting resume.');
+    }
+};
+
+/**
  * Records the outcome of an enrichment run. Only the server calls this: the worker when
  * a job exhausts its attempts, and the routes when the job cannot be enqueued.
  * @param resume_id - ID of the resume

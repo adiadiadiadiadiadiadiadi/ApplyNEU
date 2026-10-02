@@ -43,3 +43,8 @@ export const validateSetPrimaryResume = [
     param('resume_id').isUUID().withMessage('resume_id must be a valid resume id.'),
     handleValidation,
 ];
+
+export const validateDeleteResume = [
+    param('resume_id').isUUID().withMessage('resume_id must be a valid resume id.'),
+    handleValidation,
+];

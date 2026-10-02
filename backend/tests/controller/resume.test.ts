@@ -16,6 +16,7 @@ const updateResumeInterests = jest.fn<(resume_id: string, interests: string[], u
 const getResumeSearchTerms = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
 const retryEnrichment = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
 const setEnrichmentStatus = jest.fn<(resume_id: string, status: string) => Promise<any>>();
+const deleteResume = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
 
 // Both default to resolving.
 const generateSearchTerms = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
@@ -42,6 +43,7 @@ jest.unstable_mockModule('../../src/services/resume/resume.service.ts', () => ({
   getResumeSearchTerms,
   retryEnrichment,
   setEnrichmentStatus,
+  deleteResume,
 }));
 
 jest.unstable_mockModule('../../src/services/user/user.ai.service.ts', () => ({
@@ -85,6 +87,7 @@ beforeEach(() => {
   queueAdd.mockReset();
   retryEnrichment.mockReset();
   setEnrichmentStatus.mockReset();
+  deleteResume.mockReset();
   authenticate.mockReset();
   authenticate.mockImplementation((req: any, _res: any, next: any) => {
     req.auth = { userId: USER_ID };
@@ -397,6 +400,54 @@ describe('PUT /me/resumes/:resume_id/primary', () => {
     expect(setPrimaryResume).not.toHaveBeenCalled();
   });
 });
+
+describe('DELETE /me/resumes/:resume_id', () => {
+  const url = `/me/resumes/${RESUME_UUID}`;
+
+  it('returns 200 and the deleted id on success', async () => {
+    deleteResume.mockResolvedValue({ resume_id: RESUME_UUID });
+
+    const res = await request(app).delete(url);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ resume_id: RESUME_UUID });
+    expect(deleteResume).toHaveBeenCalledWith(RESUME_UUID, USER_ID);
+  });
+
+  it('returns 404 for a resume the caller does not own', async () => {
+    deleteResume.mockRejectedValue(new AppError(404, 'Resume not found.'));
+
+    const res = await request(app).delete(url);
+
+    expect(res.status).toBe(404);
+    expect(res.body.message).toBe('Resume not found.');
+  });
+
+  it('returns 400 without calling the service when resume_id is not a resume id', async () => {
+    const res = await request(app).delete('/me/resumes/not-a-uuid');
+
+    expect(res.status).toBe(400);
+    expect(deleteResume).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 when the service throws a non-AppError', async () => {
+    deleteResume.mockRejectedValue(new Error('boom'));
+
+    const res = await request(app).delete(url);
+
+    expect(res.status).toBe(500);
+  });
+
+  it('returns 401 when the caller is not authenticated', async () => {
+    rejectAuth();
+
+    const res = await request(app).delete(url);
+
+    expect(res.status).toBe(401);
+    expect(deleteResume).not.toHaveBeenCalled();
+  });
+});
+
 
 describe('GET /resumes/:resume_id/interests', () => {
   const url = `/resumes/${RESUME_ID}/interests`;
