@@ -144,6 +144,12 @@ export const meResumeController = (): express.Router => {
     const deleteResumeRoute = async (req: SetPrimaryResumeRequest, res: Response) => {
         const { resume_id } = req.params;
         const result = await deleteResume(resume_id, req.auth!.userId);
+        // BullMQ refuses to remove a job a worker is running, so this only clears waiting or delayed jobs.
+        try {
+            await getResumeEnrichmentQueue().remove(resume_id);
+        } catch (error) {
+            console.error(`[deleteResume] could not remove enrichment job for resume_id=${resume_id}:`, error);
+        }
         res.status(200).json(result);
     };
 

@@ -22,6 +22,7 @@ const deleteResume = jest.fn<(resume_id: string, user_id: string) => Promise<any
 const generateSearchTerms = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
 
 const queueAdd = jest.fn<(...args: any[]) => Promise<any>>();
+const queueRemove = jest.fn<(jobId: string) => Promise<any>>();
 
 const USER_ID = 'test-user-id';
 
@@ -52,7 +53,7 @@ jest.unstable_mockModule('../../src/services/user/user.ai.service.ts', () => ({
 
 // Enrichment is enqueued, not run inline; mock the queue so tests need no Redis.
 jest.unstable_mockModule('../../src/queues/resumeEnrichmentQueue.ts', () => ({
-  getResumeEnrichmentQueue: () => ({ add: queueAdd }),
+  getResumeEnrichmentQueue: () => ({ add: queueAdd, remove: queueRemove }),
 }));
 
 jest.unstable_mockModule('../../src/controller/middleware/authenticate.ts', () => ({
@@ -85,6 +86,8 @@ beforeEach(() => {
   getResumeSearchTerms.mockReset();
   generateSearchTerms.mockReset();
   queueAdd.mockReset();
+  queueRemove.mockReset();
+  queueRemove.mockResolvedValue(1);
   retryEnrichment.mockReset();
   setEnrichmentStatus.mockReset();
   deleteResume.mockReset();
@@ -414,6 +417,25 @@ describe('DELETE /me/resumes/:resume_id', () => {
     expect(deleteResume).toHaveBeenCalledWith(RESUME_UUID, USER_ID);
   });
 
+  it('removes the enrichment job after deleting the row', async () => {
+    deleteResume.mockResolvedValue({ resume_id: RESUME_UUID });
+
+    await request(app).delete(url);
+
+    expect(queueRemove).toHaveBeenCalledWith(RESUME_UUID);
+    expect(deleteResume.mock.invocationCallOrder[0]).toBeLessThan(queueRemove.mock.invocationCallOrder[0]!);
+  });
+
+  it('still returns 200 when the enrichment job cannot be removed', async () => {
+    deleteResume.mockResolvedValue({ resume_id: RESUME_UUID });
+    queueRemove.mockRejectedValue(new Error('job is locked'));
+
+    const res = await request(app).delete(url);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ resume_id: RESUME_UUID });
+  });
+
   it('returns 404 for a resume the caller does not own', async () => {
     deleteResume.mockRejectedValue(new AppError(404, 'Resume not found.'));
 
@@ -421,6 +443,7 @@ describe('DELETE /me/resumes/:resume_id', () => {
 
     expect(res.status).toBe(404);
     expect(res.body.message).toBe('Resume not found.');
+    expect(queueRemove).not.toHaveBeenCalled();
   });
 
   it('returns 400 without calling the service when resume_id is not a resume id', async () => {
