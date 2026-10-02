@@ -51,7 +51,8 @@ CREATE TABLE public.preferences (
     job_match public.job_match_sensitivity DEFAULT 'low'::public.job_match_sensitivity NOT NULL,
     email_notifications boolean DEFAULT true NOT NULL,
     unpaid_roles boolean DEFAULT false NOT NULL,
-    primary_resume_id uuid
+    primary_resume_id uuid,
+    interests text[] DEFAULT '{}'::text[] NOT NULL
 );
 
 CREATE TABLE public.profile (
@@ -71,7 +72,6 @@ CREATE TABLE public.resumes (
     resume_text text NOT NULL,
     upload_complete boolean DEFAULT false,
     search_terms text[] DEFAULT '{}'::text[] NOT NULL,
-    interests text[] DEFAULT '{}'::text[] NOT NULL,
     enrichment_status text DEFAULT 'none'::text NOT NULL,
     enrichment_retries integer DEFAULT 0 NOT NULL,
     CONSTRAINT resumes_enrichment_status_check CHECK (enrichment_status = ANY (ARRAY['none'::text, 'pending'::text, 'failed'::text, 'complete'::text]))

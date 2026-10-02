@@ -8,8 +8,8 @@ vi.mock('../../../../lib/api', () => {
     api: {
       get: vi.fn(async (path: string) => {
         if (path.includes('/me/context')) return json({
-          resume: { resume_text: 'Backend engineer.', search_terms: ['software'], interests: [] },
-          preferences: { job_match: 'medium', wait_for_approval: false, job_types: ['Co-op'], unpaid_roles: false, recent_jobs: true },
+          resume: { resume_text: 'Backend engineer.', search_terms: ['software'] },
+          preferences: { job_match: 'medium', wait_for_approval: false, job_types: ['Co-op'], unpaid_roles: false, recent_jobs: true, interests: [] },
           profile: { grad_year: 2027 },
         })
         if (path.includes('/tasks')) return json([])

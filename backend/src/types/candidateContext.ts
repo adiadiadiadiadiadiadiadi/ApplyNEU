@@ -4,7 +4,6 @@ export interface CandidateContextResponse {
   resume: {
     resume_text: string;
     search_terms: string[];
-    interests: string[];
   };
   preferences: {
     job_match: JobMatchSensitivity;
@@ -12,6 +11,7 @@ export interface CandidateContextResponse {
     job_types: string[];
     unpaid_roles: boolean;
     recent_jobs: boolean;
+    interests: string[];
   };
   profile: {
     grad_year: number;

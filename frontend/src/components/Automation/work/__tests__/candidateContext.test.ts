@@ -10,8 +10,8 @@ vi.mock('../../../../lib/api', () => {
         if (path.includes('/me/context')) {
           if (contextStatus !== 200) return json({}, false, contextStatus)
           return json({
-            resume: { resume_text: 'Backend engineer.', search_terms: ['software'], interests: [] },
-            preferences: { job_match: 'medium', wait_for_approval: false, job_types: ['Co-op'], unpaid_roles: true, recent_jobs: false },
+            resume: { resume_text: 'Backend engineer.', search_terms: ['software'] },
+            preferences: { job_match: 'medium', wait_for_approval: false, job_types: ['Co-op'], unpaid_roles: true, recent_jobs: false, interests: [] },
             profile: { grad_year: 2027 },
           })
         }

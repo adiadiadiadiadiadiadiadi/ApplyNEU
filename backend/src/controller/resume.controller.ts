@@ -5,7 +5,7 @@ import type {
   PossibleInterestsRequest,
   SetPrimaryResumeRequest,
 } from '../types/resumes.ts';
-import { getUploadUrl, getViewUrl, completeResumeUpload, getPossibleInterests, getPrimaryResume, listResumes, setPrimaryResume, getResumeSearchTerms, getResumeInterests, updateResumeInterests, retryEnrichment, setEnrichmentStatus, deleteResume } from '../services/resume/resume.service.ts';
+import { getUploadUrl, getViewUrl, completeResumeUpload, getPossibleInterests, getPrimaryResume, listResumes, setPrimaryResume, getResumeSearchTerms, updateResumeInterests, retryEnrichment, setEnrichmentStatus, deleteResume } from '../services/resume/resume.service.ts';
 import { validateUploadUrl, validateSaveResume, validateResumeIdParam, validateUpdateResumeInterests, validateSetPrimaryResume, validateDeleteResume } from './middleware/validators/resume.validate.ts';
 import type { Request } from 'express';
 import { authenticate } from './middleware/authenticate.ts';
@@ -54,13 +54,6 @@ const resumeController = (): express.Router => {
         res.status(200).json(result);
     };
 
-    /** GET /:resume_id/interests — return the interest tags stored on a specific resume. */
-    const getResumeInterestsRoute = async (req: Request<{ resume_id: string }>, res: Response) => {
-        const { resume_id } = req.params;
-        const result = await getResumeInterests(resume_id, req.auth!.userId);
-        res.status(200).json(result);
-    };
-
     /**
      * PUT /:resume_id/interests — save the user's selected interest tags, then kick
      * off resume enrichment. Once interests are persisted the worker caches the short
@@ -71,9 +64,6 @@ const resumeController = (): express.Router => {
         const { interests } = req.body;
         const result = await updateResumeInterests(resume_id, interests, req.auth!.userId);
 
-        // Enqueue after interests are saved (the worker reads them) and before
-        // responding, so a queue outage fails the request and the user can retry
-        // rather than finishing onboarding with a resume that never gets enriched.
         await startEnrichment(resume_id);
 
         res.status(200).json(result);
@@ -96,7 +86,6 @@ const resumeController = (): express.Router => {
 
     router.post('/save', validateSaveResume, authenticate, asyncHandler(completeResumeUploadRoute));
     router.get('/:resume_id/possible-interests', validateResumeIdParam, authenticate, asyncHandler(getInterestsRoute));
-    router.get('/:resume_id/interests', validateResumeIdParam, authenticate, asyncHandler(getResumeInterestsRoute));
     router.put('/:resume_id/interests', validateUpdateResumeInterests, authenticate, asyncHandler(updateResumeInterestsRoute));
     router.post('/:resume_id/enrichment/retry', validateResumeIdParam, authenticate, asyncHandler(retryEnrichmentRoute));
     router.get('/:resume_id/search-terms', validateResumeIdParam, authenticate, asyncHandler(getSearchTermsRoute));
