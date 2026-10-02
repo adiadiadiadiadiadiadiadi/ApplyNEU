@@ -146,17 +146,17 @@
 }
 
 .toggle--on {
-  background: #183125;
-  border-color: #2f654d;
+  background: #262626;
+  border-color: #4a4a4a;
 }
 
 .toggle--on .toggle__thumb {
   transform: translateX(18px);
-  background: #3fc68c;
+  background: #f5f5f5;
 }
 
 .toggle:focus-visible {
-  outline: 2px solid #3fc68c;
+  outline: 2px solid #f5f5f5;
   outline-offset: 2px;
 }
 
@@ -191,8 +191,8 @@
 }
 
 .sensitivity-btn--active {
-  background: #12372c;
-  color: #2ed4a4;
+  background: #262626;
+  color: #f5f5f5;
 }
 
 .resume-card {
@@ -213,9 +213,9 @@
 
 .resume-pick-btn:hover:not(:disabled),
 .resume-pick-btn:focus-visible {
-  background: #12372c;
-  border-color: #2f654d;
-  color: #2ed4a4;
+  background: #262626;
+  border-color: #4a4a4a;
+  color: #f5f5f5;
   outline: none;
 }
 
@@ -335,7 +335,7 @@
 
 .resume-row__retry:hover:not(:disabled),
 .resume-row__retry:focus-visible {
-  color: #2ed4a4;
+  color: #f5f5f5;
   outline: none;
 }
 
@@ -423,7 +423,7 @@
 
 .resume-row__view:hover:not(:disabled),
 .resume-row__view:focus-visible {
-  color: #2ed4a4;
+  color: #f5f5f5;
   outline: none;
 }
 
@@ -456,8 +456,8 @@
 
 .resume-row__check--on,
 .resume-row__check--on:hover:not(:disabled) {
-  background: #2ed4a4;
-  border-color: #2ed4a4;
+  background: #f5f5f5;
+  border-color: #f5f5f5;
   cursor: default;
 }
 
@@ -489,7 +489,7 @@
 
 .resume-row__add:hover:not(:disabled),
 .resume-row__add:focus-visible {
-  color: #2ed4a4;
+  color: #f5f5f5;
   outline: none;
 }
 

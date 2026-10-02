@@ -84,7 +84,7 @@
 .metrics-avatar-icon {
   height: 22px;
   width: 22px;
-  color: #00e3c1;
+  color: #f5f5f5;
 }
 
 .metrics-profile-text h2 {
@@ -115,7 +115,7 @@
 .metrics-stat-icon {
   height: 18px;
   width: 18px;
-  color: #00e3c1;
+  color: #f5f5f5;
 }
 
 .metrics-stat-label {
@@ -134,7 +134,7 @@
 }
 
 .metrics-stat-value--accent {
-  color: #00e3c1;
+  color: #f5f5f5;
 }
 
 .metrics-grid {
@@ -194,7 +194,7 @@
 
 .funnel-value {
   font-weight: 700;
-  color: #00e3c1;
+  color: #f5f5f5;
 }
 
 .funnel-bar {
