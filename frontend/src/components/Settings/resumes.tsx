@@ -6,6 +6,7 @@ import { fetchUserProfile } from '../../store/userSlice'
 import { suppressErrorRedirect, releaseErrorRedirect } from '../../lib/fetchErrorControl'
 import ComponentLoader from '../common/ComponentLoader'
 import PdfViewer from '../common/PdfViewer'
+import ResumeMenu from './resumeMenu'
 import './settings.css'
 
 type EnrichmentStatus = 'none' | 'pending' | 'failed' | 'complete'
@@ -32,6 +33,7 @@ const SELECT_SUPPRESSOR = 'resumes-select'
 const VIEW_SUPPRESSOR = 'resumes-view'
 const POLL_SUPPRESSOR = 'resumes-poll'
 const RETRY_SUPPRESSOR = 'resumes-retry'
+const DELETE_SUPPRESSOR = 'resumes-delete'
 const POLL_INTERVAL_MS = 3000
 
 export default function Resumes() {
@@ -46,6 +48,8 @@ export default function Resumes() {
   const [selecting, setSelecting] = useState<string | null>(null)
   const [viewing, setViewing] = useState<string | null>(null)
   const [retrying, setRetrying] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [confirmingDelete, setConfirmingDelete] = useState<ResumeRow | null>(null)
   const [viewer, setViewer] = useState<{ url: string; fileName: string } | null>(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -59,6 +63,15 @@ export default function Resumes() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [viewer])
+
+  useEffect(() => {
+    if (!confirmingDelete) return
+    const onKey = ({ key }: { key: string }) => {
+      if (key === 'Escape') setConfirmingDelete(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [confirmingDelete])
 
   useEffect(() => {
     if (!profile && status === 'idle') {
@@ -232,6 +245,31 @@ export default function Resumes() {
     }
   }
 
+  // When the primary is deleted the server falls back to the newest remaining resume,
+  // which is the first row since the list is newest first.
+  const deleteResume = async (resumeId: string) => {
+    if (deleting || uploading) return
+    setDeleting(resumeId)
+    setError(null)
+    suppressErrorRedirect(DELETE_SUPPRESSOR)
+    try {
+      const resp = await api.del(`/me/resumes/${resumeId}`)
+      if (!resp.ok && resp.status !== 404) {
+        throw new Error('Could not delete resume')
+      }
+      setResumes((current) => current.filter((row) => row.resume_id !== resumeId))
+      if (selectedId === resumeId) {
+        setSelectedId(resumes.find((row) => row.resume_id !== resumeId)?.resume_id ?? '')
+      }
+    } catch (err) {
+      console.error('Failed deleting resume', err)
+      setError('Could not delete resume. Please try again.')
+    } finally {
+      releaseErrorRedirect(DELETE_SUPPRESSOR)
+      setDeleting(null)
+    }
+  }
+
   const uploadResume = async (file: File) => {
     if (uploading) return
     if (!userId) {
@@ -326,7 +364,7 @@ export default function Resumes() {
           <ComponentLoader fullPage label="loading resumes" />
         ) : (
           <div className="settings-card resume-card">
-            <ul className="resume-list" role="radiogroup" aria-label="primary resume">
+            <ul className="resume-list" aria-label="resumes">
               {resumes.map((resume) => {
                 const isSelected = resume.resume_id === selectedId
                 const enrichment = resume.enrichment_status ?? 'complete'
@@ -338,7 +376,10 @@ export default function Resumes() {
                     className={`resume-row ${isSelected ? 'resume-row--selected' : ''}`}
                   >
                     <span className="resume-row__meta">
-                      <span className="resume-row__name">{resume.file_name}</span>
+                      <span className="resume-row__title">
+                        <span className="resume-row__name">{resume.file_name}</span>
+                        {isSelected && <span className="resume-row__badge">primary</span>}
+                      </span>
                       {formatUploadDate(resume.created_at) && (
                         <span className="resume-row__date">
                           uploaded {formatUploadDate(resume.created_at)}
@@ -383,43 +424,37 @@ export default function Resumes() {
                           </svg>
                         </span>
                       )}
-                      <button
-                        type="button"
-                        className="resume-row__view"
-                        aria-label={`View ${resume.file_name}`}
-                        title="view this resume"
-                        onClick={() => void viewResume(resume.resume_id)}
-                        disabled={viewing !== null || uploading}
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
-                          <circle cx="12" cy="12" r="3" />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        className={`resume-row__check ${isSelected ? 'resume-row__check--on' : ''}`}
-                        role="radio"
-                        aria-checked={isSelected}
-                        aria-label={`Use ${resume.file_name}`}
-                        title={
-                          enrichment === 'none'
-                            ? 'add interests to this resume before making it primary'
-                            : enrichment === 'pending'
-                              ? 'still generating search terms for this resume'
-                              : enrichment === 'failed'
-                                ? 'retry generating search terms before making this resume primary'
-                                : undefined
-                        }
-                        onClick={() => !isSelected && void selectResume(resume.resume_id)}
-                        disabled={!isEnriched || selecting !== null || viewing !== null || uploading}
-                      >
-                        {isSelected && (
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M20 6L9 17l-5-5" />
-                          </svg>
-                        )}
-                      </button>
+                      <ResumeMenu
+                        fileName={resume.file_name}
+                        disabled={uploading || deleting === resume.resume_id}
+                        items={[
+                          {
+                            label: 'View',
+                            onSelect: () => void viewResume(resume.resume_id),
+                            disabled: viewing !== null,
+                          },
+                          ...(isSelected
+                            ? []
+                            : [{
+                                label: 'Make primary',
+                                onSelect: () => void selectResume(resume.resume_id),
+                                disabled: !isEnriched || selecting !== null || viewing !== null,
+                                hint:
+                                  enrichment === 'none'
+                                    ? 'add interests to this resume before making it primary'
+                                    : enrichment === 'pending'
+                                      ? 'still generating search terms for this resume'
+                                      : enrichment === 'failed'
+                                        ? 'retry generating search terms before making this resume primary'
+                                        : undefined,
+                              }]),
+                          {
+                            label: 'Delete',
+                            onSelect: () => setConfirmingDelete(resume),
+                            disabled: deleting !== null || selecting !== null,
+                          },
+                        ]}
+                      />
                     </span>
                   </li>
                 )
@@ -457,6 +492,42 @@ export default function Resumes() {
 
         {error && <p className="resume-error">{error}</p>}
       </div>
+
+      {confirmingDelete && (
+        <div
+          className="resume-viewer"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="resume-confirm-title"
+          onClick={() => setConfirmingDelete(null)}
+        >
+          <div className="resume-confirm" onClick={(event) => event.stopPropagation()}>
+            <p id="resume-confirm-title" className="resume-confirm__title">delete this resume?</p>
+            <p className="resume-confirm__name">{confirmingDelete.file_name}</p>
+            <div className="resume-confirm__actions">
+              <button
+                type="button"
+                className="resume-confirm__btn"
+                onClick={() => setConfirmingDelete(null)}
+                autoFocus
+              >
+                cancel
+              </button>
+              <button
+                type="button"
+                className="resume-confirm__btn resume-confirm__btn--danger"
+                onClick={() => {
+                  const { resume_id } = confirmingDelete
+                  setConfirmingDelete(null)
+                  void deleteResume(resume_id)
+                }}
+              >
+                delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {viewer && (
         <div

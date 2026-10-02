@@ -15,11 +15,13 @@ const updateResumeInterests = jest.fn<(resume_id: string, interests: string[], u
 const getResumeSearchTerms = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
 const retryEnrichment = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
 const setEnrichmentStatus = jest.fn<(resume_id: string, status: string) => Promise<any>>();
+const deleteResume = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
 
 // Both default to resolving.
 const generateSearchTerms = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
 
 const queueAdd = jest.fn<(...args: any[]) => Promise<any>>();
+const queueRemove = jest.fn<(jobId: string) => Promise<any>>();
 
 const USER_ID = 'test-user-id';
 
@@ -40,6 +42,7 @@ jest.unstable_mockModule('../../src/services/resume/resume.service.ts', () => ({
   getResumeSearchTerms,
   retryEnrichment,
   setEnrichmentStatus,
+  deleteResume,
 }));
 
 jest.unstable_mockModule('../../src/services/user/user.ai.service.ts', () => ({
@@ -48,7 +51,7 @@ jest.unstable_mockModule('../../src/services/user/user.ai.service.ts', () => ({
 
 // Enrichment is enqueued, not run inline; mock the queue so tests need no Redis.
 jest.unstable_mockModule('../../src/queues/resumeEnrichmentQueue.ts', () => ({
-  getResumeEnrichmentQueue: () => ({ add: queueAdd }),
+  getResumeEnrichmentQueue: () => ({ add: queueAdd, remove: queueRemove }),
 }));
 
 jest.unstable_mockModule('../../src/controller/middleware/authenticate.ts', () => ({
@@ -80,8 +83,11 @@ beforeEach(() => {
   getResumeSearchTerms.mockReset();
   generateSearchTerms.mockReset();
   queueAdd.mockReset();
+  queueRemove.mockReset();
+  queueRemove.mockResolvedValue(1);
   retryEnrichment.mockReset();
   setEnrichmentStatus.mockReset();
+  deleteResume.mockReset();
   authenticate.mockReset();
   authenticate.mockImplementation((req: any, _res: any, next: any) => {
     req.auth = { userId: USER_ID };
@@ -392,6 +398,73 @@ describe('PUT /me/resumes/:resume_id/primary', () => {
 
     expect(res.status).toBe(401);
     expect(setPrimaryResume).not.toHaveBeenCalled();
+  });
+});
+
+describe('DELETE /me/resumes/:resume_id', () => {
+  const url = `/me/resumes/${RESUME_UUID}`;
+
+  it('returns 200 and the deleted id on success', async () => {
+    deleteResume.mockResolvedValue({ resume_id: RESUME_UUID });
+
+    const res = await request(app).delete(url);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ resume_id: RESUME_UUID });
+    expect(deleteResume).toHaveBeenCalledWith(RESUME_UUID, USER_ID);
+  });
+
+  it('removes the enrichment job after deleting the row', async () => {
+    deleteResume.mockResolvedValue({ resume_id: RESUME_UUID });
+
+    await request(app).delete(url);
+
+    expect(queueRemove).toHaveBeenCalledWith(RESUME_UUID);
+    expect(deleteResume.mock.invocationCallOrder[0]).toBeLessThan(queueRemove.mock.invocationCallOrder[0]!);
+  });
+
+  it('still returns 200 when the enrichment job cannot be removed', async () => {
+    deleteResume.mockResolvedValue({ resume_id: RESUME_UUID });
+    queueRemove.mockRejectedValue(new Error('job is locked'));
+
+    const res = await request(app).delete(url);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ resume_id: RESUME_UUID });
+  });
+
+  it('returns 404 for a resume the caller does not own', async () => {
+    deleteResume.mockRejectedValue(new AppError(404, 'Resume not found.'));
+
+    const res = await request(app).delete(url);
+
+    expect(res.status).toBe(404);
+    expect(res.body.message).toBe('Resume not found.');
+    expect(queueRemove).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 without calling the service when resume_id is not a resume id', async () => {
+    const res = await request(app).delete('/me/resumes/not-a-uuid');
+
+    expect(res.status).toBe(400);
+    expect(deleteResume).not.toHaveBeenCalled();
+  });
+
+  it('returns 500 when the service throws a non-AppError', async () => {
+    deleteResume.mockRejectedValue(new Error('boom'));
+
+    const res = await request(app).delete(url);
+
+    expect(res.status).toBe(500);
+  });
+
+  it('returns 401 when the caller is not authenticated', async () => {
+    rejectAuth();
+
+    const res = await request(app).delete(url);
+
+    expect(res.status).toBe(401);
+    expect(deleteResume).not.toHaveBeenCalled();
   });
 });
 
