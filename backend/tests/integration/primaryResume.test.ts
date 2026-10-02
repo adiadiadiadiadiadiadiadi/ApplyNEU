@@ -110,13 +110,23 @@ describeWithDatabase('primary resume against Postgres', () => {
 
         const context = await getCandidateContext(user);
 
-        expect(context.resume.resume_text).toBe('text of older.pdf');
+        expect(context.resume?.resume_text).toBe('text of older.pdf');
     });
 
     it('getCandidateContext falls back to the newest when no primary is set', async () => {
         const context = await getCandidateContext(user);
 
-        expect(context.resume.resume_text).toBe('text of newer.pdf');
+        expect(context.resume?.resume_text).toBe('text of newer.pdf');
+    });
+
+    it('getCandidateContext returns a null resume when none has finished uploading', async () => {
+        const fresh = await createUser();
+        await addUnfinishedResume(fresh);
+
+        const context = await getCandidateContext(fresh);
+
+        expect(context.resume).toBeNull();
+        expect(context.profile.grad_year).toBe(2027);
     });
 
     it('listResumes returns the resumes newest first, flagging the chosen one', async () => {
@@ -178,7 +188,7 @@ describeWithDatabase('primary resume against Postgres', () => {
 
         const context = await getCandidateContext(user);
 
-        expect(context.resume.resume_text).toBe('text of older.pdf');
+        expect(context.resume?.resume_text).toBe('text of older.pdf');
         expect(context.preferences.interests).toEqual(['ai', 'ml']);
     });
 

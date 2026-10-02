@@ -1,7 +1,7 @@
 import { api } from '../../../lib/api'
 
 export type CandidateContext = {
-  resume: { resume_text: string; search_terms: string[] }
+  resume: { resume_text: string; search_terms: string[] } | null
   preferences: {
     job_match: string
     wait_for_approval: boolean

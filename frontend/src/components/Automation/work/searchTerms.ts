@@ -1,7 +1,7 @@
 import { getUserId } from '../../../lib/supabase'
 import { api } from '../../../lib/api'
 import { loadCandidateContext } from './candidateContext'
-import { addLog, getState, setState } from './automationStore'
+import { addLog, getState, setState, type SearchTermsBlocker } from './automationStore'
 import { setExistingTasks } from '../symplicity/tasks'
 
 const refreshExistingTasks = async () => {
@@ -25,6 +25,17 @@ const refreshExistingTasks = async () => {
   }
 }
 
+const setSearchTerms = (terms: string[], blocker: SearchTermsBlocker | null) => {
+  const ready = blocker === null
+  const current = getState()
+  if (
+    current.searchTermsReady === ready &&
+    current.searchTermsBlocker === blocker &&
+    current.searchTerms.join('\u0000') === terms.join('\u0000')
+  ) return
+  setState({ searchTerms: terms, searchTermsReady: ready, searchTermsBlocker: blocker })
+}
+
 /**
  * Search terms plus the existing-task index a run dedupes against. The screen owns
  * the polling; the data lives here because a run keeps using it once the screen is
@@ -35,6 +46,7 @@ export const refreshSearchTerms = async (isPoll = false) => {
     const userId = await getUserId()
     if (!userId) {
       if (!isPoll) addLog('Error occured: no user found. Retrying...')
+      setSearchTerms([], 'unavailable')
       return
     }
     // Polls only need the search terms: the task index is a run-start concern.
@@ -42,23 +54,23 @@ export const refreshSearchTerms = async (isPoll = false) => {
 
     const result = await loadCandidateContext(isPoll)
     if (!result.ok) {
-      if (!isPoll) {
-        addLog(result.status === 404
-          ? 'No resume found. Retrying...'
-          : 'Error occured. Could not fetch search terms. Retrying...')
-      }
+      if (!isPoll) addLog('Error occured. Could not fetch search terms. Retrying...')
+      setSearchTerms([], 'unavailable')
       return
     }
 
-    const terms: string[] = Array.isArray(result.context.resume?.search_terms)
-      ? result.context.resume.search_terms
-      : []
-    const ready = terms.length > 0
-    const current = getState()
-    if (current.searchTermsReady === ready && current.searchTerms.join('\u0000') === terms.join('\u0000')) return
-    setState({ searchTerms: terms, searchTermsReady: ready })
+    const { resume } = result.context
+    if (!resume) {
+      if (!isPoll) addLog('No resume found. Upload one to start.')
+      setSearchTerms([], 'no-resume')
+      return
+    }
+
+    const terms: string[] = Array.isArray(resume.search_terms) ? resume.search_terms : []
+    setSearchTerms(terms, terms.length > 0 ? null : 'preparing')
   } catch (_error) {
     if (!isPoll) addLog('Error occured. Could not get search terms.')
+    setSearchTerms([], 'unavailable')
   }
 }
 

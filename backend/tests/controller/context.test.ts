@@ -91,6 +91,16 @@ describe('GET /me/context', () => {
     expect(mockGetCandidateContext).not.toHaveBeenCalled();
   });
 
+  it('returns 200 with a null resume when the caller has no finished resume', async () => {
+    mockGetCandidateContext.mockResolvedValue({ ...CONTEXT, resume: null });
+
+    const res = await request(app).get(url);
+
+    expect(res.status).toBe(200);
+    expect(res.body.resume).toBeNull();
+    expect(res.body.preferences).toEqual(CONTEXT.preferences);
+  });
+
   it('propagates a 404 when the caller has no candidate context', async () => {
     mockGetCandidateContext.mockRejectedValue(new AppError(404, 'Candidate context not found.'));
 

@@ -8,9 +8,10 @@ vi.mock('../../../../lib/api', () => {
     api: {
       get: vi.fn(async (path: string) => {
         if (path.includes('/me/context')) {
+          if (contextThrows) throw new Error('network down')
           if (contextStatus !== 200) return json({}, false, contextStatus)
           return json({
-            resume: { resume_text: 'Backend engineer.', search_terms: ['software'] },
+            resume: contextResume,
             preferences: { job_match: 'medium', wait_for_approval: false, job_types: ['Co-op'], unpaid_roles: true, recent_jobs: false, interests: [] },
             profile: { grad_year: 2027 },
           })
@@ -25,11 +26,15 @@ vi.mock('../../../../lib/api', () => {
 })
 
 let contextStatus = 200
+let contextThrows = false
+let contextResume: { resume_text: string; search_terms: string[] } | null
 
 beforeEach(() => {
   vi.resetModules()
   vi.clearAllMocks()
   contextStatus = 200
+  contextThrows = false
+  contextResume = { resume_text: 'Backend engineer.', search_terms: ['software'] }
 })
 
 const getPaths = (api: any): string[] => (api.get as any).mock.calls.map((c: any[]) => c[0] as string)
@@ -64,13 +69,59 @@ describe('the assembled profile replaces the startup fetches', () => {
     expect(getPaths(api).filter(p => p.includes('/me/context'))).toHaveLength(2)
   })
 
-  it('logs the no-resume message when the profile is not assembled yet', async () => {
-    contextStatus = 404
+})
+
+describe('search terms that are not ready settle instead of staying unchecked', () => {
+  const settle = async () => {
     const { refreshSearchTerms } = await import('../searchTerms')
     const { getState } = await import('../automationStore')
+    await refreshSearchTerms()
+    return getState()
+  }
 
+  it('blocks on no-resume when the context has a null resume', async () => {
+    contextResume = null
+    const state = await settle()
+
+    expect(state.searchTermsReady).toBe(false)
+    expect(state.searchTermsBlocker).toBe('no-resume')
+    expect(state.logs.some(l => l.includes('No resume found'))).toBe(true)
+  })
+
+  it('blocks on preparing while the resume has no search terms yet', async () => {
+    contextResume = { resume_text: 'Backend engineer.', search_terms: [] }
+    const state = await settle()
+
+    expect(state.searchTermsReady).toBe(false)
+    expect(state.searchTermsBlocker).toBe('preparing')
+  })
+
+  it('blocks on unavailable when the context request fails', async () => {
+    contextStatus = 500
+    const state = await settle()
+
+    expect(state.searchTermsReady).toBe(false)
+    expect(state.searchTermsBlocker).toBe('unavailable')
+  })
+
+  it('blocks on unavailable when the context request throws', async () => {
+    contextThrows = true
+    const state = await settle()
+
+    expect(state.searchTermsReady).toBe(false)
+    expect(state.searchTermsBlocker).toBe('unavailable')
+  })
+
+  it('clears the blocker once search terms arrive', async () => {
+    contextResume = { resume_text: 'Backend engineer.', search_terms: [] }
+    const { refreshSearchTerms } = await import('../searchTerms')
+    const { getState } = await import('../automationStore')
     await refreshSearchTerms()
 
-    expect(getState().logs.some(l => l.includes('No resume found'))).toBe(true)
+    contextResume = { resume_text: 'Backend engineer.', search_terms: ['software'] }
+    await refreshSearchTerms(true)
+
+    expect(getState().searchTermsReady).toBe(true)
+    expect(getState().searchTermsBlocker).toBeNull()
   })
 })

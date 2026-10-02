@@ -4,7 +4,7 @@ export interface CandidateContextResponse {
   resume: {
     resume_text: string;
     search_terms: string[];
-  };
+  } | null;
   preferences: {
     job_match: JobMatchSensitivity;
     wait_for_approval: boolean;
@@ -17,3 +17,7 @@ export interface CandidateContextResponse {
     grad_year: number;
   };
 }
+
+export type ResumedCandidateContext = CandidateContextResponse & {
+  resume: NonNullable<CandidateContextResponse['resume']>;
+};

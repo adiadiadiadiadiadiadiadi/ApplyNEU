@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import './automation.css'
 import { suppressErrorRedirect, releaseErrorRedirect } from '../../lib/fetchErrorControl'
-import { getState, subscribe } from './work/automationStore'
+import { getState, subscribe, type SearchTermsBlocker } from './work/automationStore'
 import { approve, continueAfterHandoff } from './work/approval'
 import { refreshSearchTerms } from './work/searchTerms'
 import { ensureGreeted, pause, resume, start } from './work/automationRun'
@@ -12,12 +12,18 @@ const SCREEN_SUPPRESSOR = 'automation-screen'
 const POLL_MIN_MS = 4000
 const POLL_MAX_MS = 30000
 
+const BLOCKED_TITLES: Record<SearchTermsBlocker, string> = {
+  'no-resume': 'Upload a resume to start',
+  preparing: 'Preparing your job search…',
+  unavailable: "Couldn't load your job search. Retrying…",
+}
+
 /**
  * A view of a run, not its owner -- status, logs, prompts and the loop itself live
  * in the automationRun singleton, so navigating away leaves the run untouched.
  */
 export default function Automation() {
-  const { status, logs, approvalPrompt, handoffPrompt, searchTermsReady } =
+  const { status, logs, approvalPrompt, handoffPrompt, searchTermsReady, searchTermsBlocker } =
     useSyncExternalStore(subscribe, getState)
   const [isPanelOpen, setIsPanelOpen] = useState(false)
   const logsEndRef = useRef<HTMLDivElement>(null)
@@ -100,7 +106,7 @@ export default function Automation() {
           ) : (
             <button
               className="automation-play-btn"
-              title={searchTermsReady === true ? 'Play' : 'Preparing your job search…'}
+              title={searchTermsReady === true ? 'Play' : BLOCKED_TITLES[searchTermsBlocker ?? 'preparing']}
               onClick={start}
               disabled={searchTermsReady !== true}
               style={searchTermsReady !== true ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
@@ -119,7 +125,7 @@ export default function Automation() {
           </button>
         </div>
       </div>
-      {searchTermsReady !== true && (
+      {searchTermsReady === null && (
         <div className="automation-loading-screen" role="status" aria-label="loading">
           <div className="automation-loading-spinner" aria-hidden="true" />
         </div>

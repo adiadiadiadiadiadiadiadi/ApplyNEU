@@ -55,7 +55,7 @@ export const sendJobDescription = async (user_id: string, job_description: strin
       throw error;
     });
 
-    const resume = context.resume.resume_text;
+    const resume = context.resume?.resume_text;
     if (!resume) throw new AppError(404, 'Resume not found.');
 
     const gradYear = context.profile.grad_year;
