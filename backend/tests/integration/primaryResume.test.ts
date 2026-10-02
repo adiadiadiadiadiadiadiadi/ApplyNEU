@@ -36,8 +36,8 @@ const addResume = async (user_id: string, file_name: string, created_at: string,
     const resume_id = randomUUID();
     const tags = enriched ? '{ai}' : '{}';
     await db.pool.query(
-        `INSERT INTO resumes (resume_id, key, created_at, user_id, file_name, file_size_bytes, resume_text, upload_complete, search_terms, interests, enrichment_status)
-         VALUES ($1, $2, $3, $4, $5, 1024, $6, true, $7, $7, $8)`,
+        `INSERT INTO resumes (resume_id, key, created_at, user_id, file_name, file_size_bytes, resume_text, upload_complete, search_terms, enrichment_status)
+         VALUES ($1, $2, $3, $4, $5, 1024, $6, true, $7, $8)`,
         [resume_id, `resumes/${resume_id}.pdf`, created_at, user_id, file_name, `text of ${file_name}`, tags, enriched ? 'complete' : 'none']
     );
     return resume_id;
@@ -46,8 +46,8 @@ const addResume = async (user_id: string, file_name: string, created_at: string,
 const addUnfinishedResume = async (user_id: string) => {
     const resume_id = randomUUID();
     await db.pool.query(
-        `INSERT INTO resumes (resume_id, key, created_at, user_id, file_name, file_size_bytes, resume_text, upload_complete, search_terms, interests)
-         VALUES ($1, $2, '2026-02-01T00:00:00Z', $3, 'uploaded.pdf', 1024, '', false, '{}', '{}')`,
+        `INSERT INTO resumes (resume_id, key, created_at, user_id, file_name, file_size_bytes, resume_text, upload_complete, search_terms)
+         VALUES ($1, $2, '2026-02-01T00:00:00Z', $3, 'uploaded.pdf', 1024, '', false, '{}')`,
         [resume_id, `resumes/${resume_id}.pdf`, user_id]
     );
     return resume_id;
@@ -146,7 +146,7 @@ describeWithDatabase('primary resume against Postgres', () => {
         expect(statusOf(bare)).toBe('none');
     });
 
-    it('setPrimaryResume rejects a resume that has interests but no search terms yet', async () => {
+    it('setPrimaryResume rejects a complete resume that has no search terms', async () => {
         await db.pool.query(`UPDATE resumes SET search_terms = '{}' WHERE resume_id = $1`, [newer]);
 
         await expect(setPrimaryResume(newer, user)).rejects.toMatchObject({ status: 400 });
@@ -172,6 +172,16 @@ describeWithDatabase('primary resume against Postgres', () => {
         expect((await listResumes(user)).find((row) => row.resume_id === newer)?.enrichment_status).toBe('pending');
     });
 
+    it('saving interests stores them on the user, so they follow a change of primary', async () => {
+        await updateResumeInterests(newer, ['ai', 'ml'], user);
+        await setPrimary(user, older);
+
+        const context = await getCandidateContext(user);
+
+        expect(context.resume.resume_text).toBe('text of older.pdf');
+        expect(context.preferences.interests).toEqual(['ai', 'ml']);
+    });
+
     it('retryEnrichment moves a failed enrichment back to pending', async () => {
         await setEnrichmentStatus(newer, 'failed');
 
@@ -192,12 +202,6 @@ describeWithDatabase('primary resume against Postgres', () => {
 
     it.each(['none', 'pending', 'complete'] as const)('retryEnrichment refuses a resume whose enrichment is %s', async (status) => {
         await setEnrichmentStatus(newer, status);
-
-        await expect(retryEnrichment(newer, user)).rejects.toMatchObject({ status: 409 });
-    });
-
-    it('retryEnrichment refuses a failed resume with no interests', async () => {
-        await db.pool.query(`UPDATE resumes SET interests = '{}', enrichment_status = 'failed' WHERE resume_id = $1`, [newer]);
 
         await expect(retryEnrichment(newer, user)).rejects.toMatchObject({ status: 409 });
     });

@@ -258,28 +258,10 @@ export const getPossibleInterests = async (resume_id: string, user_id: string) =
 };
 
 /**
- * Retrieves the interest tags stored on a specific resume.
- * @param resume_id - ID of the resume
- * @param user_id - Caller's authenticated user ID; must own the resume
- */
-export const getResumeInterests = async (resume_id: string, user_id: string) => {
-    try {
-        const result = await pool.query(
-            `SELECT interests FROM resumes WHERE resume_id = $1 AND user_id::text = $2;`,
-            [resume_id, user_id]
-        );
-        if (result.rows.length === 0) throw new AppError(404, 'Resume not found.');
-        return result.rows[0];
-    } catch (error) {
-        if (error instanceof AppError) throw error;
-        throw new AppError(500, 'Error fetching interests.');
-    }
-};
-
-/**
- * Replaces the interest tags on a specific resume and points the user's preferences at it.
+ * Saves the user's interest tags and points their preferences at the given resume.
  *
- * Interests are the gate on becoming primary, so this is the earliest point a resume is
+ * Interests belong to the user, but saving them is still the step that readies a specific
+ * resume: interests are the gate on becoming primary, so this is the earliest point a resume is
  * eligible; the upload itself deliberately leaves the pointer alone, which keeps an
  * abandoned interests picker from demoting the resume the user was already running on.
  * Search terms are derived from these interests, but that generation is handled
@@ -292,19 +274,20 @@ export const getResumeInterests = async (resume_id: string, user_id: string) => 
 export const updateResumeInterests = async (resume_id: string, interests: string[], user_id: string) => {
     try {
         const result = await pool.query(
-            `UPDATE resumes SET interests = $1, enrichment_status = 'pending' WHERE resume_id = $2 AND user_id::text = $3 RETURNING *;`,
-            [interests, resume_id, user_id]
+            `UPDATE resumes SET enrichment_status = 'pending' WHERE resume_id = $1 AND user_id::text = $2 RETURNING *;`,
+            [resume_id, user_id]
         );
         if (result.rows.length === 0) throw new AppError(404, 'Resume not found.');
 
-        if (result.rows[0].upload_complete) {
-            await pool.query(
-                `UPDATE preferences SET primary_resume_id = $1 WHERE user_id::text = $2`,
-                [resume_id, user_id]
-            );
-        }
+        await pool.query(
+            `UPDATE preferences
+             SET interests = $1,
+                 primary_resume_id = CASE WHEN $2 THEN $3::uuid ELSE primary_resume_id END
+             WHERE user_id::text = $4`,
+            [interests, result.rows[0].upload_complete === true, resume_id, user_id]
+        );
 
-        return result.rows[0];
+        return { ...result.rows[0], interests };
     } catch (error) {
         if (error instanceof AppError) throw error;
         throw new AppError(500, 'Error updating interests.');
@@ -359,8 +342,8 @@ export const listResumes = async (user_id: string): Promise<ResumeSummary[]> => 
 /**
  * Points the user's preferences at the given resume.
  *
- * Refuses a resume whose enrichment has not completed: without interests and the search
- * terms derived from them an automation run has nothing to search on, so it would stall.
+ * Refuses a resume whose enrichment has not completed: without the search terms derived
+ * from the user's interests an automation run has nothing to search on, so it would stall.
  *
  * The composite (resume_id, user_id) foreign key already refuses a resume the caller
  * does not own, but a constraint violation surfaces as a 500; the ownership read here
@@ -373,13 +356,13 @@ export const setPrimaryResume = async (resume_id: string, user_id: string): Prom
     try {
         const owned = await pool.query(
             `SELECT upload_complete,
-                    (enrichment_status = 'complete' AND cardinality(search_terms) > 0 AND cardinality(interests) > 0) AS enriched
+                    (enrichment_status = 'complete' AND cardinality(search_terms) > 0) AS enriched
              FROM resumes WHERE resume_id = $1 AND user_id::text = $2;`,
             [resume_id, user_id]
         );
         if (owned.rows.length === 0) throw new AppError(404, 'Resume not found.');
         if (!owned.rows[0].upload_complete) throw new AppError(400, 'Resume upload is not complete.');
-        if (!owned.rows[0].enriched) throw new AppError(400, 'Resume has no interests or search terms yet.');
+        if (!owned.rows[0].enriched) throw new AppError(400, 'Resume has no search terms yet.');
 
         const result = await pool.query(
             `UPDATE preferences SET primary_resume_id = $1 WHERE user_id::text = $2 RETURNING primary_resume_id;`,
@@ -421,7 +404,7 @@ export const retryEnrichment = async (resume_id: string, user_id: string) => {
         const claimed = await pool.query(
             `UPDATE resumes SET enrichment_status = 'pending', enrichment_retries = enrichment_retries + 1
              WHERE resume_id = $1 AND user_id::text = $2
-               AND enrichment_status = 'failed' AND cardinality(interests) > 0
+               AND enrichment_status = 'failed'
                AND enrichment_retries < $3
              RETURNING resume_id, enrichment_status;`,
             [resume_id, user_id, MAX_ENRICHMENT_RETRIES]
@@ -437,7 +420,7 @@ export const retryEnrichment = async (resume_id: string, user_id: string) => {
         if (enrichment_status === 'failed' && enrichment_retries >= MAX_ENRICHMENT_RETRIES) {
             throw new AppError(429, 'Enrichment retry limit reached.');
         }
-        throw new AppError(409, 'Only a failed enrichment with interests can be retried.');
+        throw new AppError(409, 'Only a failed enrichment can be retried.');
     } catch (error) {
         if (error instanceof AppError) throw error;
         throw new AppError(500, 'Error retrying enrichment.');
