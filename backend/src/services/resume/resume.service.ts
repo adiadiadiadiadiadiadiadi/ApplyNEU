@@ -186,7 +186,7 @@ export const completeResumeUpload = async (resume_id: string, key: string, user_
         const resume_text = await extractTextFromPDF(key);
 
         const result = await pool.query(
-            `UPDATE resumes SET upload_complete = true, resume_text = $1 WHERE resume_id = $2 RETURNING *`,
+            `UPDATE resumes SET upload_complete = true, resume_text = $1, enrichment_status = 'pending' WHERE resume_id = $2 RETURNING *`,
             [resume_text, resume_id]
         );
 
@@ -258,36 +258,26 @@ export const getPossibleInterests = async (resume_id: string, user_id: string) =
 };
 
 /**
- * Saves the user's interest tags and points their preferences at the given resume.
- *
- * Interests belong to the user, but saving them is still the step that readies a specific
- * resume: interests are the gate on becoming primary, so this is the earliest point a resume is
- * eligible; the upload itself deliberately leaves the pointer alone, which keeps an
- * abandoned interests picker from demoting the resume the user was already running on.
- * Search terms are derived from these interests, but that generation is handled
- * asynchronously by the resume-enrichment worker (enqueued by the route after
- * this save), so it is not done here; the resume is marked pending until it finishes.
- * @param resume_id - ID of the resume
+ * Saves the user's interest tags on their preferences. Interests only feed the scoring
+ * prompt, so this neither re-enriches the resume nor moves the primary pointer.
+ * @param resume_id - ID of a resume the caller owns
  * @param interests - Full replacement array of interest topic strings
  * @param user_id - Caller's authenticated user ID; must own the resume
  */
 export const updateResumeInterests = async (resume_id: string, interests: string[], user_id: string) => {
     try {
-        const result = await pool.query(
-            `UPDATE resumes SET enrichment_status = 'pending' WHERE resume_id = $1 AND user_id::text = $2 RETURNING *;`,
+        const owned = await pool.query(
+            `SELECT resume_id FROM resumes WHERE resume_id = $1 AND user_id::text = $2;`,
             [resume_id, user_id]
         );
-        if (result.rows.length === 0) throw new AppError(404, 'Resume not found.');
+        if (owned.rows.length === 0) throw new AppError(404, 'Resume not found.');
 
         await pool.query(
-            `UPDATE preferences
-             SET interests = $1,
-                 primary_resume_id = CASE WHEN $2 THEN $3::uuid ELSE primary_resume_id END
-             WHERE user_id::text = $4`,
-            [interests, result.rows[0].upload_complete === true, resume_id, user_id]
+            `UPDATE preferences SET interests = $1 WHERE user_id::text = $2`,
+            [interests, user_id]
         );
 
-        return { ...result.rows[0], interests };
+        return { resume_id, interests };
     } catch (error) {
         if (error instanceof AppError) throw error;
         throw new AppError(500, 'Error updating interests.');
@@ -324,7 +314,7 @@ export const listResumes = async (user_id: string): Promise<ResumeSummary[]> => 
             SELECT r.resume_id, r.file_name, r.created_at, r.upload_complete,
                    (r.resume_id = p.primary_resume_id) IS TRUE AS is_primary,
                    r.enrichment_status,
-                   (r.enrichment_status = 'failed' AND r.enrichment_retries < $2) AS can_retry
+                   ((r.enrichment_status = 'failed' OR (r.enrichment_status = 'none' AND r.upload_complete)) AND r.enrichment_retries < $2) AS can_retry
             FROM resumes r
             LEFT JOIN preferences p ON p.user_id = r.user_id
             WHERE r.user_id::text = $1
@@ -416,6 +406,8 @@ export const setEnrichmentStatus = async (resume_id: string, status: EnrichmentS
  * Moves a failed enrichment back to pending so the caller can re-enqueue it, counting
  * the attempt against MAX_ENRICHMENT_RETRIES. A failure that keeps recurring is likely
  * deterministic, so past the cap each click would only be another paid AI call.
+ * A finished upload still at 'none' is retryable too: those predate enrichment starting on
+ * upload, when it waited on an interests step the user could skip.
  * The status check is part of the UPDATE so two concurrent retries cannot both claim it.
  * @param resume_id - ID of the resume to retry
  * @param user_id - Caller's authenticated user ID; must own the resume
@@ -426,7 +418,7 @@ export const retryEnrichment = async (resume_id: string, user_id: string) => {
         const claimed = await pool.query(
             `UPDATE resumes SET enrichment_status = 'pending', enrichment_retries = enrichment_retries + 1
              WHERE resume_id = $1 AND user_id::text = $2
-               AND enrichment_status = 'failed'
+               AND (enrichment_status = 'failed' OR (enrichment_status = 'none' AND upload_complete))
                AND enrichment_retries < $3
              RETURNING resume_id, enrichment_status;`,
             [resume_id, user_id, MAX_ENRICHMENT_RETRIES]
@@ -434,15 +426,16 @@ export const retryEnrichment = async (resume_id: string, user_id: string) => {
         if (claimed.rows.length > 0) return claimed.rows[0] as { resume_id: string; enrichment_status: EnrichmentStatus };
 
         const owned = await pool.query(
-            `SELECT enrichment_status, enrichment_retries FROM resumes WHERE resume_id = $1 AND user_id::text = $2;`,
+            `SELECT enrichment_status, enrichment_retries, upload_complete FROM resumes WHERE resume_id = $1 AND user_id::text = $2;`,
             [resume_id, user_id]
         );
         if (owned.rows.length === 0) throw new AppError(404, 'Resume not found.');
-        const { enrichment_status, enrichment_retries } = owned.rows[0];
-        if (enrichment_status === 'failed' && enrichment_retries >= MAX_ENRICHMENT_RETRIES) {
+        const { enrichment_status, enrichment_retries, upload_complete } = owned.rows[0];
+        const retryable = enrichment_status === 'failed' || (enrichment_status === 'none' && upload_complete);
+        if (retryable && enrichment_retries >= MAX_ENRICHMENT_RETRIES) {
             throw new AppError(429, 'Enrichment retry limit reached.');
         }
-        throw new AppError(409, 'Only a failed enrichment can be retried.');
+        throw new AppError(409, 'Only a failed or never-started enrichment can be retried.');
     } catch (error) {
         if (error instanceof AppError) throw error;
         throw new AppError(500, 'Error retrying enrichment.');

@@ -153,6 +153,9 @@ export default function Resumes() {
               : row
           })
         )
+        // The first resume to finish enriching becomes primary when the user had none.
+        const primary = rows.find((row: ResumeRow) => row.is_primary)
+        if (primary) setSelectedId((current) => current || primary.resume_id)
       } catch (err) {
         console.error('Failed refreshing resume statuses', err)
       } finally {
@@ -325,17 +328,20 @@ export default function Resumes() {
         throw new Error('Could not save resume record')
       }
 
-      let interests: string[] = []
-      try {
-        const interestsResp = await api.get(`/resumes/${resumeId}/possible-interests`)
-        if (interestsResp.ok) {
-          interests = await interestsResp.json()
-        }
-      } catch (err) {
-        console.error('Error fetching interests', err)
-      }
-
-      navigate('/settings/interests', { state: { interests, resumeId } })
+      const saved: ResumeRow = await saveResp.json()
+      setResumes((current) =>
+        current.map((row) =>
+          row.resume_id === placeholderId
+            ? {
+                ...row,
+                resume_id: saved.resume_id,
+                created_at: saved.created_at ?? row.created_at,
+                upload_complete: true,
+                enrichment_status: saved.enrichment_status ?? 'pending',
+              }
+            : row
+        )
+      )
     } catch (err) {
       console.error('Resume upload failed', err)
       setResumes((current) => current.filter((row) => row.resume_id !== placeholderId))
@@ -369,7 +375,8 @@ export default function Resumes() {
                 const isSelected = resume.resume_id === selectedId
                 const enrichment = resume.enrichment_status ?? 'complete'
                 const isEnriched = enrichment === 'complete'
-                const retriesExhausted = enrichment === 'failed' && resume.can_retry === false
+                const needsRetry = enrichment === 'failed' || enrichment === 'none'
+                const retriesExhausted = needsRetry && resume.can_retry === false
                 return (
                   <li
                     key={resume.resume_id}
@@ -395,12 +402,12 @@ export default function Resumes() {
                           title="generating search terms"
                         />
                       )}
-                      {enrichment === 'failed' && !retriesExhausted && (
+                      {needsRetry && !retriesExhausted && (
                         <button
                           type="button"
                           className="resume-row__retry"
                           aria-label={`Retry generating search terms for ${resume.file_name}`}
-                          title="generating search terms failed, retry"
+                          title={enrichment === 'none' ? 'search terms were never generated, retry' : 'generating search terms failed, retry'}
                           onClick={() => void retryEnrichment(resume.resume_id)}
                           disabled={retrying !== null || uploading}
                         >
@@ -410,12 +417,12 @@ export default function Resumes() {
                           </svg>
                         </button>
                       )}
-                      {(enrichment === 'none' || retriesExhausted) && (
+                      {retriesExhausted && (
                         <span
                           className="resume-row__warn"
                           role="img"
-                          aria-label={retriesExhausted ? 'Internal server error. Please try again later.' : 'No interests yet'}
-                          title={retriesExhausted ? 'internal server error. please try again later.' : 'no interests yet'}
+                          aria-label="Internal server error. Please try again later."
+                          title="internal server error. please try again later."
                         >
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
@@ -440,13 +447,11 @@ export default function Resumes() {
                                 onSelect: () => void selectResume(resume.resume_id),
                                 disabled: !isEnriched || selecting !== null || viewing !== null,
                                 hint:
-                                  enrichment === 'none'
-                                    ? 'add interests to this resume before making it primary'
-                                    : enrichment === 'pending'
-                                      ? 'still generating search terms for this resume'
-                                      : enrichment === 'failed'
-                                        ? 'retry generating search terms before making this resume primary'
-                                        : undefined,
+                                  enrichment === 'pending'
+                                    ? 'still generating search terms for this resume'
+                                    : needsRetry
+                                      ? 'retry generating search terms before making this resume primary'
+                                      : undefined,
                               }]),
                           {
                             label: 'Delete',

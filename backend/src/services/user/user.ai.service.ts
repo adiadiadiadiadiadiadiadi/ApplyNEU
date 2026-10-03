@@ -6,8 +6,8 @@ import { withRetry } from '../../utils/retry.ts';
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 /**
- * Uses Claude Haiku to generate 10 job-board search terms from the user's resume text
- * and stored interests. Terms are intentionally broad to maximize search results on
+ * Uses Claude Haiku to generate 10 job-board search terms from the resume text alone.
+ * Interests only affect ranking, in the scoring prompt. Terms are intentionally broad to maximize search results on
  * platforms like NUworks. Results are ordered by relevance priority.
  * @param resume_id - ID of the specific resume to generate terms for
  * @param user_id - Caller's authenticated user ID; must own the resume. Omitted only by the
@@ -19,15 +19,14 @@ const generateSearchTerms = async (resume_id: string, user_id?: string) => {
     try {
         const result = await pool.query(
             user_id
-                ? `SELECT r.resume_text, p.interests FROM resumes r LEFT JOIN preferences p ON p.user_id = r.user_id WHERE r.resume_id = $1 AND r.user_id::text = $2;`
-                : `SELECT r.resume_text, p.interests FROM resumes r LEFT JOIN preferences p ON p.user_id = r.user_id WHERE r.resume_id = $1;`,
+                ? `SELECT resume_text FROM resumes WHERE resume_id = $1 AND user_id::text = $2;`
+                : `SELECT resume_text FROM resumes WHERE resume_id = $1;`,
             user_id ? [resume_id, user_id] : [resume_id]
         );
 
         if (!result.rows.length) throw new AppError(404, 'Resume not found.');
 
         const resumeText: string = result.rows[0].resume_text ?? '';
-        const interests: string[] = result.rows[0].interests ?? [];
         if (!resumeText) throw new AppError(404, 'Resume text not found.');
 
         const message = await withRetry(() => anthropic.messages.create({
@@ -37,13 +36,10 @@ const generateSearchTerms = async (resume_id: string, user_id?: string) => {
                 role: 'user',
                 content:
                     `
-                You are analyzing a resume and user interests to extract search terms for jobs the person might be interested in.
+                You are analyzing a resume to extract search terms for jobs the person might be interested in.
 
                 Resume text:
                 ${resumeText}
-
-                Interests:
-                ${interests.join(', ')}
 
                 Extract and return ONLY a JSON array of 10 relevant search terms:
                 The topics should be general, commonly used job title or role keywords, suitable for searching on college job boards like NUworks.
@@ -93,7 +89,8 @@ const generateSearchTerms = async (resume_id: string, user_id?: string) => {
 };
 
 /**
- * Persists search terms to the specified resume row.
+ * Persists search terms to the specified resume row and marks its enrichment complete.
+ * The first resume to finish enriching becomes primary if the user has none yet.
  * @param resume_id - ID of the resume to store search terms for
  * @param user_id - Caller's authenticated user ID; must own the resume. See generateSearchTerms
  *   for why this is optional (the resume-enrichment worker omits it).
@@ -103,10 +100,17 @@ export const getSearchTerms = async (resume_id: string, user_id?: string) => {
 
     try {
         const result = await pool.query(
-            user_id
-                ? `UPDATE resumes SET search_terms = $1, enrichment_status = 'complete' WHERE resume_id = $2 AND user_id::text = $3 RETURNING *;`
-                : `UPDATE resumes SET search_terms = $1, enrichment_status = 'complete' WHERE resume_id = $2 RETURNING *;`,
-            user_id ? [search_terms, resume_id, user_id] : [search_terms, resume_id]
+            `WITH updated AS (
+                UPDATE resumes SET search_terms = $1, enrichment_status = 'complete'
+                WHERE resume_id = $2 AND ($3::text IS NULL OR user_id::text = $3)
+                RETURNING *
+             ), claimed AS (
+                UPDATE preferences p SET primary_resume_id = u.resume_id
+                FROM updated u
+                WHERE p.user_id = u.user_id AND p.primary_resume_id IS NULL AND u.upload_complete
+             )
+             SELECT * FROM updated;`,
+            [search_terms, resume_id, user_id ?? null]
         );
         if (result.rows.length === 0) throw new AppError(404, 'Resume not found.');
         return result.rows[0];

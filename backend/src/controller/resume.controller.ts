@@ -40,10 +40,11 @@ const startEnrichment = async (resume_id: string) => {
 const resumeController = (): express.Router => {
     const router = express.Router();
 
-    /** POST /save-resume — finalize a resume upload by persisting its S3 key and metadata to the DB. */
+    /** POST /save-resume — finalize a resume upload and start generating its search terms. */
     const completeResumeUploadRoute = async (req: ResumeSaveRequest, res: Response) => {
         const { resume_id, key } = req.body;
         const resume = await completeResumeUpload(resume_id, key, req.auth!.userId);
+        await startEnrichment(resume_id);
         res.status(200).json(resume);
     };
 
@@ -54,18 +55,11 @@ const resumeController = (): express.Router => {
         res.status(200).json(result);
     };
 
-    /**
-     * PUT /:resume_id/interests — save the user's selected interest tags, then kick
-     * off resume enrichment. Once interests are persisted the worker caches the short
-     * resume and generates search terms from those interests (one AI pass, no re-runs).
-     */
+    /** PUT /:resume_id/interests — save the user's selected interest tags. */
     const updateResumeInterestsRoute = async (req: Request<{ resume_id: string }, unknown, { interests: string[] }>, res: Response) => {
         const { resume_id } = req.params;
         const { interests } = req.body;
         const result = await updateResumeInterests(resume_id, interests, req.auth!.userId);
-
-        await startEnrichment(resume_id);
-
         res.status(200).json(result);
     };
 
