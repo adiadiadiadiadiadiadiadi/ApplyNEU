@@ -18,7 +18,17 @@ jest.unstable_mockModule('@aws-sdk/client-s3', () => ({
     PutObjectCommand: class {},
 }));
 
+// The enrichment worker's model call, so search terms can be generated without an API key.
+jest.unstable_mockModule('@anthropic-ai/sdk', () => ({
+    default: class {
+        messages = {
+            create: async () => ({ content: [{ type: 'text', text: '["Software Engineer"]' }] }),
+        };
+    },
+}));
+
 const { getPrimaryResume, completeResumeUpload, listResumes, setPrimaryResume, updateResumeInterests, retryEnrichment, setEnrichmentStatus, deleteResume } = await import('../../src/services/resume/resume.service.ts');
+const { getSearchTerms } = await import('../../src/services/user/user.ai.service.ts');
 const { getCandidateContext } = await import('../../src/services/candidateContext/candidateContext.service.ts');
 
 const createUser = async () => {
@@ -176,10 +186,10 @@ describeWithDatabase('primary resume against Postgres', () => {
         ).rejects.toMatchObject({ code: '23514' });
     });
 
-    it('saving interests marks enrichment pending', async () => {
+    it('saving interests leaves enrichment alone', async () => {
         await updateResumeInterests(newer, ['ai', 'ml'], user);
 
-        expect((await listResumes(user)).find((row) => row.resume_id === newer)?.enrichment_status).toBe('pending');
+        expect((await listResumes(user)).find((row) => row.resume_id === newer)?.enrichment_status).toBe('complete');
     });
 
     it('saving interests stores them on the user, so they follow a change of primary', async () => {
@@ -210,7 +220,20 @@ describeWithDatabase('primary resume against Postgres', () => {
         expect((await listResumes(user)).find((row) => row.resume_id === newer)?.can_retry).toBe(false);
     });
 
-    it.each(['none', 'pending', 'complete'] as const)('retryEnrichment refuses a resume whose enrichment is %s', async (status) => {
+    it('retryEnrichment starts a finished upload whose enrichment never started', async () => {
+        await setEnrichmentStatus(newer, 'none');
+        expect((await listResumes(user)).find((row) => row.resume_id === newer)?.can_retry).toBe(true);
+
+        expect(await retryEnrichment(newer, user)).toEqual({ resume_id: newer, enrichment_status: 'pending' });
+    });
+
+    it('retryEnrichment refuses an unfinished upload', async () => {
+        const uploaded = await addUnfinishedResume(user);
+
+        await expect(retryEnrichment(uploaded, user)).rejects.toMatchObject({ status: 409 });
+    });
+
+    it.each(['pending', 'complete'] as const)('retryEnrichment refuses a resume whose enrichment is %s', async (status) => {
         await setEnrichmentStatus(newer, status);
 
         await expect(retryEnrichment(newer, user)).rejects.toMatchObject({ status: 409 });
@@ -288,22 +311,40 @@ describeWithDatabase('primary resume against Postgres', () => {
         expect(await readPrimary(user)).toBe(older);
     });
 
-    it('saving interests makes that resume the primary', async () => {
+    it('completing an upload marks enrichment pending', async () => {
+        const uploaded = await addUnfinishedResume(user);
+
+        await completeResumeUpload(uploaded, `resumes/${uploaded}.pdf`, user);
+
+        expect((await listResumes(user)).find((row) => row.resume_id === uploaded)?.enrichment_status).toBe('pending');
+    });
+
+    it('saving interests leaves the pointer alone', async () => {
+        await setPrimary(user, older);
+
+        await updateResumeInterests(newer, ['ai'], user);
+
+        expect(await readPrimary(user)).toBe(older);
+    });
+
+    it('finishing enrichment makes the resume primary when the user has none', async () => {
+        const uploaded = await addUnfinishedResume(user);
+        await completeResumeUpload(uploaded, `resumes/${uploaded}.pdf`, user);
+        await db.pool.query(`UPDATE resumes SET resume_text = 'text' WHERE resume_id = $1`, [uploaded]);
+
+        await getSearchTerms(uploaded);
+
+        expect(await readPrimary(user)).toBe(uploaded);
+        expect((await listResumes(user)).find((row) => row.resume_id === uploaded)?.enrichment_status).toBe('complete');
+    });
+
+    it('finishing enrichment leaves an existing primary alone', async () => {
         await setPrimary(user, older);
         const uploaded = await addUnfinishedResume(user);
         await completeResumeUpload(uploaded, `resumes/${uploaded}.pdf`, user);
+        await db.pool.query(`UPDATE resumes SET resume_text = 'text' WHERE resume_id = $1`, [uploaded]);
 
-        await updateResumeInterests(uploaded, ['ai'], user);
-
-        expect(await readPrimary(user)).toBe(uploaded);
-        expect((await getPrimaryResume(user)).resume_id).toBe(uploaded);
-    });
-
-    it('saving interests on an unfinished upload leaves the pointer alone', async () => {
-        await setPrimary(user, older);
-        const uploaded = await addUnfinishedResume(user);
-
-        await updateResumeInterests(uploaded, ['ai'], user);
+        await getSearchTerms(uploaded);
 
         expect(await readPrimary(user)).toBe(older);
     });
