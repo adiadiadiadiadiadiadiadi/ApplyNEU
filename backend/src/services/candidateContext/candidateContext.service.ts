@@ -1,18 +1,20 @@
 import { pool } from '../../db/index.ts';
 import { AppError } from '../../errors/AppError.ts';
 import { normalizeAndHash } from '../../utils/hash.ts';
-import type { CandidateContextResponse } from '../../types/candidateContext.ts';
+import type { CandidateContextResponse, ResumedCandidateContext } from '../../types/candidateContext.ts';
 
 /**
  * Gathers everything needed to reason about a candidate: their primary resume
- * (falling back to their newest), their matching preferences and their profile.
+ * (falling back to their newest, or null when none has finished uploading), their
+ * matching preferences and their profile.
  * @param user_id - ID of the user
  */
 export const getCandidateContext = async (user_id: string): Promise<CandidateContextResponse> => {
     try {
         const result = await pool.query(
             `
-            SELECT r.resume_text,
+            SELECT r.resume_id,
+                   r.resume_text,
                    r.search_terms,
                    pref.job_match,
                    pref.wait_for_approval,
@@ -23,8 +25,8 @@ export const getCandidateContext = async (user_id: string): Promise<CandidateCon
                    p.grad_year
             FROM profile p
             JOIN preferences pref ON pref.user_id = p.user_id
-            JOIN LATERAL (
-                SELECT resume_text, search_terms
+            LEFT JOIN LATERAL (
+                SELECT resume_id, resume_text, search_terms
                 FROM resumes
                 WHERE user_id = p.user_id AND upload_complete = true
                 ORDER BY (resume_id = pref.primary_resume_id) DESC NULLS LAST, created_at DESC
@@ -38,10 +40,9 @@ export const getCandidateContext = async (user_id: string): Promise<CandidateCon
 
         const row = result.rows[0];
         return {
-            resume: {
-                resume_text: row.resume_text,
-                search_terms: row.search_terms,
-            },
+            resume: row.resume_id
+                ? { resume_text: row.resume_text, search_terms: row.search_terms }
+                : null,
             preferences: {
                 job_match: row.job_match,
                 wait_for_approval: row.wait_for_approval,
@@ -66,7 +67,7 @@ export const getCandidateContext = async (user_id: string): Promise<CandidateCon
  * the score is sensitivity-agnostic and the cutoff is applied in code, so including
  * job_match here would invalidate every cached score whenever the user retunes it.
  */
-export const renderCandidateContext = (context: CandidateContextResponse): string => {
+export const renderCandidateContext = (context: ResumedCandidateContext): string => {
     const { resume, preferences, profile } = context;
 
     return [
@@ -77,7 +78,7 @@ export const renderCandidateContext = (context: CandidateContextResponse): strin
     ].join('\n');
 };
 
-export const candidateHash = (context: CandidateContextResponse): string =>
+export const candidateHash = (context: ResumedCandidateContext): string =>
     normalizeAndHash(renderCandidateContext(context));
 
 /**

@@ -1,8 +1,8 @@
 import { describe, it, expect } from '@jest/globals';
 import { renderCandidateContext, candidateHash } from '../../src/services/candidateContext/candidateContext.service.ts';
-import type { CandidateContextResponse } from '../../src/types/candidateContext.ts';
+import type { ResumedCandidateContext } from '../../src/types/candidateContext.ts';
 
-const profile = (): CandidateContextResponse => ({
+const profile = (): ResumedCandidateContext => ({
     resume: {
         resume_text: 'Backend engineer. Node, Postgres, TypeScript.',
         search_terms: ['backend', 'platform'],
@@ -43,7 +43,7 @@ describe('renderCandidateContext', () => {
 describe('candidateHash', () => {
     it('does not change when job_match changes', () => {
         const low = profile();
-        const high: CandidateContextResponse = {
+        const high: ResumedCandidateContext = {
             ...low,
             preferences: { ...low.preferences, job_match: 'high' },
         };
@@ -52,7 +52,7 @@ describe('candidateHash', () => {
 
     it('does not change when search terms or job types change', () => {
         const base = profile();
-        const changed: CandidateContextResponse = {
+        const changed: ResumedCandidateContext = {
             ...base,
             resume: { ...base.resume, search_terms: ['frontend'] },
             preferences: { ...base.preferences, job_types: ['full-time'] },
@@ -62,7 +62,7 @@ describe('candidateHash', () => {
 
     it('changes when interests change', () => {
         const base = profile();
-        const changed: CandidateContextResponse = {
+        const changed: ResumedCandidateContext = {
             ...base,
             preferences: { ...base.preferences, interests: ['compilers'] },
         };
@@ -71,7 +71,7 @@ describe('candidateHash', () => {
 
     it('changes when the resume changes', () => {
         const base = profile();
-        const changed: CandidateContextResponse = {
+        const changed: ResumedCandidateContext = {
             ...base,
             resume: { ...base.resume, resume_text: 'Frontend engineer. React.' },
         };

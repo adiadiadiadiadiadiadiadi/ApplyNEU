@@ -123,6 +123,13 @@ describe('sendJobDescription', () => {
         expect(create).not.toHaveBeenCalled();
     });
 
+    it('throws 404 Resume not found when the candidate has no resume', async () => {
+        getCandidateContext.mockResolvedValue(candidateContext({ resume: null }));
+
+        await expect(analyze()).rejects.toMatchObject({ status: 404, message: 'Resume not found.' });
+        expect(create).not.toHaveBeenCalled();
+    });
+
     it('throws 404 Resume not found when the resume text is empty', async () => {
         getCandidateContext.mockResolvedValue(
             candidateContext({ resume: { resume_text: '', search_terms: [] } })

@@ -6,6 +6,8 @@ import { suppressErrorRedirect, releaseErrorRedirect } from '../../../lib/fetchE
 
 export type RunStatus = 'idle' | 'running' | 'paused' | 'error'
 
+export type SearchTermsBlocker = 'no-resume' | 'preparing' | 'unavailable'
+
 export type AutomationState = {
   status: RunStatus
   logs: string[]
@@ -13,8 +15,9 @@ export type AutomationState = {
   approvalPrompt: { jobTitle: string; company: string } | null
   handoffPrompt: { reason: string } | null
   searchTerms: string[]
-  // null = still checking, false = none yet (enrichment pending), true = ready.
+  // null = still checking, false = blocked (see searchTermsBlocker), true = ready.
   searchTermsReady: boolean | null
+  searchTermsBlocker: SearchTermsBlocker | null
 }
 
 // Held for as long as a run is active, so a background run's fetch failures can't
@@ -29,6 +32,7 @@ let state: AutomationState = {
   handoffPrompt: null,
   searchTerms: [],
   searchTermsReady: null,
+  searchTermsBlocker: null,
 }
 
 const listeners = new Set<() => void>()
