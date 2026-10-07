@@ -42,6 +42,7 @@ jest.unstable_mockModule('@anthropic-ai/sdk', () => ({
 const { getPrimaryResume, completeResumeUpload, listResumes, setPrimaryResume, updateResumeInterests, retryEnrichment, setEnrichmentStatus, deleteResume } = await import('../../src/services/resume/resume.service.ts');
 const { getSearchTerms } = await import('../../src/services/user/user.ai.service.ts');
 const { getCandidateContext } = await import('../../src/services/candidateContext/candidateContext.service.ts');
+const { getInterests, updateInterests } = await import('../../src/services/preference.service.ts');
 
 const createUser = async () => {
     const { rows } = await db.pool.query(
@@ -202,6 +203,21 @@ describeWithDatabase('primary resume against Postgres', () => {
         await updateResumeInterests(newer, ['ai', 'ml'], user);
 
         expect((await listResumes(user)).find((row) => row.resume_id === newer)?.enrichment_status).toBe('complete');
+    });
+
+    it('updateInterests replaces the stored interests and leaves every resume and the pointer alone', async () => {
+        await setPrimary(user, newer);
+        const before = await listResumes(user);
+
+        await updateInterests(user, ['Fintech', 'Data Science']);
+
+        expect(await getInterests(user)).toEqual({ interests: ['Fintech', 'Data Science'] });
+        expect(await listResumes(user)).toEqual(before);
+        expect(await readPrimary(user)).toBe(newer);
+    });
+
+    it('updateInterests 404s for a user with no preferences row', async () => {
+        await expect(updateInterests(randomUUID(), ['Fintech'])).rejects.toMatchObject({ status: 404 });
     });
 
     it('saving interests stores them on the user, so they follow a change of primary', async () => {

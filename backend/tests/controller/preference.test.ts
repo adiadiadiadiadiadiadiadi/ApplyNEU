@@ -1,5 +1,6 @@
 import { jest } from '@jest/globals';
 import request from 'supertest';
+import { AppError } from '../../src/errors/AppError.ts';
 
 // Native ESM: mocks must be registered with unstable_mockModule and the modules
 // under test pulled in via dynamic import() afterwards so the mocks take effect.
@@ -8,6 +9,8 @@ jest.unstable_mockModule('../../src/services/preference.service.ts', () => ({
   updateUserPreferences: jest.fn(),
   getJobTypes: jest.fn(),
   updateJobType: jest.fn(),
+  getInterests: jest.fn(),
+  updateInterests: jest.fn(),
 }));
 
 jest.unstable_mockModule('../../src/controller/middleware/authenticate.ts', () => ({
@@ -18,7 +21,7 @@ jest.unstable_mockModule('../../src/controller/middleware/authenticate.ts', () =
   }),
 }));
 
-const { getUserPreferences, updateUserPreferences, getJobTypes, updateJobType } = await import(
+const { getUserPreferences, updateUserPreferences, getJobTypes, updateJobType, getInterests, updateInterests } = await import(
   '../../src/services/preference.service.ts'
 );
 const { authenticate } = await import('../../src/controller/middleware/authenticate.ts');
@@ -33,6 +36,8 @@ const mockGetUserPreferences = getUserPreferences as ServiceMock;
 const mockUpdateUserPreferences = updateUserPreferences as ServiceMock;
 const mockGetJobTypes = getJobTypes as ServiceMock;
 const mockUpdateJobType = updateJobType as ServiceMock;
+const mockGetInterests = getInterests as ServiceMock;
+const mockUpdateInterests = updateInterests as ServiceMock;
 const mockAuthenticate = authenticate as MiddlewareMock;
 
 const rejectToken = () =>
@@ -202,6 +207,91 @@ describe('PUT /me/preferences/job-types', () => {
 
     expect(res.status).toBe(500);
     expect(res.body).toEqual({ message: 'Internal server error.' });
+  });
+});
+
+describe('GET /me/preferences/interests', () => {
+  it('returns 200 and the stored interests', async () => {
+    mockGetInterests.mockResolvedValue({ interests: ['Fintech'] });
+
+    const res = await request(app).get('/me/preferences/interests');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ interests: ['Fintech'] });
+    expect(mockGetInterests).toHaveBeenCalledWith(USER_ID);
+  });
+
+  it('returns 401 when the token is rejected', async () => {
+    rejectToken();
+
+    const res = await request(app).get('/me/preferences/interests');
+
+    expect(res.status).toBe(401);
+    expect(mockGetInterests).not.toHaveBeenCalled();
+  });
+
+  it('propagates a 404 when the user has no preferences row', async () => {
+    mockGetInterests.mockRejectedValue(new AppError(404, 'User not found.'));
+
+    const res = await request(app).get('/me/preferences/interests');
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ message: 'User not found.' });
+  });
+});
+
+describe('PUT /me/preferences/interests', () => {
+  const interests = ['Fintech', 'Data Science'];
+
+  it('returns 200 and the saved interests on valid input', async () => {
+    mockUpdateInterests.mockResolvedValue({ interests });
+
+    const res = await request(app).put('/me/preferences/interests').send({ interests });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ interests });
+    expect(mockUpdateInterests).toHaveBeenCalledWith(USER_ID, interests);
+  });
+
+  it('returns 400 when interests is missing', async () => {
+    const res = await request(app).put('/me/preferences/interests').send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ message: 'interests must be a non-empty array.' });
+    expect(mockUpdateInterests).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when interests is empty', async () => {
+    const res = await request(app).put('/me/preferences/interests').send({ interests: [] });
+
+    expect(res.status).toBe(400);
+    expect(mockUpdateInterests).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when interests is not an array', async () => {
+    const res = await request(app).put('/me/preferences/interests').send({ interests: 'Fintech' });
+
+    expect(res.status).toBe(400);
+    expect(mockUpdateInterests).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when an interest is not in the preset list', async () => {
+    const res = await request(app)
+      .put('/me/preferences/interests')
+      .send({ interests: ['Fintech', 'Underwater Basket Weaving'] });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ message: 'interests must only contain values from the preset list.' });
+    expect(mockUpdateInterests).not.toHaveBeenCalled();
+  });
+
+  it('returns 401 when the token is rejected', async () => {
+    rejectToken();
+
+    const res = await request(app).put('/me/preferences/interests').send({ interests });
+
+    expect(res.status).toBe(401);
+    expect(mockUpdateInterests).not.toHaveBeenCalled();
   });
 });
 
