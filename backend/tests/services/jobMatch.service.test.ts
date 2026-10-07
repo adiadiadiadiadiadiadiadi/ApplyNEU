@@ -1,4 +1,5 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { normalizeAndHash } from '../../src/utils/hash.ts';
 import { AppError } from '../../src/errors/AppError.ts';
 import type { CandidateContextResponse } from '../../src/types/candidateContext.ts';
 
@@ -29,7 +30,7 @@ jest.unstable_mockModule('@anthropic-ai/sdk', () => {
 });
 
 const { sendJobDescription, DEFAULT_MATCH_CUTOFF } = await import('../../src/services/jobMatch/jobMatch.service.ts');
-const { SCORING_RULES, EXTRACTION_RULES } = await import('../../src/services/jobMatch/jobMatch.prompt.ts');
+const { SCORING_RULES, SCORING_VERSION, EXTRACTION_RULES } = await import('../../src/services/jobMatch/jobMatch.prompt.ts');
 
 const COMPANY = 'Acme';
 const TITLE = 'Software Engineer';
@@ -67,6 +68,7 @@ const messageText = () => lastRequest().messages.map((m: { content: string }) =>
 
 beforeEach(() => {
     query.mockReset();
+    query.mockResolvedValue({ rows: [] });
     create.mockReset();
     getCandidateContext.mockReset();
 });
@@ -76,14 +78,86 @@ describe('sendJobDescription', () => {
 
     const fit = () => aiResponse({ match_score: 80, rationale: 'Good fit.', employer_instructions: [] });
 
-    it('sources the candidate from getCandidateContext without querying the database', async () => {
+    it('sources the candidate from getCandidateContext', async () => {
         getCandidateContext.mockResolvedValue(candidateContext());
         create.mockResolvedValue(fit());
 
         await analyze();
 
         expect(getCandidateContext).toHaveBeenCalledWith(USER_ID);
-        expect(query).not.toHaveBeenCalled();
+    });
+
+    describe('match cache', () => {
+        const cacheRead = () => query.mock.calls.find(([sql]) => sql.includes('SELECT m.match_score'))!;
+        const cacheWrite = () => query.mock.calls.find(([sql]) => sql.includes('INSERT INTO job_matches'));
+        const candidateHashSent = () => cacheRead()[1]![4];
+
+        it('returns a cached score and instructions without calling the model', async () => {
+            getCandidateContext.mockResolvedValue(candidateContext());
+            const instructions = [{ kind: 'external_application', instruction: 'Apply through Acme portal', description: 'https://acme.example/jobs' }];
+            query.mockResolvedValueOnce({ rows: [{ match_score: 72, employer_instructions: instructions }] });
+
+            const result = await analyze();
+
+            expect(create).not.toHaveBeenCalled();
+            expect(cacheWrite()).toBeUndefined();
+            expect(result).toEqual({ decision: 'APPLY', match_score: 72, rationale: null, employer_instructions: instructions });
+        });
+
+        it('keys the lookup on the posting, the user, the rendered candidate and SCORING_VERSION', async () => {
+            getCandidateContext.mockResolvedValue(candidateContext());
+            create.mockResolvedValue(fit());
+
+            await analyze();
+
+            expect(cacheRead()[1]).toEqual([
+                COMPANY, TITLE, normalizeAndHash(DESCRIPTION), USER_ID, expect.any(String), SCORING_VERSION,
+            ]);
+        });
+
+        it('looks up a different candidate hash when the resume changes', async () => {
+            getCandidateContext.mockResolvedValue(candidateContext());
+            create.mockResolvedValue(fit());
+            await analyze();
+            const before = candidateHashSent();
+
+            query.mockClear();
+            getCandidateContext.mockResolvedValue(
+                candidateContext({ resume: { resume_text: 'Frontend engineer. React.', search_terms: [] } })
+            );
+            await analyze();
+
+            expect(candidateHashSent()).not.toBe(before);
+        });
+
+        it('saves the fresh score and instructions on a miss', async () => {
+            getCandidateContext.mockResolvedValue(candidateContext());
+            create.mockResolvedValue(fit());
+
+            await analyze();
+
+            const [, params] = cacheWrite()!;
+            expect(params).toEqual([
+                COMPANY, TITLE, normalizeAndHash(DESCRIPTION), '[]', USER_ID, candidateHashSent(), SCORING_VERSION, 80,
+            ]);
+        });
+
+        it('falls through to the model when the cache read fails', async () => {
+            getCandidateContext.mockResolvedValue(candidateContext());
+            query.mockRejectedValueOnce(new Error('connection refused'));
+            create.mockResolvedValue(fit());
+
+            await expect(analyze()).resolves.toMatchObject({ match_score: 80 });
+            expect(create).toHaveBeenCalledTimes(1);
+        });
+
+        it('still returns the score when the cache write fails', async () => {
+            getCandidateContext.mockResolvedValue(candidateContext());
+            query.mockResolvedValueOnce({ rows: [] }).mockRejectedValueOnce(new Error('connection refused'));
+            create.mockResolvedValue(fit());
+
+            await expect(analyze()).resolves.toMatchObject({ decision: 'APPLY', match_score: 80 });
+        });
     });
 
     it('puts the rules and the rendered candidate in system and the job in messages', async () => {
