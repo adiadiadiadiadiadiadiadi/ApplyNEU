@@ -2,14 +2,17 @@ import express, { type Request, type Response } from 'express';
 import type {
   UpdatePreferencesRequest,
   UpdateJobTypesRequest,
+  UpdateInterestsRequest,
 } from '../types/users.ts';
 import {
   getUserPreferences,
   updateUserPreferences,
   getJobTypes,
   updateJobType,
+  getInterests,
+  updateInterests,
 } from '../services/preference.service.ts';
-import { validateUpdateJobTypes } from './middleware/validators/preference.validate.ts';
+import { validateUpdateJobTypes, validateUpdateInterests } from './middleware/validators/preference.validate.ts';
 import asyncHandler from './middleware/handlers/asyncHandler.ts';
 
 export const mePreferenceController = () => {
@@ -41,10 +44,24 @@ export const mePreferenceController = () => {
     res.status(200).json(result);
   };
 
+  /** GET /me/preferences/interests — return the caller's selected interests. */
+  const getInterestsRoute = async (req: Request, res: Response) => {
+    const result = await getInterests(req.auth!.userId);
+    res.status(200).json(result);
+  };
+
+  /** PUT /me/preferences/interests — replace the caller's interests with values from the preset list. */
+  const updateInterestsRoute = async (req: UpdateInterestsRequest, res: Response) => {
+    const result = await updateInterests(req.auth!.userId, req.body.interests);
+    res.status(200).json(result);
+  };
+
   router.get('/', asyncHandler(getPreferencesRoute));
   router.put('/', asyncHandler(updatePreferencesRoute));
   router.get('/job-types', asyncHandler(getJobTypesRoute));
   router.put('/job-types', validateUpdateJobTypes, asyncHandler(updateJobTypeRoute));
+  router.get('/interests', asyncHandler(getInterestsRoute));
+  router.put('/interests', validateUpdateInterests, asyncHandler(updateInterestsRoute));
 
   return router;
 };

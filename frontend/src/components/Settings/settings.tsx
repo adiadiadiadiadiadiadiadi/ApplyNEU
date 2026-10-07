@@ -13,6 +13,7 @@ export default function Settings() {
   const status = useAppSelector((state) => state.user.status)
   const loadError = useAppSelector((state) => state.user.error)
   const [currentResumeName, setCurrentResumeName] = useState('')
+  const [interests, setInterests] = useState<string[]>([])
 
   const waitForApproval = profile?.waitForApproval ?? false
   const recentJobs = profile?.recent_jobs ?? false
@@ -41,6 +42,25 @@ export default function Settings() {
     }
 
     void loadPrimaryResume()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const loadInterests = async () => {
+      try {
+        const resp = await api.get('/me/preferences/interests')
+        if (cancelled || !resp.ok) return
+        const data = await resp.json()
+        setInterests(data?.interests ?? [])
+      } catch (err) {
+        console.error('Failed fetching interests', err)
+      }
+    }
+
+    void loadInterests()
     return () => {
       cancelled = true
     }
@@ -127,6 +147,22 @@ export default function Settings() {
           <div>
             <p className="profile-title">primary resume</p>
             <p className="profile-subtitle">{currentResumeName || 'no resume uploaded yet'}</p>
+          </div>
+          <span className="profile-arrow" aria-hidden="true">
+            →
+          </span>
+        </div>
+
+        <div
+          className="settings-card profile-card"
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate('/settings/interests')}
+          onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && navigate('/settings/interests')}
+        >
+          <div>
+            <p className="profile-title">interests</p>
+            <p className="profile-subtitle">{interests.length ? interests.join(', ') : 'no interests selected yet'}</p>
           </div>
           <span className="profile-arrow" aria-hidden="true">
             →

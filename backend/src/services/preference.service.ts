@@ -44,6 +44,34 @@ export const updateJobType = async (user_id: string, job_types: string[]) => {
     }
 };
 
+export const getInterests = async (user_id: string) => {
+    try {
+        const result = await pool.query(
+            `SELECT interests FROM preferences WHERE user_id = $1;`,
+            [user_id]
+        );
+        if (result.rows.length === 0) throw new AppError(404, 'User not found.');
+        return result.rows[0] as { interests: string[] };
+    } catch (error) {
+        if (error instanceof AppError) throw error;
+        throw new AppError(500, 'Error getting interests.');
+    }
+};
+
+export const updateInterests = async (user_id: string, interests: string[]) => {
+    try {
+        const result = await pool.query(
+            `UPDATE preferences SET interests = $1 WHERE user_id = $2 RETURNING interests;`,
+            [interests, user_id]
+        );
+        if (result.rows.length === 0) throw new AppError(404, 'User not found.');
+        return result.rows[0] as { interests: string[] };
+    } catch (error) {
+        if (error instanceof AppError) throw error;
+        throw new AppError(500, 'Error updating interests.');
+    }
+};
+
 export const updateUserPreferences = async (
     user_id: string,
     wait_for_approval?: boolean,
