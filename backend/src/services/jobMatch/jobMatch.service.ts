@@ -12,8 +12,19 @@ export type InstructionKind = typeof INSTRUCTION_KINDS[number];
 
 export type JobMatchInstruction = EmployerInstruction & { kind: InstructionKind };
 
-/** Applied to every user until #77 maps job_match sensitivity to its own cutoff. */
-export const DEFAULT_MATCH_CUTOFF = 50;
+/**
+ * Minimum match_score to apply, per job_match preference. Applied in code against a stored
+ * score, so changing the preference re-reads an existing score instead of buying a new one.
+ */
+export const MATCH_THRESHOLDS: Record<JobMatchSensitivity, number> = {
+  low: 40,
+  medium: 55,
+  high: 70,
+};
+
+/** A score exactly at the threshold passes. An unrecognized preference falls back to medium. */
+export const decideFromScore = (match_score: number, job_match: JobMatchSensitivity) =>
+  match_score >= (MATCH_THRESHOLDS[job_match] ?? MATCH_THRESHOLDS.medium) ? 'APPLY' : 'DO_NOT_APPLY';
 
 const parseMatchScore = (value: unknown): number => {
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 100) {
@@ -123,7 +134,7 @@ const normalizeEmployerInstructions = (input: any): JobMatchInstruction[] => {
 
 /**
  * Sends a job description to Claude Sonnet for a 0-100 match score against the user's
- * resume, and derives APPLY/DO_NOT_APPLY from DEFAULT_MATCH_CUTOFF.
+ * resume, and derives APPLY/DO_NOT_APPLY from the user's job_match threshold.
  * Also extracts any required external application steps from the posting.
  * @param user_id - User evaluating the job
  * @param job_description - Full text of the job posting
@@ -148,7 +159,7 @@ export const sendJobDescription = async (user_id: string, job_description: strin
     const cached = await checkMatchCache(user_id, job, candidate_hash);
     if (cached) {
       return {
-        decision: cached.match_score >= DEFAULT_MATCH_CUTOFF ? 'APPLY' : 'DO_NOT_APPLY',
+        decision: decideFromScore(cached.match_score, context.preferences.job_match),
         match_score: cached.match_score,
         rationale: null,
         employer_instructions: cached.employer_instructions,
@@ -163,7 +174,7 @@ export const sendJobDescription = async (user_id: string, job_description: strin
     const employer_instructions = normalizeEmployerInstructions(parsed.employer_instructions);
     await saveMatch(user_id, job, candidate_hash, match_score, employer_instructions);
     return {
-      decision: match_score >= DEFAULT_MATCH_CUTOFF ? 'APPLY' : 'DO_NOT_APPLY',
+      decision: decideFromScore(match_score, context.preferences.job_match),
       match_score,
       rationale: typeof parsed.rationale === 'string' ? parsed.rationale : '',
       employer_instructions,
