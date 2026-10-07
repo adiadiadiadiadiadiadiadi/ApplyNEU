@@ -10,7 +10,6 @@ const completeResumeUpload = jest.fn<(resume_id: string, key: string, user_id: s
 const getPrimaryResume = jest.fn<(user_id: string) => Promise<any>>();
 const listResumes = jest.fn<(user_id: string) => Promise<any>>();
 const setPrimaryResume = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
-const updateResumeInterests = jest.fn<(resume_id: string, interests: string[], user_id: string) => Promise<any>>();
 const getResumeSearchTerms = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
 const retryEnrichment = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
 const setEnrichmentStatus = jest.fn<(resume_id: string, status: string) => Promise<any>>();
@@ -36,7 +35,6 @@ jest.unstable_mockModule('../../src/services/resume/resume.service.ts', () => ({
   getPrimaryResume,
   listResumes,
   setPrimaryResume,
-  updateResumeInterests,
   getResumeSearchTerms,
   retryEnrichment,
   setEnrichmentStatus,
@@ -76,7 +74,6 @@ beforeEach(() => {
   getPrimaryResume.mockReset();
   listResumes.mockReset();
   setPrimaryResume.mockReset();
-  updateResumeInterests.mockReset();
   getResumeSearchTerms.mockReset();
   generateSearchTerms.mockReset();
   queueAdd.mockReset();
@@ -436,74 +433,6 @@ describe('DELETE /me/resumes/:resume_id', () => {
 
     expect(res.status).toBe(401);
     expect(deleteResume).not.toHaveBeenCalled();
-  });
-});
-
-describe('PUT /resumes/:resume_id/interests', () => {
-  const url = `/resumes/${RESUME_ID}/interests`;
-  const interests = ['Data Science', 'Fintech', 'Artificial Intelligence'];
-
-  it('returns 200 and the updated resume on valid input', async () => {
-    const updated = { resume_id: RESUME_ID, interests };
-    updateResumeInterests.mockResolvedValue(updated);
-
-    const res = await request(app).put(url).send({ interests });
-
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual(updated);
-    expect(updateResumeInterests).toHaveBeenCalledWith(RESUME_ID, interests, USER_ID);
-  });
-
-  it('does not start enrichment, since search terms no longer depend on interests', async () => {
-    updateResumeInterests.mockResolvedValue({ resume_id: RESUME_ID, interests });
-
-    const res = await request(app).put(url).send({ interests });
-
-    expect(res.status).toBe(200);
-    expect(queueAdd).not.toHaveBeenCalled();
-  });
-
-  it('returns 400 when interests is missing', async () => {
-    const res = await request(app).put(url).send({});
-
-    expect(res.status).toBe(400);
-    expect(res.body.message).toBe('interests is required.');
-    expect(updateResumeInterests).not.toHaveBeenCalled();
-    expect(queueAdd).not.toHaveBeenCalled();
-  });
-
-  it('returns 400 when an interest is not in the preset list', async () => {
-    const res = await request(app).put(url).send({ interests: ['Data Science', 'Underwater Basket Weaving'] });
-
-    expect(res.status).toBe(400);
-    expect(res.body.message).toBe('interests must only contain values from the preset list.');
-    expect(updateResumeInterests).not.toHaveBeenCalled();
-  });
-
-  it('returns 400 when interests is not an array', async () => {
-    const res = await request(app).put(url).send({ interests: 'Data Science' });
-
-    expect(res.status).toBe(400);
-    expect(updateResumeInterests).not.toHaveBeenCalled();
-  });
-
-  it('propagates a 404 AppError when the resume does not exist or is not owned by the caller', async () => {
-    updateResumeInterests.mockRejectedValue(new AppError(404, 'Resume not found.'));
-
-    const res = await request(app).put(url).send({ interests });
-
-    expect(res.status).toBe(404);
-    expect(res.body.message).toBe('Resume not found.');
-  });
-
-  it('returns 401 when the caller is not authenticated', async () => {
-    rejectAuth();
-
-    const res = await request(app).put(url).send({ interests });
-
-    expect(res.status).toBe(401);
-    expect(updateResumeInterests).not.toHaveBeenCalled();
-    expect(queueAdd).not.toHaveBeenCalled();
   });
 });
 
