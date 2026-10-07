@@ -4,8 +4,8 @@ import type {
   ResumeSaveRequest,
   SetPrimaryResumeRequest,
 } from '../types/resumes.ts';
-import { getUploadUrl, getViewUrl, completeResumeUpload, getPrimaryResume, listResumes, setPrimaryResume, getResumeSearchTerms, updateResumeInterests, retryEnrichment, setEnrichmentStatus, deleteResume } from '../services/resume/resume.service.ts';
-import { validateUploadUrl, validateSaveResume, validateResumeIdParam, validateUpdateResumeInterests, validateSetPrimaryResume, validateDeleteResume } from './middleware/validators/resume.validate.ts';
+import { getUploadUrl, getViewUrl, completeResumeUpload, getPrimaryResume, listResumes, setPrimaryResume, getResumeSearchTerms, retryEnrichment, setEnrichmentStatus, deleteResume } from '../services/resume/resume.service.ts';
+import { validateUploadUrl, validateSaveResume, validateResumeIdParam, validateSetPrimaryResume, validateDeleteResume } from './middleware/validators/resume.validate.ts';
 import type { Request } from 'express';
 import { authenticate } from './middleware/authenticate.ts';
 import asyncHandler from './middleware/handlers/asyncHandler.ts';
@@ -47,14 +47,6 @@ const resumeController = (): express.Router => {
         res.status(200).json(resume);
     };
 
-    /** PUT /:resume_id/interests — save the user's selected interest tags. */
-    const updateResumeInterestsRoute = async (req: Request<{ resume_id: string }, unknown, { interests: string[] }>, res: Response) => {
-        const { resume_id } = req.params;
-        const { interests } = req.body;
-        const result = await updateResumeInterests(resume_id, interests, req.auth!.userId);
-        res.status(200).json(result);
-    };
-
     /** POST /:resume_id/enrichment/retry — re-enqueue enrichment for a resume whose last run failed. */
     const retryEnrichmentRoute = async (req: Request<{ resume_id: string }>, res: Response) => {
         const { resume_id } = req.params;
@@ -71,7 +63,6 @@ const resumeController = (): express.Router => {
     };
 
     router.post('/save', validateSaveResume, authenticate, asyncHandler(completeResumeUploadRoute));
-    router.put('/:resume_id/interests', validateUpdateResumeInterests, authenticate, asyncHandler(updateResumeInterestsRoute));
     router.post('/:resume_id/enrichment/retry', validateResumeIdParam, authenticate, asyncHandler(retryEnrichmentRoute));
     router.get('/:resume_id/search-terms', validateResumeIdParam, authenticate, asyncHandler(getSearchTermsRoute));
 

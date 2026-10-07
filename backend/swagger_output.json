@@ -132,43 +132,45 @@
         ]
       }
     },
-    "/users/{user_id}/interests": {
+    "/me/preferences/interests": {
       "get": {
-        "description": "",
-        "parameters": [
-          {
-            "name": "user_id",
-            "in": "path",
-            "required": true,
-            "type": "string"
-          }
-        ],
+        "description": "Returns the caller's selected interests.",
         "responses": {
+          "200": {
+            "description": "OK"
+          },
           "401": {
             "description": "Unauthorized"
           }
         },
         "tags": [
-          "Users"
+          "Preferences"
         ]
       },
       "put": {
-        "description": "",
+        "description": "Replaces the caller's interests. Every value must be in the preset list from GET /interests.",
         "parameters": [
           {
-            "name": "user_id",
-            "in": "path",
-            "required": true,
-            "type": "string"
+            "name": "body",
+            "in": "body",
+            "schema": {
+              "$ref": "#/definitions/UpdateInterests"
+            }
           }
         ],
         "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
           "401": {
             "description": "Unauthorized"
           }
         },
         "tags": [
-          "Users"
+          "Preferences"
         ]
       }
     },
@@ -746,8 +748,8 @@
         "interests": {
           "type": "array",
           "example": [
-            "software engineering",
-            "machine learning"
+            "Fintech",
+            "Data Science"
           ],
           "items": {
             "type": "string"
