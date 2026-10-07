@@ -15,6 +15,7 @@ import taskController, { meTaskController } from './controller/task.controller.t
 import { meApplicationController } from './controller/application.controller.ts';
 import { mePreferenceController } from './controller/preference.controller.ts';
 import { meContextController } from './controller/context.controller.ts';
+import { interestController } from './controller/interest.controller.ts';
 import { authenticate } from './controller/middleware/authenticate.ts';
 import errorHandler from './controller/middleware/handlers/errorHandler.ts';
 
@@ -50,6 +51,7 @@ app.use('/users', userController());
 app.use('/resumes', resumeController());
 app.use('/jobs', jobController());
 app.use('/tasks', taskController());
+app.use('/interests', interestController());
 
 // Everything the caller owns hangs off /me, identified by the JWT rather than by a
 // url param. authenticate is mounted on the router itself so a route added here

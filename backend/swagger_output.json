@@ -288,24 +288,19 @@
         ]
       }
     },
-    "/resumes/{user_id}/possible-interests": {
+    "/interests": {
       "get": {
-        "description": "",
-        "parameters": [
-          {
-            "name": "user_id",
-            "in": "path",
-            "required": true,
-            "type": "string"
-          }
-        ],
+        "description": "Returns the preset list of interests a user can pick from.",
         "responses": {
+          "200": {
+            "description": "OK"
+          },
           "401": {
             "description": "Unauthorized"
           }
         },
         "tags": [
-          "Resumes"
+          "Interests"
         ]
       }
     },
