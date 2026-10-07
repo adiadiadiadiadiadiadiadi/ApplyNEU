@@ -441,7 +441,7 @@ describe('DELETE /me/resumes/:resume_id', () => {
 
 describe('PUT /resumes/:resume_id/interests', () => {
   const url = `/resumes/${RESUME_ID}/interests`;
-  const interests = ['Computer Science', 'Fintech', 'Artificial Intelligence'];
+  const interests = ['Data Science', 'Fintech', 'Artificial Intelligence'];
 
   it('returns 200 and the updated resume on valid input', async () => {
     const updated = { resume_id: RESUME_ID, interests };
@@ -473,7 +473,7 @@ describe('PUT /resumes/:resume_id/interests', () => {
   });
 
   it('returns 400 when an interest is not in the preset list', async () => {
-    const res = await request(app).put(url).send({ interests: ['Computer Science', 'Underwater Basket Weaving'] });
+    const res = await request(app).put(url).send({ interests: ['Data Science', 'Underwater Basket Weaving'] });
 
     expect(res.status).toBe(400);
     expect(res.body.message).toBe('interests must only contain values from the preset list.');
@@ -481,7 +481,7 @@ describe('PUT /resumes/:resume_id/interests', () => {
   });
 
   it('returns 400 when interests is not an array', async () => {
-    const res = await request(app).put(url).send({ interests: 'Computer Science' });
+    const res = await request(app).put(url).send({ interests: 'Data Science' });
 
     expect(res.status).toBe(400);
     expect(updateResumeInterests).not.toHaveBeenCalled();
