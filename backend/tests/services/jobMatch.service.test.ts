@@ -29,7 +29,7 @@ jest.unstable_mockModule('@anthropic-ai/sdk', () => {
     return { default: Anthropic };
 });
 
-const { sendJobDescription, DEFAULT_MATCH_CUTOFF } = await import('../../src/services/jobMatch/jobMatch.service.ts');
+const { sendJobDescription, MATCH_THRESHOLDS, decideFromScore } = await import('../../src/services/jobMatch/jobMatch.service.ts');
 const { SCORING_RULES, SCORING_VERSION, EXTRACTION_RULES } = await import('../../src/services/jobMatch/jobMatch.prompt.ts');
 
 const COMPANY = 'Acme';
@@ -354,14 +354,48 @@ describe('sendJobDescription', () => {
         await expect(analyze()).rejects.toMatchObject({ status: 502 });
     });
 
-    it('applies at or above DEFAULT_MATCH_CUTOFF and skips below it', async () => {
-        getCandidateContext.mockResolvedValue(candidateContext());
+    describe('thresholds', () => {
+        const withJobMatch = (job_match: 'low' | 'medium' | 'high') =>
+            candidateContext({ preferences: { ...candidateContext().preferences, job_match } });
 
-        create.mockResolvedValueOnce(aiResponse({ match_score: DEFAULT_MATCH_CUTOFF, rationale: '', employer_instructions: [] }));
-        await expect(analyze()).resolves.toMatchObject({ decision: 'APPLY' });
+        it.each(['low', 'medium', 'high'] as const)('passes a %s score exactly at its threshold and fails one below', (job_match) => {
+            expect(decideFromScore(MATCH_THRESHOLDS[job_match], job_match)).toBe('APPLY');
+            expect(decideFromScore(MATCH_THRESHOLDS[job_match] - 1, job_match)).toBe('DO_NOT_APPLY');
+        });
 
-        create.mockResolvedValueOnce(aiResponse({ match_score: DEFAULT_MATCH_CUTOFF - 1, rationale: '', employer_instructions: [] }));
-        await expect(analyze()).resolves.toMatchObject({ decision: 'DO_NOT_APPLY' });
+        it('orders the thresholds low < medium < high', () => {
+            expect(MATCH_THRESHOLDS.low).toBeLessThan(MATCH_THRESHOLDS.medium);
+            expect(MATCH_THRESHOLDS.medium).toBeLessThan(MATCH_THRESHOLDS.high);
+        });
+
+        it('falls back to the medium threshold for an unrecognized preference', () => {
+            expect(decideFromScore(MATCH_THRESHOLDS.medium, 'unknown' as never)).toBe('APPLY');
+            expect(decideFromScore(MATCH_THRESHOLDS.medium - 1, 'unknown' as never)).toBe('DO_NOT_APPLY');
+        });
+
+        it("applies the caller's job_match threshold to a fresh score", async () => {
+            const score = MATCH_THRESHOLDS.medium;
+            create.mockResolvedValue(aiResponse({ match_score: score, rationale: '', employer_instructions: [] }));
+
+            getCandidateContext.mockResolvedValue(withJobMatch('medium'));
+            await expect(analyze()).resolves.toMatchObject({ decision: 'APPLY', match_score: score });
+
+            getCandidateContext.mockResolvedValue(withJobMatch('high'));
+            await expect(analyze()).resolves.toMatchObject({ decision: 'DO_NOT_APPLY', match_score: score });
+        });
+
+        it('re-reads a cached score under a new preference without calling the model', async () => {
+            const score = MATCH_THRESHOLDS.medium;
+            query.mockResolvedValue({ rows: [{ match_score: score, employer_instructions: [] }] });
+
+            getCandidateContext.mockResolvedValue(withJobMatch('low'));
+            await expect(analyze()).resolves.toMatchObject({ decision: 'APPLY' });
+
+            getCandidateContext.mockResolvedValue(withJobMatch('high'));
+            await expect(analyze()).resolves.toMatchObject({ decision: 'DO_NOT_APPLY' });
+
+            expect(create).not.toHaveBeenCalled();
+        });
     });
 
     it.each([[101], [-1], [72.5], ['80'], [null]])('throws 502 for an invalid match score of %p', async (match_score) => {
