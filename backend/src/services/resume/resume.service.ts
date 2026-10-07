@@ -206,33 +206,6 @@ export const completeResumeUpload = async (resume_id: string, key: string, user_
 };
 
 /**
- * Saves the user's interest tags on their preferences. Interests only feed the scoring
- * prompt, so this neither re-enriches the resume nor moves the primary pointer.
- * @param resume_id - ID of a resume the caller owns
- * @param interests - Full replacement array of interest topic strings
- * @param user_id - Caller's authenticated user ID; must own the resume
- */
-export const updateResumeInterests = async (resume_id: string, interests: string[], user_id: string) => {
-    try {
-        const owned = await pool.query(
-            `SELECT resume_id FROM resumes WHERE resume_id = $1 AND user_id::text = $2;`,
-            [resume_id, user_id]
-        );
-        if (owned.rows.length === 0) throw new AppError(404, 'Resume not found.');
-
-        await pool.query(
-            `UPDATE preferences SET interests = $1 WHERE user_id::text = $2`,
-            [interests, user_id]
-        );
-
-        return { resume_id, interests };
-    } catch (error) {
-        if (error instanceof AppError) throw error;
-        throw new AppError(500, 'Error updating interests.');
-    }
-};
-
-/**
  * Retrieves the search terms stored on a specific resume.
  * @param resume_id - ID of the resume
  * @param user_id - Caller's authenticated user ID; must own the resume

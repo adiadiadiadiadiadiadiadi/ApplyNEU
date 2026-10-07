@@ -1,6 +1,5 @@
 import { body, param, validationResult } from 'express-validator';
 import type { Request, Response, NextFunction } from 'express';
-import { isInterest } from '../../../constants/interests.ts';
 
 const handleValidation = (req: Request, res: Response, next: NextFunction) => {
     const errors = validationResult(req);
@@ -31,15 +30,6 @@ export const validateSaveResume = [
 
 export const validateResumeIdParam = [
     param('resume_id').notEmpty().withMessage('resume_id is required.'),
-    handleValidation,
-];
-
-export const validateUpdateResumeInterests = [
-    param('resume_id').notEmpty().withMessage('resume_id is required.'),
-    body('interests').notEmpty().withMessage('interests is required.'),
-    body('interests')
-        .custom((interests) => Array.isArray(interests) && interests.every(isInterest))
-        .withMessage('interests must only contain values from the preset list.'),
     handleValidation,
 ];
 

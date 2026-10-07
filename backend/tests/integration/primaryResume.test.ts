@@ -39,9 +39,10 @@ jest.unstable_mockModule('@anthropic-ai/sdk', () => ({
     },
 }));
 
-const { getPrimaryResume, completeResumeUpload, listResumes, setPrimaryResume, updateResumeInterests, retryEnrichment, setEnrichmentStatus, deleteResume } = await import('../../src/services/resume/resume.service.ts');
+const { getPrimaryResume, completeResumeUpload, listResumes, setPrimaryResume, retryEnrichment, setEnrichmentStatus, deleteResume } = await import('../../src/services/resume/resume.service.ts');
 const { getSearchTerms } = await import('../../src/services/user/user.ai.service.ts');
 const { getCandidateContext } = await import('../../src/services/candidateContext/candidateContext.service.ts');
+const { getInterests, updateInterests } = await import('../../src/services/preference.service.ts');
 
 const createUser = async () => {
     const { rows } = await db.pool.query(
@@ -198,20 +199,29 @@ describeWithDatabase('primary resume against Postgres', () => {
         ).rejects.toMatchObject({ code: '23514' });
     });
 
-    it('saving interests leaves enrichment alone', async () => {
-        await updateResumeInterests(newer, ['ai', 'ml'], user);
+    it('updateInterests replaces the stored interests and leaves every resume and the pointer alone', async () => {
+        await setPrimary(user, newer);
+        const before = await listResumes(user);
 
-        expect((await listResumes(user)).find((row) => row.resume_id === newer)?.enrichment_status).toBe('complete');
+        await updateInterests(user, ['Fintech', 'Data Science']);
+
+        expect(await getInterests(user)).toEqual({ interests: ['Fintech', 'Data Science'] });
+        expect(await listResumes(user)).toEqual(before);
+        expect(await readPrimary(user)).toBe(newer);
+    });
+
+    it('updateInterests 404s for a user with no preferences row', async () => {
+        await expect(updateInterests(randomUUID(), ['Fintech'])).rejects.toMatchObject({ status: 404 });
     });
 
     it('saving interests stores them on the user, so they follow a change of primary', async () => {
-        await updateResumeInterests(newer, ['ai', 'ml'], user);
+        await updateInterests(user, ['Fintech', 'Data Science']);
         await setPrimary(user, older);
 
         const context = await getCandidateContext(user);
 
         expect(context.resume?.resume_text).toBe('text of older.pdf');
-        expect(context.preferences.interests).toEqual(['ai', 'ml']);
+        expect(context.preferences.interests).toEqual(['Fintech', 'Data Science']);
     });
 
     it('retryEnrichment moves a failed enrichment back to pending', async () => {
@@ -364,7 +374,7 @@ describeWithDatabase('primary resume against Postgres', () => {
     it('saving interests leaves the pointer alone', async () => {
         await setPrimary(user, older);
 
-        await updateResumeInterests(newer, ['ai'], user);
+        await updateInterests(user, ['Fintech']);
 
         expect(await readPrimary(user)).toBe(older);
     });

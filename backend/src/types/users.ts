@@ -28,5 +28,6 @@ export interface UpdatePreferencesBody {
 
 export type UpdatePreferencesRequest = Request<Record<string, never>, unknown, UpdatePreferencesBody>;
 export type UpdateJobTypesRequest = Request<Record<string, never>, unknown, { job_types: string[] }>;
+export type UpdateInterestsRequest = Request<Record<string, never>, unknown, { interests: string[] }>;
 
 export type PostUserResponse = PostUserObject | { error: string };

@@ -119,9 +119,9 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     )
   }
 
-  const saveInterests = async (resumeId: string): Promise<boolean> => {
+  const saveInterests = async (): Promise<boolean> => {
     try {
-      const response = await api.put(`/resumes/${resumeId}/interests`, { interests: selectedInterests })
+      const response = await api.put('/me/preferences/interests', { interests: selectedInterests })
       return response.ok
     } catch (error) {
       console.error('Error saving interests:', error)
@@ -267,7 +267,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       setStepError('resume not found. please try again.')
       return
     }
-    const saved = await saveInterests(resumeId)
+    const saved = await saveInterests()
     if (!saved) {
       setLoading(false)
       setStepError('could not save interests/search terms. please try again.')
