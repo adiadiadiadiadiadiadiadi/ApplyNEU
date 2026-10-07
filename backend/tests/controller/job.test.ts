@@ -12,8 +12,11 @@ const authenticate = jest.fn((req: any, _res: any, next: any) => {
 });
 
 jest.unstable_mockModule('../../src/services/job.service.ts', () => ({
-  sendJobDescription,
   addJob,
+}));
+
+jest.unstable_mockModule('../../src/services/jobMatch/jobMatch.service.ts', () => ({
+  sendJobDescription,
 }));
 
 jest.unstable_mockModule('../../src/controller/middleware/authenticate.ts', () => ({

@@ -4,6 +4,7 @@ import { AppError } from '../../src/errors/AppError.ts';
 
 jest.unstable_mockModule('../../src/services/candidateContext/candidateContext.service.ts', () => ({
   getCandidateContext: jest.fn(),
+  renderCandidateContext: jest.fn(),
 }));
 
 jest.unstable_mockModule('../../src/controller/middleware/authenticate.ts', () => ({

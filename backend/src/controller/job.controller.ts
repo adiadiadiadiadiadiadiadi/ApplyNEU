@@ -1,5 +1,6 @@
 import express, { type Response } from 'express';
-import { addJob, sendJobDescription } from '../services/job.service.ts';
+import { addJob } from '../services/job.service.ts';
+import { sendJobDescription } from '../services/jobMatch/jobMatch.service.ts';
 import type { AddJobRequest, SendJobDescriptionRequest } from '../types/jobs.ts';
 import { validateAddJob, validateSendJobDescription } from './middleware/validators/job.validate.ts';
 import asyncHandler from './middleware/handlers/asyncHandler.ts';
