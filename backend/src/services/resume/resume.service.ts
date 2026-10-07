@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import pdfParse from 'pdf-parse';
 import { randomUUID } from 'crypto';
@@ -318,7 +318,8 @@ export const setPrimaryResume = async (resume_id: string, user_id: string): Prom
 /**
  * Deletes one of the caller's resumes. If it was the primary, the preferences foreign key
  * clears the pointer and getPrimaryResume falls back to the newest remaining resume.
- * 
+ * The PDF is deleted from S3 after the row: a failed object delete is logged and leaves an
+ * orphan for the bucket sweep, rather than a row pointing at a missing object.
  * @param resume_id - ID of the resume to delete
  * @param user_id - Caller's authenticated user ID; must own the resume
  * @returns The deleted resume's id
@@ -326,11 +327,18 @@ export const setPrimaryResume = async (resume_id: string, user_id: string): Prom
 export const deleteResume = async (resume_id: string, user_id: string) => {
     try {
         const result = await pool.query(
-            `DELETE FROM resumes WHERE resume_id = $1 AND user_id::text = $2 RETURNING resume_id;`,
+            `DELETE FROM resumes WHERE resume_id = $1 AND user_id::text = $2 RETURNING resume_id, key;`,
             [resume_id, user_id]
         );
         if (result.rows.length === 0) throw new AppError(404, 'Resume not found.');
-        return result.rows[0] as { resume_id: string };
+
+        const { key } = result.rows[0];
+        if (key) {
+            await s3Client
+                .send(new DeleteObjectCommand({ Bucket: process.env.S3_BUCKET_NAME!, Key: key }))
+                .catch((error) => console.error(`[deleteResume] S3 delete failed for key=${key}:`, error));
+        }
+        return { resume_id: result.rows[0].resume_id as string };
     } catch (error) {
         if (error instanceof AppError) throw error;
         throw new AppError(500, 'Error deleting resume.');

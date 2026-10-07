@@ -6,16 +6,28 @@ const db = useTestDatabase();
 
 jest.unstable_mockModule('../../src/db/index.ts', () => ({ pool: db.pool }));
 
+class DeleteObjectCommand {
+    constructor(public input: { Bucket: string; Key: string }) {}
+}
+const s3Deletes: { Bucket: string; Key: string }[] = [];
+let failS3Deletes = false;
+
 // completeResumeUpload re-extracts text from S3. An empty body short-circuits the parse,
 // so the upload path runs end to end against Postgres without a bucket or a PDF.
 jest.unstable_mockModule('@aws-sdk/client-s3', () => ({
     S3Client: class {
-        async send() {
+        async send(command: unknown) {
+            if (command instanceof DeleteObjectCommand) {
+                if (failS3Deletes) throw new Error('S3 unavailable');
+                s3Deletes.push(command.input);
+                return {};
+            }
             return { Body: (async function* () {})() };
         }
     },
     GetObjectCommand: class {},
     PutObjectCommand: class {},
+    DeleteObjectCommand,
 }));
 
 // The enrichment worker's model call, so search terms can be generated without an API key.
@@ -255,13 +267,43 @@ describeWithDatabase('primary resume against Postgres', () => {
         expect((await listResumes(user)).map((row) => row.resume_id)).toEqual([newer]);
     });
 
+    it('deleteResume deletes the PDF from S3 after the row', async () => {
+        s3Deletes.length = 0;
+
+        await deleteResume(older, user);
+
+        expect(s3Deletes).toEqual([{ Bucket: process.env.S3_BUCKET_NAME, Key: `resumes/${older}.pdf` }]);
+    });
+
+    it('deleteResume still removes the row when the S3 delete fails', async () => {
+        failS3Deletes = true;
+        try {
+            expect(await deleteResume(older, user)).toEqual({ resume_id: older });
+        } finally {
+            failS3Deletes = false;
+        }
+
+        expect((await listResumes(user)).map((row) => row.resume_id)).toEqual([newer]);
+    });
+
+    it('deleteResume removes an unfinished upload and its object', async () => {
+        s3Deletes.length = 0;
+        const unfinished = await addUnfinishedResume(user);
+
+        expect(await deleteResume(unfinished, user)).toEqual({ resume_id: unfinished });
+
+        expect(s3Deletes.map((input) => input.Key)).toEqual([`resumes/${unfinished}.pdf`]);
+    });
+
     it('deleteResume 404s on a resume the caller does not own, leaving it in place', async () => {
         const stranger = await createUser();
         const theirResume = await addResume(stranger, 'stranger.pdf', '2026-03-01T00:00:00Z');
 
+        s3Deletes.length = 0;
         await expect(deleteResume(theirResume, user)).rejects.toMatchObject({ status: 404 });
 
         expect((await listResumes(stranger)).map((row) => row.resume_id)).toEqual([theirResume]);
+        expect(s3Deletes).toEqual([]);
     });
 
     it('deleting the primary clears the pointer and falls back to the newest remaining resume', async () => {
