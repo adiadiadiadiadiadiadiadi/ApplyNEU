@@ -153,9 +153,6 @@ export default function Resumes() {
               : row
           })
         )
-        // The first resume to finish enriching becomes primary when the user had none.
-        const primary = rows.find((row: ResumeRow) => row.is_primary)
-        if (primary) setSelectedId((current) => current || primary.resume_id)
       } catch (err) {
         console.error('Failed refreshing resume statuses', err)
       } finally {
@@ -342,6 +339,7 @@ export default function Resumes() {
             : row
         )
       )
+      setSelectedId(saved.resume_id)
     } catch (err) {
       console.error('Resume upload failed', err)
       setResumes((current) => current.filter((row) => row.resume_id !== placeholderId))

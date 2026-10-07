@@ -168,7 +168,8 @@ const saveResume = async (resume_id: string, key: string, user_id: string, file_
 };
 
 /**
- * Marks a resume upload as complete and re-extracts text now that the file is fully in S3.
+ * Marks a resume upload as complete, re-extracts text now that the file is fully in S3,
+ * and makes it the user's primary resume. Its search terms are generated afterwards.
  * Requires the resume to exist, belong to the caller, and not already be marked complete,
  * preventing duplicate completions.
  * @param resume_id - ID of the resume to complete
@@ -186,7 +187,16 @@ export const completeResumeUpload = async (resume_id: string, key: string, user_
         const resume_text = await extractTextFromPDF(key);
 
         const result = await pool.query(
-            `UPDATE resumes SET upload_complete = true, resume_text = $1, enrichment_status = 'pending' WHERE resume_id = $2 RETURNING *`,
+            `WITH completed AS (
+                UPDATE resumes SET upload_complete = true, resume_text = $1, enrichment_status = 'pending'
+                WHERE resume_id = $2
+                RETURNING *
+             ), claimed AS (
+                UPDATE preferences p SET primary_resume_id = c.resume_id
+                FROM completed c
+                WHERE p.user_id = c.user_id
+             )
+             SELECT * FROM completed;`,
             [resume_text, resume_id]
         );
 

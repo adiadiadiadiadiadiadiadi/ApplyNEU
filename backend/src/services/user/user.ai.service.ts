@@ -90,7 +90,6 @@ const generateSearchTerms = async (resume_id: string, user_id?: string) => {
 
 /**
  * Persists search terms to the specified resume row and marks its enrichment complete.
- * The first resume to finish enriching becomes primary if the user has none yet.
  * @param resume_id - ID of the resume to store search terms for
  * @param user_id - Caller's authenticated user ID; must own the resume. See generateSearchTerms
  *   for why this is optional (the resume-enrichment worker omits it).
@@ -100,16 +99,9 @@ export const getSearchTerms = async (resume_id: string, user_id?: string) => {
 
     try {
         const result = await pool.query(
-            `WITH updated AS (
-                UPDATE resumes SET search_terms = $1, enrichment_status = 'complete'
-                WHERE resume_id = $2 AND ($3::text IS NULL OR user_id::text = $3)
-                RETURNING *
-             ), claimed AS (
-                UPDATE preferences p SET primary_resume_id = u.resume_id
-                FROM updated u
-                WHERE p.user_id = u.user_id AND p.primary_resume_id IS NULL AND u.upload_complete
-             )
-             SELECT * FROM updated;`,
+            `UPDATE resumes SET search_terms = $1, enrichment_status = 'complete'
+             WHERE resume_id = $2 AND ($3::text IS NULL OR user_id::text = $3)
+             RETURNING *;`,
             [search_terms, resume_id, user_id ?? null]
         );
         if (result.rows.length === 0) throw new AppError(404, 'Resume not found.');

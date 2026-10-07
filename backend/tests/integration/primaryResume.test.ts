@@ -302,13 +302,13 @@ describeWithDatabase('primary resume against Postgres', () => {
         expect(await readPrimary(user)).toBeNull();
     });
 
-    it('completing an upload leaves the pointer on the resume the user was already running', async () => {
+    it('completing an upload makes it the primary, replacing the one the user was running', async () => {
         await setPrimary(user, older);
         const uploaded = await addUnfinishedResume(user);
 
         await completeResumeUpload(uploaded, `resumes/${uploaded}.pdf`, user);
 
-        expect(await readPrimary(user)).toBe(older);
+        expect(await readPrimary(user)).toBe(uploaded);
     });
 
     it('completing an upload marks enrichment pending', async () => {
@@ -327,25 +327,13 @@ describeWithDatabase('primary resume against Postgres', () => {
         expect(await readPrimary(user)).toBe(older);
     });
 
-    it('finishing enrichment makes the resume primary when the user has none', async () => {
-        const uploaded = await addUnfinishedResume(user);
-        await completeResumeUpload(uploaded, `resumes/${uploaded}.pdf`, user);
-        await db.pool.query(`UPDATE resumes SET resume_text = 'text' WHERE resume_id = $1`, [uploaded]);
-
-        await getSearchTerms(uploaded);
-
-        expect(await readPrimary(user)).toBe(uploaded);
-        expect((await listResumes(user)).find((row) => row.resume_id === uploaded)?.enrichment_status).toBe('complete');
-    });
-
-    it('finishing enrichment leaves an existing primary alone', async () => {
+    it('finishing enrichment leaves the pointer alone', async () => {
         await setPrimary(user, older);
-        const uploaded = await addUnfinishedResume(user);
-        await completeResumeUpload(uploaded, `resumes/${uploaded}.pdf`, user);
-        await db.pool.query(`UPDATE resumes SET resume_text = 'text' WHERE resume_id = $1`, [uploaded]);
+        await db.pool.query(`UPDATE resumes SET enrichment_status = 'pending' WHERE resume_id = $1`, [newer]);
 
-        await getSearchTerms(uploaded);
+        await getSearchTerms(newer);
 
         expect(await readPrimary(user)).toBe(older);
+        expect((await listResumes(user)).find((row) => row.resume_id === newer)?.enrichment_status).toBe('complete');
     });
 });
