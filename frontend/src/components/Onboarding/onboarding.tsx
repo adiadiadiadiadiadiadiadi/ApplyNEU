@@ -90,17 +90,18 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     }
   }
 
-  const fetchInterests = async (resumeId: string) => {
-    try {
-      const response = await api.get(`/resumes/${resumeId}/possible-interests`)
-      if (response.ok) {
-        const data = await response.json()
-        setInterests(data)
+  useEffect(() => {
+    const fetchInterests = async () => {
+      try {
+        const response = await api.get('/interests')
+        if (response.ok) setInterests(await response.json())
+      } catch (error) {
+        console.error('Error fetching interests:', error)
       }
-    } catch (error) {
-      console.error('Error fetching interests:', error)
     }
-  }
+
+    void fetchInterests()
+  }, [])
 
   const toggleInterest = (interest: string) => {
     setSelectedInterests(prev => 
@@ -226,7 +227,6 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
             if (saveResponse.ok) {
               setResumeId(newResumeId)
-              await fetchInterests(newResumeId)
             }
           } else {
             setLoading(false)
@@ -445,9 +445,9 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
               we'll use these to filter jobs for you.
             </p>
             <div className="interests-grid">
-              {interests.map((interest, index) => (
-                <span 
-                  key={index} 
+              {interests.map((interest) => (
+                <span
+                  key={interest}
                   className={`interest-tag ${selectedInterests.includes(interest) ? 'interest-tag--selected' : ''}`}
                   onClick={() => toggleInterest(interest)}
                 >

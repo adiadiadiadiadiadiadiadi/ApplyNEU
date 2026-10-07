@@ -21,7 +21,6 @@ export interface ResumeSaveRequest extends Request {
   };
 }
 
-export type PossibleInterestsRequest = Request<{ resume_id: string }>;
 
 export type EnrichmentStatus = 'none' | 'pending' | 'failed' | 'complete';
 

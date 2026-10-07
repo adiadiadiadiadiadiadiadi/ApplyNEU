@@ -7,7 +7,6 @@ const getUploadUrl =
   jest.fn<(user_id: string, file_name: string, file_type: string, file_size: number) => Promise<any>>();
 const getViewUrl = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
 const completeResumeUpload = jest.fn<(resume_id: string, key: string, user_id: string) => Promise<any>>();
-const getPossibleInterests = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
 const getPrimaryResume = jest.fn<(user_id: string) => Promise<any>>();
 const listResumes = jest.fn<(user_id: string) => Promise<any>>();
 const setPrimaryResume = jest.fn<(resume_id: string, user_id: string) => Promise<any>>();
@@ -34,7 +33,6 @@ jest.unstable_mockModule('../../src/services/resume/resume.service.ts', () => ({
   getUploadUrl,
   getViewUrl,
   completeResumeUpload,
-  getPossibleInterests,
   getPrimaryResume,
   listResumes,
   setPrimaryResume,
@@ -75,7 +73,6 @@ const rejectAuth = () =>
 beforeEach(() => {
   getUploadUrl.mockReset();
   completeResumeUpload.mockReset();
-  getPossibleInterests.mockReset();
   getPrimaryResume.mockReset();
   listResumes.mockReset();
   setPrimaryResume.mockReset();
@@ -247,48 +244,6 @@ describe('POST /resumes/save', () => {
 
     expect(res.status).toBe(500);
     expect(res.body.message).toBe('Internal server error.');
-  });
-});
-
-describe('GET /resumes/:resume_id/possible-interests', () => {
-  const url = `/resumes/${RESUME_ID}/possible-interests`;
-
-  it('returns 200 and the list of possible interests', async () => {
-    const interests = ['Python', 'FinTech', 'Machine Learning'];
-    getPossibleInterests.mockResolvedValue(interests);
-
-    const res = await request(app).get(url);
-
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual(interests);
-    expect(getPossibleInterests).toHaveBeenCalledWith(RESUME_ID, USER_ID);
-  });
-
-  it('propagates a 404 AppError when the resume does not exist or is not owned by the caller', async () => {
-    getPossibleInterests.mockRejectedValue(new AppError(404, 'Resume not found.'));
-
-    const res = await request(app).get(url);
-
-    expect(res.status).toBe(404);
-    expect(res.body.message).toBe('Resume not found.');
-  });
-
-  it('returns 500 when the service throws a non-AppError', async () => {
-    getPossibleInterests.mockRejectedValue(new Error('boom'));
-
-    const res = await request(app).get(url);
-
-    expect(res.status).toBe(500);
-    expect(res.body.message).toBe('Internal server error.');
-  });
-
-  it('returns 401 when the caller is not authenticated', async () => {
-    rejectAuth();
-
-    const res = await request(app).get(url);
-
-    expect(res.status).toBe(401);
-    expect(getPossibleInterests).not.toHaveBeenCalled();
   });
 });
 
@@ -486,7 +441,7 @@ describe('DELETE /me/resumes/:resume_id', () => {
 
 describe('PUT /resumes/:resume_id/interests', () => {
   const url = `/resumes/${RESUME_ID}/interests`;
-  const interests = ['Python', 'React', 'AWS'];
+  const interests = ['Data Science', 'Fintech', 'Artificial Intelligence'];
 
   it('returns 200 and the updated resume on valid input', async () => {
     const updated = { resume_id: RESUME_ID, interests };
@@ -515,6 +470,21 @@ describe('PUT /resumes/:resume_id/interests', () => {
     expect(res.body.message).toBe('interests is required.');
     expect(updateResumeInterests).not.toHaveBeenCalled();
     expect(queueAdd).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when an interest is not in the preset list', async () => {
+    const res = await request(app).put(url).send({ interests: ['Data Science', 'Underwater Basket Weaving'] });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('interests must only contain values from the preset list.');
+    expect(updateResumeInterests).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when interests is not an array', async () => {
+    const res = await request(app).put(url).send({ interests: 'Data Science' });
+
+    expect(res.status).toBe(400);
+    expect(updateResumeInterests).not.toHaveBeenCalled();
   });
 
   it('propagates a 404 AppError when the resume does not exist or is not owned by the caller', async () => {

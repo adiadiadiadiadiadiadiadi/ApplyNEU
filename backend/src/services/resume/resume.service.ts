@@ -4,8 +4,6 @@ import pdfParse from 'pdf-parse';
 import { randomUUID } from 'crypto';
 import { AppError } from '../../errors/AppError.ts';
 import { pool } from '../../db/index.ts';
-import Anthropic from '@anthropic-ai/sdk';
-import { withRetry } from '../../utils/retry.ts';
 import type { ResumeSummary, PrimaryResumeUpdate, EnrichmentStatus } from '../../types/resumes.ts';
 
 const MAX_ENRICHMENT_RETRIES = 3;
@@ -204,66 +202,6 @@ export const completeResumeUpload = async (resume_id: string, key: string, user_
     } catch (error) {
         if (error instanceof AppError) throw error;
         throw new AppError(500, 'Failed to complete resume upload.');
-    }
-};
-
-/**
- * Uses Claude Haiku to derive 50 job-related interest topics from the user's latest resume.
- * 15 of the topics are intentionally outside the resume to surface adjacent interests.
- * @param resume_id - ID of the resume to analyze
- * @param user_id - Caller's authenticated user ID; must own the resume
- * @returns Array of 50 topic strings
- */
-export const getPossibleInterests = async (resume_id: string, user_id: string) => {
-    try {
-        const result = await pool.query(
-            `SELECT resume_text FROM resumes WHERE resume_id = $1 AND user_id::text = $2 LIMIT 1;`,
-            [resume_id, user_id]
-        );
-        if (!result.rows.length) throw new AppError(404, 'Resume not found.');
-        const resumeText = result.rows[0].resume_text;
-
-        const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-        const message = await withRetry(() => anthropic.messages.create({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 1024,
-            messages: [{
-                role: 'user',
-                content:
-                `
-                You are analyzing a resume to extract job-related topics the person might be interested in.
-
-                Resume text:
-                ${resumeText}
-
-                Extract and return ONLY a JSON array of 50 relevant topics including:
-                - 5: Technical skills (e.g., "Python", "React", "AWS")
-                - 15: Industries (e.g., "FinTech", "Healthcare", "E-commerce")
-                - 15: Job types (e.g., "Software Engineering", "Data Science", "Product Management")
-                - 15: Domains (e.g., "Machine Learning", "Cloud Infrastructure", "Mobile Development")
-
-                Return 50 topics. Be specific but not overly granular.
-                Exactly 15 topics should not be on the user's resume, but be related.
-
-                Output format:
-                ["Topic1","Topic2",...,"Topic50"]
-
-                Return ONLY the JSON array, nothing else. There should be no extra whitespace or punctuation.
-                `
-            }]
-        }));
-
-        if (!message.content[0] || message.content[0].type !== 'text') {
-            throw new AppError(502, 'Error with API.');
-        }
-
-        console.log(message.content[0].text);
-
-        return JSON.parse(message.content[0].text);
-    } catch (error) {
-        if (error instanceof AppError) throw error;
-        console.error('[getPossibleInterests] unexpected error:', error);
-        throw new AppError(500, 'Error extracting interests from resume.');
     }
 };
 
