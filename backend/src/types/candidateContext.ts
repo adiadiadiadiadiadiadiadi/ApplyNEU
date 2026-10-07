@@ -1,4 +1,4 @@
-import type { JobMatchSensitivity } from "../services/job.service.ts";
+import type { JobMatchSensitivity } from "../services/jobMatch/jobMatch.service.ts";
 
 export interface CandidateContextResponse {
   resume: {

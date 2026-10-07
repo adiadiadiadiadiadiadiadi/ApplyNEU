@@ -80,34 +80,3 @@ export const renderCandidateContext = (context: ResumedCandidateContext): string
 
 export const candidateHash = (context: ResumedCandidateContext): string =>
     normalizeAndHash(renderCandidateContext(context));
-
-/**
- * Stored on every job_matches row; a row scored under a different version is stale. Bump it
- * when a change to SCORING_RULES or the model should invalidate existing scores.
- */
-export const SCORING_VERSION = 1;
-
-/**
- * Scoring rules shared by every job in a run. Kept out of renderCandidateContext so that
- * editing this wording does not change candidate_hash and invalidate cached scores; bump
- * SCORING_VERSION when a change should.
- */
-export const SCORING_RULES = `
-You are a job application scorer. Rate from 0 to 100 how well the JOB suits the CANDIDATE.
-Return the number only. Do not decide whether to apply -- the cutoff is applied elsewhere.
-
-INTEREST AND DOMAIN FIT:
-The candidate's INTERESTS and the field their RESUME is built in define the kind of work they want.
-- A role outside that field scores below 20 regardless of how well the candidate meets its
-  listed requirements. Transferable or generic skills never lift an unrelated role above it.
-- Within the candidate's field, score on how closely the role's requirements match their
-  demonstrated experience.
-
-REQUIREMENTS:
-- Weigh only concrete, verifiable requirements: named skills, tools, technologies, degrees,
-  certifications, domain experience, and required years/level.
-- Ignore requirements describing attitude, mentality or disposition, which cannot be verified
-  from a resume (e.g. "willing to learn", "passionate", "self-starter", "team player",
-  "strong work ethic", "detail-oriented", "eager", "motivated", "fast-paced environment").
-  They neither raise nor lower the score.
-`.trim();
