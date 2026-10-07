@@ -130,6 +130,38 @@ describe('sendJobDescription', () => {
             expect(candidateHashSent()).not.toBe(before);
         });
 
+        it('rescores and overwrites the row when the resume changed since it was scored', async () => {
+            getCandidateContext.mockResolvedValue(candidateContext());
+            create.mockResolvedValue(fit());
+            await analyze();
+            const oldHash = candidateHashSent();
+
+            const instructions = [{ kind: 'other', instruction: 'Email Acme recruiting', description: 'jobs@acme.example' }];
+            query.mockReset();
+            query.mockImplementation(async (sql: string, params?: unknown[]) =>
+                sql.includes('SELECT m.match_score') && params![4] === oldHash
+                    ? { rows: [{ match_score: 30, employer_instructions: instructions }] }
+                    : { rows: [] }
+            );
+            create.mockClear();
+
+            await analyze();
+            expect(create).not.toHaveBeenCalled();
+
+            getCandidateContext.mockResolvedValue(
+                candidateContext({ resume: { resume_text: 'Frontend engineer. React.', search_terms: [] } })
+            );
+            const result = await analyze();
+
+            expect(create).toHaveBeenCalledTimes(1);
+            expect(result).toMatchObject({ match_score: 80, decision: 'APPLY' });
+            const newHash = query.mock.calls.filter(([sql]) => sql.includes('SELECT m.match_score')).at(-1)![1]![4];
+            const [, params] = cacheWrite()!;
+            expect(newHash).not.toBe(oldHash);
+            expect(params![5]).toBe(newHash);
+            expect(params![7]).toBe(80);
+        });
+
         it('saves the fresh score and instructions on a miss', async () => {
             getCandidateContext.mockResolvedValue(candidateContext());
             create.mockResolvedValue(fit());
