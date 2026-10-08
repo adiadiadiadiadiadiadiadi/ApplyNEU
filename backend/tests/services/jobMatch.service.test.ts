@@ -6,9 +6,14 @@ import type { CandidateContextResponse } from '../../src/types/candidateContext.
 const query = jest.fn<(text: string, params?: any[]) => Promise<any>>();
 const create = jest.fn<(args: any) => Promise<any>>();
 const getCandidateContext = jest.fn<(user_id: string) => Promise<CandidateContextResponse>>();
+const consumeModelCall = jest.fn<(userId: string, kind: string) => Promise<void>>();
 
 jest.unstable_mockModule('../../src/db/index.ts', () => ({
     pool: { query },
+}));
+
+jest.unstable_mockModule('../../src/services/rateLimit/rateLimit.service.ts', () => ({
+    consumeModelCall,
 }));
 
 jest.unstable_mockModule('../../src/services/candidateContext/candidateContext.service.ts', () => ({
@@ -85,6 +90,8 @@ beforeEach(() => {
     query.mockResolvedValue({ rows: [] });
     create.mockReset();
     getCandidateContext.mockReset();
+    consumeModelCall.mockReset();
+    consumeModelCall.mockResolvedValue(undefined);
 });
 
 describe('sendJobDescription', () => {
@@ -99,6 +106,35 @@ describe('sendJobDescription', () => {
         await analyze();
 
         expect(getCandidateContext).toHaveBeenCalledWith(USER_ID);
+    });
+
+    describe('rate limit', () => {
+        it('charges a job_match call before calling the model on a miss', async () => {
+            getCandidateContext.mockResolvedValue(candidateContext());
+            create.mockResolvedValue(fit());
+
+            await analyze();
+
+            expect(consumeModelCall).toHaveBeenCalledWith(USER_ID, 'job_match');
+            expect(consumeModelCall.mock.invocationCallOrder[0]).toBeLessThan(create.mock.invocationCallOrder[0]!);
+        });
+
+        it('does not charge a cache hit', async () => {
+            getCandidateContext.mockResolvedValue(candidateContext());
+            db({ memo: memoHit([]), score: scoreHit(72) });
+
+            await analyze();
+
+            expect(consumeModelCall).not.toHaveBeenCalled();
+        });
+
+        it('propagates a 429 with retryAfter and skips the model', async () => {
+            getCandidateContext.mockResolvedValue(candidateContext());
+            consumeModelCall.mockRejectedValue(new AppError(429, 'Too many requests.', 42));
+
+            await expect(analyze()).rejects.toMatchObject({ status: 429, retryAfter: 42 });
+            expect(create).not.toHaveBeenCalled();
+        });
     });
 
     describe('match cache', () => {

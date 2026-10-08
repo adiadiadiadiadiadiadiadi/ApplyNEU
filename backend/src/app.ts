@@ -44,7 +44,7 @@ process.on('SIGINT', () => {
   });
 });
 
-app.use(cors());
+app.use(cors({ exposedHeaders: ['Retry-After'] }));
 app.use(express.json());
 
 app.use('/users', userController());

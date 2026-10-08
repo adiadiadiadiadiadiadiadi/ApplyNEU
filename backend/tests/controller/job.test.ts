@@ -181,6 +181,28 @@ describe('POST /me/jobs/analyze', () => {
     expect(sendJobDescription).not.toHaveBeenCalled();
   });
 
+  it('returns 429 with Retry-After when the service is rate limited', async () => {
+    sendJobDescription.mockRejectedValue(new AppError(429, 'Too many requests.', 38));
+
+    const res = await request(app)
+      .post(url)
+      .send({ job_description: JOB_DESCRIPTION, company: COMPANY, title: TITLE });
+
+    expect(res.status).toBe(429);
+    expect(res.headers['retry-after']).toBe('38');
+    expect(res.body.message).toBe('Too many requests.');
+  });
+
+  it('omits Retry-After on errors that do not set it', async () => {
+    sendJobDescription.mockRejectedValue(new AppError(404, 'Resume not found.'));
+
+    const res = await request(app)
+      .post(url)
+      .send({ job_description: JOB_DESCRIPTION, company: COMPANY, title: TITLE });
+
+    expect(res.headers['retry-after']).toBeUndefined();
+  });
+
   it('propagates an AppError status from the service (e.g. 404 resume not found)', async () => {
     sendJobDescription.mockRejectedValue(new AppError(404, 'Resume not found.'));
 

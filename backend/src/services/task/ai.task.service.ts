@@ -3,6 +3,7 @@ import { withRetry } from "../../utils/retry.ts";
 import { AppError } from "../../errors/AppError.ts";
 import { normalizeEmployerInstructions } from "../instructions/instructions.service.ts";
 import { addTask } from "./task.service.ts";
+import { consumeModelCall } from "../rateLimit/rateLimit.service.ts";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -20,6 +21,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
  */
 export const addInstructions = async (user_id: string, employer_instructions: string, application_id: string, company?: string, title?: string) => {
     try {
+        await consumeModelCall(user_id, 'instructions');
         const message = await withRetry(() => anthropic.messages.create({
             model: 'claude-haiku-4-5-20251001',
             max_tokens: 1024,

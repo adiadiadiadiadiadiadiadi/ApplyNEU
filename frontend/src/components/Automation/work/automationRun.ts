@@ -22,11 +22,15 @@ import { requestApprovalForJob, withHumanFallback } from './approval'
 import { retry, sleep, waitForResume } from './pacing'
 import { loadUserPreferences, prefersRecentJobs, allowsUnpaidRoles } from './preferences'
 import { loadCandidateContext } from './candidateContext'
+import { formatWait, postWithRateLimit, retryAfterSeconds } from './rateLimit'
 
 const jobKey = (company: unknown, title: unknown) =>
   `${String(company ?? '').trim().toLowerCase()}::${String(title ?? '').trim().toLowerCase()}`
 
 let currentJobApplicationId: string | null = null
+
+const logInstructionsLimit = (title: string) =>
+  addLog(`Instruction limit reached, so the extra application steps for ${title} were not saved. Check the posting for anything else it asks for.`)
 let clearedTasksForApplication = false
 let greeted = false
 
@@ -531,7 +535,7 @@ const runFromDashboard = async (webview: AutomationWebview) => {
               addLog('Decision skipped (no user).')
             } else {
               addLog(`Reviewing ${titleStr}...`)
-              const resp = await api.post('/me/jobs/analyze', {
+              const resp = await postWithRateLimit('/me/jobs/analyze', {
                 job_description: descResult || '',
                 company: companyName,
                 title: jobTitle
@@ -1348,12 +1352,13 @@ const runFromDashboard = async (webview: AutomationWebview) => {
                         const userId = await getUserId()
                         if (instructionsText && userId) {
                           needsExternalAction = true
-                          await api.post('/me/tasks/add-instructions', {
+                          const instructionsResp = await postWithRateLimit('/me/tasks/add-instructions', {
                             employer_instructions: instructionsText,
                             application_id: currentJobApplicationId ?? undefined,
                             company: (clickJobResult.company || '').trim() || 'company unknown',
                             title: (titleStr || '').trim() || 'title unknown'
                           })
+                          if (instructionsResp.status === 429) logInstructionsLimit(titleStr)
                         }
                       } catch (_err) {
                         // ignore
@@ -1422,12 +1427,13 @@ const runFromDashboard = async (webview: AutomationWebview) => {
                     if (!documentsMissing && pendingModalInstructionText && userId) {
                       try {
                         needsExternalAction = true
-                        await api.post('/me/tasks/add-instructions', {
+                        const instructionsResp = await postWithRateLimit('/me/tasks/add-instructions', {
                           employer_instructions: pendingModalInstructionText,
                           application_id: currentJobApplicationId ?? undefined,
                           company: (clickJobResult.company || '').trim() || 'company unknown',
                           title: (titleStr || '').trim() || 'title unknown'
                         })
+                        if (instructionsResp.status === 429) logInstructionsLimit(titleStr)
                       } catch (_err) { /* ignore */ }
                     }
                     if (!documentsMissing && instructions.length) {
@@ -1460,6 +1466,10 @@ const runFromDashboard = async (webview: AutomationWebview) => {
                   consecutiveDoNotApply = 0
                   addLog('Decision unknown; skipping.')
                 }
+              } else if (resp.status === 429) {
+                addLog(`Daily review limit reached. Stopping run. You can start again in about ${formatWait(retryAfterSeconds(resp))}.`)
+                setStatus('idle')
+                return
               } else if (resp.status === 400) {
                 consecutiveDoNotApply = 0
                 addLog('Error: missing information. Skipping...')
