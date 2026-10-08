@@ -255,7 +255,14 @@
 }
 
 .profile-interests-offset {
-  padding-left: 15px;
+  padding-left: 27px;
+}
+
+/* 112px is the .settings-page vertical padding, so the grid fills what is left. */
+.settings-inner.profile-interests-inner {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 112px);
 }
 
 
