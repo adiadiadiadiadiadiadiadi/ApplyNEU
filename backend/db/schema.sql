@@ -30,8 +30,17 @@ CREATE TABLE public.jobs (
     title text NOT NULL,
     description text NOT NULL,
     company text NOT NULL,
+    description_hash text NOT NULL
+);
+
+-- Instructions depend only on the posting text, so they are keyed by its hash and shared by
+-- every user and every job row with that description. '[]' means "extracted, nothing
+-- required"; no row means "not extracted yet".
+CREATE TABLE public.instruction_extractions (
     description_hash text NOT NULL,
-    employer_instructions jsonb
+    extraction_version smallint NOT NULL,
+    instructions jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
 CREATE TABLE public.job_matches (
@@ -99,6 +108,9 @@ ALTER TABLE ONLY public.jobs
 
 ALTER TABLE ONLY public.jobs
     ADD CONSTRAINT jobs_pkey PRIMARY KEY (job_id);
+
+ALTER TABLE ONLY public.instruction_extractions
+    ADD CONSTRAINT instruction_extractions_pkey PRIMARY KEY (description_hash, extraction_version);
 
 ALTER TABLE ONLY public.job_matches
     ADD CONSTRAINT job_matches_pkey PRIMARY KEY (user_id, job_id);
@@ -182,6 +194,7 @@ ALTER TABLE public.resumes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.jobs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.job_applications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.job_matches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.instruction_extractions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
 
 -- Give every new signup their starter rows: the users record every other table points

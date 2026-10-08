@@ -20,8 +20,9 @@ const run = async () => {
   const context = await getCandidateContext(userId);
   if (!context.resume?.resume_text) throw new Error('That user has no resume.');
 
-  const full = buildSystem(renderCandidateContext({ ...context, resume: context.resume }));
-  const scoringOnly = full.slice(0, 2);
+  const candidateBlock = renderCandidateContext({ ...context, resume: context.resume });
+  const full = buildSystem(candidateBlock, true);
+  const scoringOnly = buildSystem(candidateBlock, false);
 
   const baseline = await count();
   console.log(`resume length: ${context.resume.resume_text.length} chars`);

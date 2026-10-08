@@ -1,27 +1,25 @@
 import type Anthropic from '@anthropic-ai/sdk';
-
-export const INSTRUCTION_KINDS = ['external_application', 'cover_letter', 'other'] as const;
+import { EXTRACTION_RULES, INSTRUCTION_LIST_SCHEMA } from '../instructions/instructions.prompt.ts';
 
 export const JOB_MATCH_OUTPUT_SCHEMA = {
   type: 'object',
   properties: {
     match_score: { type: 'integer' },
     rationale: { type: 'string' },
-    employer_instructions: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          kind: { type: 'string', enum: [...INSTRUCTION_KINDS] },
-          instruction: { type: 'string' },
-          description: { type: 'string' },
-        },
-        required: ['kind', 'instruction', 'description'],
-        additionalProperties: false,
-      },
-    },
+    employer_instructions: INSTRUCTION_LIST_SCHEMA,
   },
   required: ['match_score', 'rationale', 'employer_instructions'],
+  additionalProperties: false,
+};
+
+/** Used when the posting's instructions are already in the memo, so only the score is asked for. */
+export const JOB_MATCH_SCORE_ONLY_SCHEMA = {
+  type: 'object',
+  properties: {
+    match_score: JOB_MATCH_OUTPUT_SCHEMA.properties.match_score,
+    rationale: JOB_MATCH_OUTPUT_SCHEMA.properties.rationale,
+  },
+  required: ['match_score', 'rationale'],
   additionalProperties: false,
 };
 
@@ -32,51 +30,17 @@ export type JobMatchJob = {
 };
 
 /**
- * Required application steps, extracted from the posting alongside the score. Last in the
- * system block so a scoring-only variant (#73) is an exact prefix of this one.
- */
-export const EXTRACTION_RULES = `
-EMPLOYER INSTRUCTIONS:
-Also extract the steps the posting says are REQUIRED to complete the application,
-especially actions outside NUWorks. Include only explicit must-do actions.
-Always include the COMPANY name in the instruction text.
-
-NEVER include:
-- Resume / transcript / portfolio / references upload instructions
-- Optional cover letters (a REQUIRED cover letter is the one upload to include)
-- Generic advice (research company, tailor resume, follow up, networking, etc.)
-- Optional/preferred/recommended tips
-- Browser/device troubleshooting or settings steps
-  (ad blocker/pop-up blocker, clear cache/cookies, switch browsers, disable extensions,
-   incognito/private mode, VPN/proxy, firewall/antivirus, javascript settings)
-
-ONLY include required actions such as:
-- Apply through a separate company portal/site
-- Complete a required external assessment or questionnaire
-- Email required information/materials to a specific address
-- Register/schedule/confirm a required step on another platform
-- Submit a required cover letter
-
-If nothing is required beyond the NUWorks form, return an empty array.
-
-FIELDS:
-- "kind": "external_application" when the step is applying on a separate company portal/site,
-  "cover_letter" when a cover letter is required, "other" for everything else
-- "instruction": brief imperative action, e.g. "Apply through Garmin careers portal"
-- "description": the exact URL, email or platform when given; otherwise the concise required
-  details from the posting
-- Make sure the instruction matches the link's owner (e.g. https://ats.rippling.com/tive-careers
-  is for Tive, not Rippling).
-`.trim();
-
-/**
  * Everything in the system block is the same for every job in a sweep, so it is cached once
- * per user and read back for each posting. Only the job itself goes in messages.
+ * per user and read back for each posting. Only the job itself goes in messages. The
+ * breakpoint after the candidate makes the scoring-only variant, used when the posting's
+ * instructions are already in the memo, a cached prefix of the full one.
  */
-export const buildSystem = (candidateBlock: string): Anthropic.TextBlockParam[] => [
+export const buildSystem = (candidateBlock: string, withExtraction: boolean): Anthropic.TextBlockParam[] => [
   { type: 'text', text: SCORING_RULES },
-  { type: 'text', text: `CANDIDATE:\n${candidateBlock}` },
-  { type: 'text', text: EXTRACTION_RULES, cache_control: { type: 'ephemeral' } },
+  { type: 'text', text: `CANDIDATE:\n${candidateBlock}`, cache_control: { type: 'ephemeral' } },
+  ...(withExtraction
+    ? [{ type: 'text' as const, text: EXTRACTION_RULES, cache_control: { type: 'ephemeral' as const } }]
+    : []),
 ];
 
 export const buildMessages = ({ company, title, job_description }: JobMatchJob): Anthropic.MessageParam[] => [

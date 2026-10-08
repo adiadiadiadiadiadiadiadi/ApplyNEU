@@ -30,7 +30,8 @@ jest.unstable_mockModule('@anthropic-ai/sdk', () => {
 });
 
 const { sendJobDescription, MATCH_THRESHOLDS, decideFromScore } = await import('../../src/services/jobMatch/jobMatch.service.ts');
-const { SCORING_RULES, SCORING_VERSION, EXTRACTION_RULES } = await import('../../src/services/jobMatch/jobMatch.prompt.ts');
+const { SCORING_RULES, SCORING_VERSION } = await import('../../src/services/jobMatch/jobMatch.prompt.ts');
+const { EXTRACTION_RULES, EXTRACTION_VERSION } = await import('../../src/services/instructions/instructions.prompt.ts');
 
 const COMPANY = 'Acme';
 const TITLE = 'Software Engineer';
@@ -62,6 +63,19 @@ const aiResponse = (payload: unknown) => ({
     content: [{ type: 'text', text: JSON.stringify(payload) }],
 });
 
+type Rows = { rows: unknown[] };
+
+/** Routes each query to the memo read or the score read by its SQL; everything else succeeds empty. */
+const db = ({ memo, score }: { memo?: (params: unknown[]) => Rows; score?: (params: unknown[]) => Rows }) =>
+    query.mockImplementation(async (sql: string, params?: unknown[]) => {
+        if (memo && sql.includes('FROM instruction_extractions')) return memo(params!);
+        if (score && sql.includes('SELECT m.match_score')) return score(params!);
+        return { rows: [] };
+    });
+
+const memoHit = (instructions: unknown[]) => () => ({ rows: [{ instructions }] });
+const scoreHit = (match_score: number) => () => ({ rows: [{ match_score }] });
+
 const lastRequest = () => create.mock.calls[create.mock.calls.length - 1]![0];
 const systemText = () => (lastRequest().system as { text: string }[]).map((block) => block.text).join('\n');
 const messageText = () => lastRequest().messages.map((m: { content: string }) => m.content).join('\n');
@@ -90,17 +104,19 @@ describe('sendJobDescription', () => {
     describe('match cache', () => {
         const cacheRead = () => query.mock.calls.find(([sql]) => sql.includes('SELECT m.match_score'))!;
         const cacheWrite = () => query.mock.calls.find(([sql]) => sql.includes('INSERT INTO job_matches'));
+        const memoWrite = () => query.mock.calls.find(([sql]) => sql.includes('INSERT INTO instruction_extractions'));
         const candidateHashSent = () => cacheRead()[1]![4];
 
         it('returns a cached score and instructions without calling the model', async () => {
             getCandidateContext.mockResolvedValue(candidateContext());
             const instructions = [{ kind: 'external_application', instruction: 'Apply through Acme portal', description: 'https://acme.example/jobs' }];
-            query.mockResolvedValueOnce({ rows: [{ match_score: 72, employer_instructions: instructions }] });
+            db({ memo: memoHit(instructions), score: scoreHit(72) });
 
             const result = await analyze();
 
             expect(create).not.toHaveBeenCalled();
             expect(cacheWrite()).toBeUndefined();
+            expect(memoWrite()).toBeUndefined();
             expect(result).toEqual({ decision: 'APPLY', match_score: 72, rationale: null, employer_instructions: instructions });
         });
 
@@ -138,11 +154,10 @@ describe('sendJobDescription', () => {
 
             const instructions = [{ kind: 'other', instruction: 'Email Acme recruiting', description: 'jobs@acme.example' }];
             query.mockReset();
-            query.mockImplementation(async (sql: string, params?: unknown[]) =>
-                sql.includes('SELECT m.match_score') && params![4] === oldHash
-                    ? { rows: [{ match_score: 30, employer_instructions: instructions }] }
-                    : { rows: [] }
-            );
+            db({
+                memo: memoHit(instructions),
+                score: (params) => (params[4] === oldHash ? { rows: [{ match_score: 30 }] } : { rows: [] }),
+            });
             create.mockClear();
 
             await analyze();
@@ -158,20 +173,32 @@ describe('sendJobDescription', () => {
             const newHash = query.mock.calls.filter(([sql]) => sql.includes('SELECT m.match_score')).at(-1)![1]![4];
             const [, params] = cacheWrite()!;
             expect(newHash).not.toBe(oldHash);
-            expect(params![5]).toBe(newHash);
-            expect(params![7]).toBe(80);
+            expect(params![4]).toBe(newHash);
+            expect(params![6]).toBe(80);
         });
 
-        it('saves the fresh score and instructions on a miss', async () => {
+        it('saves the fresh score on a miss', async () => {
             getCandidateContext.mockResolvedValue(candidateContext());
             create.mockResolvedValue(fit());
 
             await analyze();
 
-            const [, params] = cacheWrite()!;
+            const [sql, params] = cacheWrite()!;
+            expect(sql).not.toContain('employer_instructions');
             expect(params).toEqual([
-                COMPANY, TITLE, normalizeAndHash(DESCRIPTION), '[]', USER_ID, candidateHashSent(), SCORING_VERSION, 80,
+                COMPANY, TITLE, normalizeAndHash(DESCRIPTION), USER_ID, candidateHashSent(), SCORING_VERSION, 80,
             ]);
+        });
+
+        it('calls the model when the score is cached but the posting has no memo row', async () => {
+            getCandidateContext.mockResolvedValue(candidateContext());
+            db({ score: scoreHit(72) });
+            create.mockResolvedValue(fit());
+
+            await analyze();
+
+            expect(create).toHaveBeenCalledTimes(1);
+            expect(systemText()).toContain(EXTRACTION_RULES);
         });
 
         it('falls through to the model when the cache read fails', async () => {
@@ -185,7 +212,10 @@ describe('sendJobDescription', () => {
 
         it('still returns the score when the cache write fails', async () => {
             getCandidateContext.mockResolvedValue(candidateContext());
-            query.mockResolvedValueOnce({ rows: [] }).mockRejectedValueOnce(new Error('connection refused'));
+            query.mockImplementation(async (sql: string) => {
+                if (sql.includes('INSERT INTO')) throw new Error('connection refused');
+                return { rows: [] };
+            });
             create.mockResolvedValue(fit());
 
             await expect(analyze()).resolves.toMatchObject({ decision: 'APPLY', match_score: 80 });
@@ -208,7 +238,7 @@ describe('sendJobDescription', () => {
         }
     });
 
-    it('orders system as scoring rules, candidate, extraction rules with one breakpoint at the end', async () => {
+    it('orders system as scoring rules, candidate, extraction rules with breakpoints after the candidate and at the end', async () => {
         getCandidateContext.mockResolvedValue(candidateContext());
         create.mockResolvedValue(fit());
 
@@ -220,7 +250,7 @@ describe('sendJobDescription', () => {
             expect.stringContaining('CANDIDATE:'),
             EXTRACTION_RULES,
         ]);
-        expect(blocks.map((block) => block.cache_control)).toEqual([undefined, undefined, { type: 'ephemeral' }]);
+        expect(blocks.map((block) => block.cache_control)).toEqual([undefined, { type: 'ephemeral' }, { type: 'ephemeral' }]);
     });
 
     it('sends the same system block whatever the job_match sensitivity, and never mentions it', async () => {
@@ -354,6 +384,93 @@ describe('sendJobDescription', () => {
         await expect(analyze()).rejects.toMatchObject({ status: 502 });
     });
 
+    describe('instruction memo', () => {
+        const memoRead = () => query.mock.calls.find(([sql]) => sql.includes('FROM instruction_extractions'))!;
+        const memoWrite = () => query.mock.calls.find(([sql]) => sql.includes('INSERT INTO instruction_extractions'));
+        const stored = [{ kind: 'external_application', instruction: 'Apply through Acme portal', description: 'https://acme.example/jobs' }];
+        const scoreOnly = () => aiResponse({ match_score: 80, rationale: 'Good fit.' });
+
+        it('looks up the posting hash under the current extraction version', async () => {
+            getCandidateContext.mockResolvedValue(candidateContext());
+            create.mockResolvedValue(fit());
+
+            await analyze();
+
+            expect(memoRead()[1]).toEqual([normalizeAndHash(DESCRIPTION), EXTRACTION_VERSION]);
+        });
+
+        it('extracts on a miss and saves the instructions for the next user', async () => {
+            getCandidateContext.mockResolvedValue(candidateContext());
+            create.mockResolvedValue(aiResponse({ match_score: 80, rationale: 'Good fit.', employer_instructions: stored }));
+
+            await analyze();
+
+            expect(systemText()).toContain(EXTRACTION_RULES);
+            expect(memoWrite()![1]).toEqual([normalizeAndHash(DESCRIPTION), EXTRACTION_VERSION, JSON.stringify(stored)]);
+        });
+
+        it('gives a second user on the same posting one scoring-only call and the stored instructions', async () => {
+            getCandidateContext.mockResolvedValue(candidateContext());
+            db({ memo: memoHit(stored) });
+            create.mockResolvedValue(scoreOnly());
+
+            const result = await analyze();
+
+            expect(create).toHaveBeenCalledTimes(1);
+            expect(systemText()).not.toContain(EXTRACTION_RULES);
+            expect(lastRequest().output_config.format.schema.properties).not.toHaveProperty('employer_instructions');
+            expect(memoWrite()).toBeUndefined();
+            expect(result).toEqual({ decision: 'APPLY', match_score: 80, rationale: 'Good fit.', employer_instructions: stored });
+        });
+
+        it('ends the scoring-only system at the candidate breakpoint', async () => {
+            getCandidateContext.mockResolvedValue(candidateContext());
+            db({ memo: memoHit(stored) });
+            create.mockResolvedValue(scoreOnly());
+
+            await analyze();
+
+            const blocks = lastRequest().system as { text: string; cache_control?: unknown }[];
+            expect(blocks.map((block) => block.text)).toEqual([SCORING_RULES, expect.stringContaining('CANDIDATE:')]);
+            expect(blocks.map((block) => block.cache_control)).toEqual([undefined, { type: 'ephemeral' }]);
+        });
+
+        it('reuses an empty extraction instead of extracting again', async () => {
+            getCandidateContext.mockResolvedValue(candidateContext());
+            db({ memo: memoHit([]) });
+            create.mockResolvedValue(scoreOnly());
+
+            const result = await analyze();
+
+            expect(systemText()).not.toContain(EXTRACTION_RULES);
+            expect(memoWrite()).toBeUndefined();
+            expect(result.employer_instructions).toEqual([]);
+        });
+
+        it('falls back to the full prompt when the memo read fails', async () => {
+            getCandidateContext.mockResolvedValue(candidateContext());
+            query.mockImplementation(async (sql: string) => {
+                if (sql.includes('FROM instruction_extractions')) throw new Error('connection refused');
+                return { rows: [] };
+            });
+            create.mockResolvedValue(fit());
+
+            await expect(analyze()).resolves.toMatchObject({ match_score: 80 });
+            expect(systemText()).toContain(EXTRACTION_RULES);
+        });
+
+        it('re-extracts a posting stored only under an older extraction version', async () => {
+            getCandidateContext.mockResolvedValue(candidateContext());
+            db({ memo: (params) => (params[1] === EXTRACTION_VERSION - 1 ? { rows: [{ instructions: stored }] } : { rows: [] }) });
+            create.mockResolvedValue(fit());
+
+            await analyze();
+
+            expect(systemText()).toContain(EXTRACTION_RULES);
+            expect(memoWrite()![1]![1]).toBe(EXTRACTION_VERSION);
+        });
+    });
+
     describe('thresholds', () => {
         const withJobMatch = (job_match: 'low' | 'medium' | 'high') =>
             candidateContext({ preferences: { ...candidateContext().preferences, job_match } });
@@ -386,7 +503,7 @@ describe('sendJobDescription', () => {
 
         it('re-reads a cached score under a new preference without calling the model', async () => {
             const score = MATCH_THRESHOLDS.medium;
-            query.mockResolvedValue({ rows: [{ match_score: score, employer_instructions: [] }] });
+            db({ memo: memoHit([]), score: scoreHit(score) });
 
             getCandidateContext.mockResolvedValue(withJobMatch('low'));
             await expect(analyze()).resolves.toMatchObject({ decision: 'APPLY' });
