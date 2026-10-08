@@ -111,6 +111,7 @@ const runFromDashboard = async (webview: AutomationWebview) => {
         addLog('No job types set; skipping filters.')
         return
       }
+      addLog(`Saved job types: ${jobTypes.join(', ')}`)
 
       await retry(
         () => webview.executeJavaScript(`!!document.querySelector('input[type="checkbox"][id^="job_type"]')`),
