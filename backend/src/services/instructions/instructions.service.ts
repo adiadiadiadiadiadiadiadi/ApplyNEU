@@ -1,9 +1,14 @@
 import { pool } from '../../db/index.ts';
+import { redis } from '../../db/redis.ts';
 import { EXTRACTION_VERSION, INSTRUCTION_KINDS } from './instructions.prompt.ts';
 
 export type InstructionKind = typeof INSTRUCTION_KINDS[number];
 
 export type EmployerInstruction = { kind: InstructionKind; instruction: string; description: string };
+
+const INSTRUCTIONS_CACHE_TTL = 7 * 24 * 3600;
+
+const instructionsCacheKey = (description_hash: string) => `instructions:${EXTRACTION_VERSION}:${description_hash}`;
 
 export const NON_REQUIRED_TASK_PATTERN =
     /\b(ad[\s-]?block(?:er)?|pop[\s-]?up(?: blocker)?|clear (?:your )?cache|cookies?|switch (?:to )?(?:another|different) browser|disable (?:browser )?extensions?|enable javascript|incognito|private mode|vpn|proxy|firewall|antivirus|troubleshoot|workaround|tip|optional|recommended|preference)\b/i;
@@ -37,10 +42,14 @@ export const normalizeEmployerInstructions = (input: any): EmployerInstruction[]
 /**
  * Returns the instructions already extracted for this posting text under the current
  * EXTRACTION_VERSION, or null when it hasn't been extracted yet. An empty array is a real
- * result: the posting was extracted and requires nothing. A read failure is logged and
- * treated as a miss, so the caller extracts instead of failing.
+ * result: the posting was extracted and requires nothing. Redis is checked first and filled
+ * from Postgres hits; misses are not cached. A Redis failure falls through to Postgres, and
+ * a Postgres failure is logged and treated as a miss, so the caller extracts instead of failing.
  */
 export const getInstructions = async (description_hash: string): Promise<EmployerInstruction[] | null> => {
+  const cacheKey = instructionsCacheKey(description_hash);
+  const cached = await redis.get(cacheKey).catch(() => null);
+  if (cached !== null) return JSON.parse(cached);
   try {
     const result = await pool.query(
       `
@@ -52,7 +61,10 @@ export const getInstructions = async (description_hash: string): Promise<Employe
     );
     const row = result.rows[0];
     console.log(`[instructions] memo ${row ? 'hit' : 'miss'} description_hash=${description_hash}`);
-    return row ? normalizeEmployerInstructions(row.instructions) : null;
+    if (!row) return null;
+    const instructions = normalizeEmployerInstructions(row.instructions);
+    await redis.set(cacheKey, JSON.stringify(instructions), 'EX', INSTRUCTIONS_CACHE_TTL).catch(() => {});
+    return instructions;
   } catch (error) {
     console.error(`[instructions] memo read failed description_hash=${description_hash}:`, error);
     return null;
@@ -61,12 +73,13 @@ export const getInstructions = async (description_hash: string): Promise<Employe
 
 /**
  * Stores a posting's extracted instructions under the current EXTRACTION_VERSION. The first
- * write wins, so two users extracting the same posting at once is harmless. A write failure
- * is logged and never thrown, since the caller already has the instructions.
+ * write wins, so two users extracting the same posting at once is harmless; only the winner
+ * writes Redis, so Redis always matches the stored row. A write failure is logged and never
+ * thrown, since the caller already has the instructions.
  */
 export const saveInstructions = async (description_hash: string, instructions: EmployerInstruction[]) => {
   try {
-    await pool.query(
+    const result = await pool.query(
       `
         INSERT INTO instruction_extractions (description_hash, extraction_version, instructions)
         VALUES ($1, $2, $3)
@@ -74,6 +87,9 @@ export const saveInstructions = async (description_hash: string, instructions: E
       `,
       [description_hash, EXTRACTION_VERSION, JSON.stringify(instructions)]
     );
+    if (result.rowCount) {
+      await redis.set(instructionsCacheKey(description_hash), JSON.stringify(instructions), 'EX', INSTRUCTIONS_CACHE_TTL).catch(() => {});
+    }
   } catch (error) {
     console.error(`[instructions] memo write failed description_hash=${description_hash}:`, error);
   }
