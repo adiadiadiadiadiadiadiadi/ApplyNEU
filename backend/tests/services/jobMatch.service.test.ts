@@ -12,6 +12,10 @@ jest.unstable_mockModule('../../src/db/index.ts', () => ({
     pool: { query },
 }));
 
+jest.unstable_mockModule('../../src/services/rateLimit/rateLimit.service.ts', () => ({
+    consumeModelCall,
+}));
+
 const redisStore = new Map<string, string>();
 const redisGet = jest.fn<(key: string) => Promise<string | null>>();
 const redisSet = jest.fn<(key: string, value: string, ...args: unknown[]) => Promise<string>>();
