@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { withRetry } from "../../utils/retry.ts";
 import { AppError } from "../../errors/AppError.ts";
-import { NON_REQUIRED_TASK_PATTERN, type EmployerInstruction } from "../../types/tasks.ts";
+import { normalizeEmployerInstructions } from "../instructions/instructions.service.ts";
 import { addTask } from "./task.service.ts";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -9,7 +9,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 /**
  * Sends raw employer instruction text to Claude Haiku, which extracts only REQUIRED
  * application steps (external portals, assessments, emails). Optional/browser tips are
- * filtered out by both the prompt and NON_REQUIRED_TASK_PATTERN before insertion.
+ * filtered out by both the prompt and normalizeEmployerInstructions before insertion.
  * Individual task insertion failures are swallowed so one bad row doesn't abort the batch.
  * @param user_id - User the tasks belong to
  * @param employer_instructions - Raw text copied from the job posting
@@ -105,26 +105,7 @@ export const addInstructions = async (user_id: string, employer_instructions: st
             throw new AppError(502, 'Failed to parse employer instructions JSON.');
         }
 
-        const list = Array.isArray(parsed?.employer_instructions) ? parsed.employer_instructions : [];
-        const dedup = new Set<string>();
-        const normalized = list
-            .map((item: any) => {
-                if (item && typeof item === 'object') {
-                    const instruction = String(item.instruction ?? '').trim();
-                    const description = String(item.description ?? '').trim();
-                    if (!instruction || !description) return null;
-
-                    /* remove Google ad-blocker text from job description */
-                    if (NON_REQUIRED_TASK_PATTERN.test(`${instruction} ${description}`)) return null;
-                    
-                    const key = `${instruction.toLowerCase()}::${description.toLowerCase()}`;
-                    if (dedup.has(key)) return null;
-                    dedup.add(key);
-                    return { instruction, description };
-                }
-                return null;
-            })
-            .filter((v: EmployerInstruction | null): v is EmployerInstruction => !!v);
+        const normalized = normalizeEmployerInstructions(parsed?.employer_instructions);
 
         const inserted: any[] = [];
         for (const item of normalized) {
