@@ -133,7 +133,7 @@ const normalizeEmployerInstructions = (input: any): JobMatchInstruction[] => {
 };
 
 /**
- * Sends a job description to Claude Sonnet for a 0-100 match score against the user's
+ * Sends a job description to Claude Haiku for a 0-100 match score against the user's
  * resume, and derives APPLY/DO_NOT_APPLY from the user's job_match threshold.
  * Also extracts any required external application steps from the posting.
  * @param user_id - User evaluating the job
