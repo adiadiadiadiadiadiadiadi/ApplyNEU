@@ -95,6 +95,17 @@ describe('model call rate limit during a run', () => {
     expect(logs.some(l => l.includes('Completed running search terms.'))).toBe(false)
   })
 
+  it('stops without calling it daily when a short limit keeps tripping', async () => {
+    analyzeReplies.queue = [{ status: 429, retryAfter: '0' }, { status: 429, retryAfter: '0' }, { status: 429, retryAfter: '0' }]
+
+    const { logs, analyzed, applications } = await run()
+
+    expect(analyzed).toBe(3)
+    expect(applications).toBe(0)
+    expect(logs.some(l => l.includes('Review limit reached. Stopping run. You can start again in about 0s.'))).toBe(true)
+    expect(logs.some(l => l.includes('Daily review limit'))).toBe(false)
+  })
+
   it('waits out a short limit and retries the same job instead of skipping it', async () => {
     analyzeReplies.queue = [{ status: 429, retryAfter: '0' }]
 

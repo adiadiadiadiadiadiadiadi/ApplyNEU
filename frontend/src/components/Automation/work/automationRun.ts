@@ -28,11 +28,11 @@ const jobKey = (company: unknown, title: unknown) =>
   `${String(company ?? '').trim().toLowerCase()}::${String(title ?? '').trim().toLowerCase()}`
 
 let currentJobApplicationId: string | null = null
+let clearedTasksForApplication = false
+let greeted = false
 
 const logInstructionsLimit = (title: string) =>
   addLog(`Instruction limit reached, so the extra application steps for ${title} were not saved. Check the posting for anything else it asks for.`)
-let clearedTasksForApplication = false
-let greeted = false
 
 /** StrictMode mounts twice in dev; greet once. */
 export const ensureGreeted = () => {
@@ -1467,7 +1467,8 @@ const runFromDashboard = async (webview: AutomationWebview) => {
                   addLog('Decision unknown; skipping.')
                 }
               } else if (resp.status === 429) {
-                addLog(`Daily review limit reached. Stopping run. You can start again in about ${formatWait(retryAfterSeconds(resp))}.`)
+                const wait = retryAfterSeconds(resp)
+                addLog(`${wait > 3600 ? 'Daily review' : 'Review'} limit reached. Stopping run. You can start again in about ${formatWait(wait)}.`)
                 setStatus('idle')
                 return
               } else if (resp.status === 400) {
