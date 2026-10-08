@@ -1,68 +1,37 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api } from '../../lib/api'
+import { useInterestOptions, usePreferences, useSaveInterests } from '../../queries/settings'
 import './profile.css'
 import '../Onboarding/onboarding.css'
 
 export default function ProfileInterests() {
   const navigate = useNavigate()
-  const [interests, setInterests] = useState<string[]>([])
-  const [selectedInterests, setSelectedInterests] = useState<string[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const optionsQuery = useInterestOptions()
+  const preferencesQuery = usePreferences()
+  const saveInterests = useSaveInterests()
+  const [selectionDraft, setSelectionDraft] = useState<string[] | null>(null)
 
-  useEffect(() => {
-    let cancelled = false
-
-    const load = async () => {
-      try {
-        const [interestsResp, storedResp] = await Promise.all([
-          api.get('/interests'),
-          api.get('/me/preferences/interests'),
-        ])
-        if (cancelled) return
-        if (!interestsResp.ok) throw new Error('Unable to load interests')
-
-        const options: string[] = await interestsResp.json()
-        const stored: string[] = storedResp.ok ? ((await storedResp.json())?.interests ?? []) : []
-        if (cancelled) return
-
-        setInterests(options)
-        setSelectedInterests(stored.filter((interest) => options.includes(interest)))
-      } catch (err) {
-        console.error('Error loading interests', err)
-        if (!cancelled) setError('Could not load interests. Please try again.')
-      }
-    }
-
-    void load()
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const interests = optionsQuery.data ?? []
+  const storedInterests = (preferencesQuery.data?.interests ?? []).filter((interest) => interests.includes(interest))
+  const selectedInterests = selectionDraft ?? storedInterests
+  const loadFailed = optionsQuery.isError || preferencesQuery.isError
+  const error = saveInterests.isError
+    ? 'Could not save interests. Please try again.'
+    : loadFailed
+      ? 'Could not load interests. Please try again.'
+      : null
 
   const toggleInterest = (interest: string) => {
-    setSelectedInterests((prev) =>
-      prev.includes(interest) ? prev.filter((i) => i !== interest) : [...prev, interest],
+    setSelectionDraft(
+      selectedInterests.includes(interest)
+        ? selectedInterests.filter((i) => i !== interest)
+        : [...selectedInterests, interest],
     )
   }
 
-  const saveInterests = async () => {
+  const submitInterests = () => {
     if (selectedInterests.length === 0) return
-    setLoading(true)
-    setError(null)
-    try {
-      const saveResp = await api.put('/me/preferences/interests', { interests: selectedInterests })
-      if (!saveResp.ok) {
-        throw new Error('Unable to save interests')
-      }
-      navigate('/settings')
-    } catch (err) {
-      console.error('Error saving interests', err)
-      setError('Could not save interests. Please try again.')
-    } finally {
-      setLoading(false)
-    }
+    saveInterests.mutate(selectedInterests, { onSuccess: () => navigate('/settings') })
   }
 
   return (
@@ -87,10 +56,10 @@ export default function ProfileInterests() {
         <div className="onboarding-actions">
           <button
             className="onboarding-button onboarding-button--primary"
-            onClick={() => void saveInterests()}
-            disabled={loading || selectedInterests.length === 0}
+            onClick={submitInterests}
+            disabled={saveInterests.isPending || selectedInterests.length === 0}
           >
-            {loading ? 'saving...' : 'finish'}
+            {saveInterests.isPending ? 'saving...' : 'finish'}
           </button>
         </div>
       </div>

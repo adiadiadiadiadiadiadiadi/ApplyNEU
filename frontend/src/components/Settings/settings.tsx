@@ -1,74 +1,28 @@
-import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api } from '../../lib/api'
-import { useAppDispatch, useAppSelector } from '../../store'
-import { fetchUserProfile, saveUserPreferences, setPreferences } from '../../store/userSlice'
+import {
+  usePreferences,
+  usePrimaryResume,
+  useUpdatePreferences,
+  type JobMatch,
+  type PreferenceChanges,
+} from '../../queries/settings'
 import ComponentLoader from '../common/ComponentLoader'
 import './settings.css'
 
+const SENSITIVITY_TO_JOB_MATCH: Record<'L' | 'M' | 'H', JobMatch> = { L: 'low', M: 'medium', H: 'high' }
+
 export default function Settings() {
   const navigate = useNavigate()
-  const dispatch = useAppDispatch()
-  const profile = useAppSelector((state) => state.user.profile)
-  const status = useAppSelector((state) => state.user.status)
-  const loadError = useAppSelector((state) => state.user.error)
-  const [currentResumeName, setCurrentResumeName] = useState('')
-  const [interests, setInterests] = useState<string[]>([])
+  const preferencesQuery = usePreferences()
+  const primaryResumeQuery = usePrimaryResume()
+  const updatePreferences = useUpdatePreferences()
 
-  const waitForApproval = profile?.waitForApproval ?? false
-  const recentJobs = profile?.recent_jobs ?? false
-  const unpaidRoles = profile?.unpaid_roles ?? false
-  const emailNotifications = profile?.email_notifications ?? true
-  const sensitivity: 'L' | 'M' | 'H' =
-    profile?.job_match === 'high' ? 'H' : profile?.job_match === 'low' ? 'L' : 'M'
+  const preferences = preferencesQuery.data
+  const currentResumeName = primaryResumeQuery.data?.file_name ?? ''
+  const interests = preferences?.interests ?? []
 
-  useEffect(() => {
-    if (!profile && status === 'idle') {
-      void dispatch(fetchUserProfile())
-    }
-  }, [dispatch, profile, status])
-
-  useEffect(() => {
-    let cancelled = false
-    const loadPrimaryResume = async () => {
-      try {
-        const resp = await api.get('/me/resumes/primary')
-        if (cancelled || !resp.ok) return
-        const primary = await resp.json()
-        setCurrentResumeName((primary?.file_name ?? '').toString())
-      } catch (err) {
-        console.error('Failed fetching primary resume', err)
-      }
-    }
-
-    void loadPrimaryResume()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-    const loadInterests = async () => {
-      try {
-        const resp = await api.get('/me/preferences/interests')
-        if (cancelled || !resp.ok) return
-        const data = await resp.json()
-        setInterests(data?.interests ?? [])
-      } catch (err) {
-        console.error('Failed fetching interests', err)
-      }
-    }
-
-    void loadInterests()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  const updatePrefs = (prefs: Partial<{ waitForApproval: boolean; recent_jobs: boolean; job_match: 'low' | 'medium' | 'high'; unpaid_roles: boolean; email_notifications: boolean }>) => {
-    dispatch(setPreferences(prefs))
-    void dispatch(saveUserPreferences(prefs))
+  const updatePrefs = (changes: PreferenceChanges) => {
+    updatePreferences.mutate(changes)
   }
 
   const toggleClass = (isOn: boolean) => (isOn ? 'toggle toggle--on' : 'toggle')
@@ -89,8 +43,8 @@ export default function Settings() {
     <div className="settings-inner stagger-children">
       <h1 className="settings-title">settings</h1>
       <p className="prefs-subtitle" style={{ color: '#f87171', marginTop: '0.5rem' }}>
-        {loadError || 'Failed to load preferences.'}{' '}
-        <a className="settings-retry-btn" onClick={() => void dispatch(fetchUserProfile())}>
+        Failed to load preferences.{' '}
+        <a className="settings-retry-btn" onClick={() => void preferencesQuery.refetch()}>
           retry
         </a>
       </p>
@@ -104,17 +58,16 @@ export default function Settings() {
     </div>
   )
 
-  if (status === 'loading') {
-    return <div className="settings-page page-stagger">{renderLoading()}</div>
-  }
-
-  if (status === 'failed') {
+  if (preferencesQuery.isError && !preferences) {
     return <div className="settings-page page-stagger">{renderError()}</div>
   }
 
-  if (!profile) {
+  if (!preferences) {
     return <div className="settings-page page-stagger">{renderLoading()}</div>
   }
+
+  const { wait_for_approval: waitForApproval, recent_jobs: recentJobs, unpaid_roles: unpaidRoles, email_notifications: emailNotifications } = preferences
+  const sensitivity = preferences.job_match === 'high' ? 'H' : preferences.job_match === 'low' ? 'L' : 'M'
 
   return (
     <div className="settings-page page-stagger">
@@ -171,6 +124,11 @@ export default function Settings() {
 
         <div className="settings-card prefs-card">
           <p className="prefs-heading">Preferences</p>
+          {updatePreferences.isError && (
+            <p className="prefs-subtitle prefs-error" role="alert">
+              couldn't save that change. please try again.
+            </p>
+          )}
 
           <div className="prefs-row">
             <div>
@@ -180,7 +138,7 @@ export default function Settings() {
             {renderToggle(
               waitForApproval,
               () => {
-                updatePrefs({ waitForApproval: !waitForApproval })
+                updatePrefs({ wait_for_approval: !waitForApproval })
               },
               'wait for approval'
             )}
@@ -240,9 +198,7 @@ export default function Settings() {
                   type="button"
                   className={`sensitivity-btn ${sensitivity === level ? 'sensitivity-btn--active' : ''}`}
                   onClick={() => {
-                    updatePrefs({
-                      job_match: level === 'H' ? 'high' : level === 'L' ? 'low' : 'medium',
-                    })
+                    updatePrefs({ job_match: SENSITIVITY_TO_JOB_MATCH[level] })
                   }}
                   aria-pressed={sensitivity === level}
                 >

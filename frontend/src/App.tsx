@@ -16,6 +16,7 @@ import Resumes from './components/Settings/resumes'
 import { FetchErrorProvider } from './components/common/FetchError'
 import ComponentLoader from './components/common/ComponentLoader'
 import { setNavigate } from './lib/navigation'
+import { queryClient } from './queries/client'
 import Unauthorized from './components/NotFound/unauthorized'
 import NotFound from './components/NotFound/notfound'
 import ServerError from './components/NotFound/servererror'
@@ -178,7 +179,8 @@ function App() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') queryClient.clear()
       setUser(session?.user ?? null)
 
       if (session?.user) {
