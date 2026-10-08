@@ -316,15 +316,15 @@ describe('sendJobDescription', () => {
         expect(result.employer_instructions.map((i: { kind: string }) => i.kind)).toEqual(['cover_letter', 'other', 'other']);
     });
 
-    it('asks Sonnet 5.5 for low effort and schema-constrained output', async () => {
+    it('asks Haiku 4.5 for schema-constrained output without effort, which it rejects', async () => {
         getCandidateContext.mockResolvedValue(candidateContext());
         create.mockResolvedValue(aiResponse({ match_score: 80, rationale: 'Good fit.', employer_instructions: [] }));
 
         await analyze();
 
         const request = create.mock.calls[0]![0];
-        expect(request.model).toBe('claude-sonnet-5-5');
-        expect(request.output_config.effort).toBe('low');
+        expect(request.model).toBe('claude-haiku-4-5-20251001');
+        expect(request.output_config).not.toHaveProperty('effort');
         expect(request.output_config.format.type).toBe('json_schema');
         expect(request.output_config.format.schema.properties.employer_instructions.items.properties.kind.enum)
             .toEqual(['external_application', 'cover_letter', 'other']);
@@ -412,13 +412,13 @@ describe('sendJobDescription', () => {
         await expect(analyze()).rejects.toMatchObject({ status: 502 });
     });
 
-    it('constrains match_score to an integer from 0 to 100 in the schema', async () => {
+    it('leaves integer bounds out of the schema, which structured output rejects', async () => {
         getCandidateContext.mockResolvedValue(candidateContext());
         create.mockResolvedValue(aiResponse({ match_score: 80, rationale: '', employer_instructions: [] }));
 
         await analyze();
 
         expect(create.mock.calls[0]![0].output_config.format.schema.properties.match_score)
-            .toEqual({ type: 'integer', minimum: 0, maximum: 100 });
+            .toEqual({ type: 'integer' });
     });
 });

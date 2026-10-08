@@ -5,7 +5,7 @@ export const INSTRUCTION_KINDS = ['external_application', 'cover_letter', 'other
 export const JOB_MATCH_OUTPUT_SCHEMA = {
   type: 'object',
   properties: {
-    match_score: { type: 'integer', minimum: 0, maximum: 100 },
+    match_score: { type: 'integer' },
     rationale: { type: 'string' },
     employer_instructions: {
       type: 'array',

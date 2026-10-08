@@ -6,7 +6,7 @@ import { buildMessages, buildSystem, JOB_MATCH_OUTPUT_SCHEMA, type JobMatchJob }
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 /**
- * Scores one job for one candidate with Claude Sonnet and parses the JSON it returns, which
+ * Scores one job for one candidate with Claude Haiku and parses the JSON it returns, which
  * structured output holds to JOB_MATCH_OUTPUT_SCHEMA. Never touches the database.
  * @param candidateBlock - The candidate rendered by renderCandidateContext
  * @param job - The posting being scored
@@ -14,10 +14,9 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
  */
 export const runJobMatch = async (candidateBlock: string, job: JobMatchJob) => {
   const message = await withRetry(() => anthropic.messages.create({
-    model: 'claude-sonnet-5-5',
+    model: 'claude-haiku-4-5-20251001',
     max_tokens: 16000,
     output_config: {
-      effort: 'low',
       format: { type: 'json_schema', schema: JOB_MATCH_OUTPUT_SCHEMA },
     },
     system: buildSystem(candidateBlock),
