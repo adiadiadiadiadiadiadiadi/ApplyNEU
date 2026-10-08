@@ -14,7 +14,7 @@ export interface PostUserRequest extends Request {
 }
 
 export interface PutUserRequest extends Request {
-  body: PostUserObject;
+  body: Partial<Pick<PostUserObject, 'first_name' | 'last_name' | 'grad_year'>>;
 }
 
 export interface UpdatePreferencesBody {

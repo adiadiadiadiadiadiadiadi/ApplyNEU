@@ -4,7 +4,7 @@ import { AppError } from '../../src/errors/AppError.ts';
 
 const addUser = jest.fn<(user_id: string, first_name: string, last_name: string, grad_year: number) => Promise<any>>();
 const getUser = jest.fn<(user_id: string) => Promise<any>>();
-const updateUser = jest.fn<(user_id: string, first_name: string, last_name: string, grad_year: number) => Promise<any>>();
+const updateUser = jest.fn<(user_id: string, first_name?: string, last_name?: string, grad_year?: number) => Promise<any>>();
 const getUserApplicationStats = jest.fn<(user_id: string) => Promise<any>>();
 
 const authenticate = jest.fn((req: any, _res: any, next: any) => {
@@ -203,27 +203,42 @@ describe('PUT /me', () => {
     expect(updateUser).toHaveBeenCalledWith(USER_ID, 'Grace', 'Hopper', 2027);
   });
 
-  it.each(['first_name', 'last_name'])(
-    'returns 400 when %s is missing',
-    async (field) => {
-      const body: Record<string, unknown> = { ...updateBody };
-      delete body[field];
+  it.each([
+    ['first_name', { first_name: 'Grace' }, ['Grace', undefined, undefined]],
+    ['last_name', { last_name: 'Hopper' }, [undefined, 'Hopper', undefined]],
+    ['grad_year', { grad_year: 2027 }, [undefined, undefined, 2027]],
+  ])('forwards only %s when it is the only field sent', async (_field, body, args) => {
+    updateUser.mockResolvedValue({ user_id: USER_ID, ...updateBody });
 
-      const res = await request(app).put('/me').send(body);
+    const res = await request(app).put('/me').send(body);
+
+    expect(res.status).toBe(200);
+    expect(updateUser).toHaveBeenCalledWith(USER_ID, ...args);
+  });
+
+  it('returns 400 when no updatable field is sent', async () => {
+    const res = await request(app).put('/me').send({ email: 'ada@example.com' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe('Provide at least one of first_name, last_name or grad_year.');
+    expect(updateUser).not.toHaveBeenCalled();
+  });
+
+  it.each(['first_name', 'last_name'])(
+    'returns 400 when %s is empty',
+    async (field) => {
+      const res = await request(app).put('/me').send({ ...updateBody, [field]: '  ' });
 
       expect(res.status).toBe(400);
-      expect(res.body.message).toBe(`${field} is required.`);
+      expect(res.body.message).toBe(`${field} cannot be empty.`);
       expect(updateUser).not.toHaveBeenCalled();
     }
   );
 
-  it.each([undefined, 0, 1999, 2041, 'soon'])(
+  it.each([0, 1999, 2041, 'soon'])(
     'returns 400 when grad_year is %s',
     async (grad_year) => {
-      const body: Record<string, unknown> = { ...updateBody, grad_year };
-      if (grad_year === undefined) delete body.grad_year;
-
-      const res = await request(app).put('/me').send(body);
+      const res = await request(app).put('/me').send({ ...updateBody, grad_year });
 
       expect(res.status).toBe(400);
       expect(res.body.message).toBe('grad_year must be between 2000 and 2040.');
