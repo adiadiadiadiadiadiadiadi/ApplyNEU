@@ -1,5 +1,6 @@
 .settings-page {
-  min-height: 100vh;
+  height: 100vh;
+  overflow-y: auto;
   width: 100%;
   background: #0b0b0b;
   color: #f2f2f2;
