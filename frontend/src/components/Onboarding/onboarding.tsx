@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { api } from '../../lib/api'
@@ -6,6 +6,15 @@ import { suppressErrorRedirect, releaseErrorRedirect } from '../../lib/fetchErro
 import './onboarding.css'
 
 const SCREEN_SUPPRESSOR = 'onboarding-screen'
+
+type UploadStage = 'presigning' | 'uploading' | 'saving' | 'saved' | 'failed'
+
+const UPLOAD_STAGE_LABELS: Partial<Record<UploadStage, string>> = {
+  presigning: 'preparing upload...',
+  uploading: 'uploading...',
+  saving: 'reading your resume...',
+  saved: 'uploaded',
+}
 
 const isPlausibleGradYear = (year: number) => Number.isInteger(year) && year >= 2000 && year <= 2040
 
@@ -20,6 +29,9 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
   const [stepError, setStepError] = useState<string | null>(null)
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [resumeId, setResumeId] = useState<string | null>(null)
+  const [uploadStage, setUploadStage] = useState<UploadStage | null>(null)
+  const uploadController = useRef<AbortController | null>(null)
+  const uploadedResumeId = useRef<string | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
@@ -35,6 +47,8 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     suppressErrorRedirect(SCREEN_SUPPRESSOR)
     return () => releaseErrorRedirect(SCREEN_SUPPRESSOR)
   }, [])
+
+  useEffect(() => () => uploadController.current?.abort(), [])
 
   useEffect(() => {
     const prefillDetails = async () => {
@@ -192,65 +206,8 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
       return
     }
 
-    if (step === 3 && uploadedFile) {
-      setLoading(true)
-
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        setLoading(false)
-        return
-      }
-
-      try {
-        const response = await api.post('/me/resumes/upload', {
-          file_name: uploadedFile.name,
-          file_type: uploadedFile.type,
-          file_size: uploadedFile.size
-        })
-
-        if (response.ok) {
-          const { uploadUrl, key, resumeId: newResumeId } = await response.json()
-
-          const uploadResponse = await fetch(uploadUrl, {
-            method: 'PUT',
-            headers: { 'Content-Type': uploadedFile.type },
-            body: uploadedFile
-          })
-
-          if (uploadResponse.ok) {
-            const saveResponse = await api.post('/resumes/save', {
-              resume_id: newResumeId,
-              key: key,
-              file_name: uploadedFile.name,
-              file_size_bytes: uploadedFile.size
-            })
-
-            if (saveResponse.ok) {
-              setResumeId(newResumeId)
-            }
-          } else {
-            setLoading(false)
-            setStepError('could not upload resume. please try again.')
-            return
-          }
-        } else {
-          setLoading(false)
-          setStepError('could not prepare resume upload. please try again.')
-          return
-        }
-      } catch (_error) {
-        setLoading(false)
-        setStepError('could not upload resume. please try again.')
-        return
-      }
-
-      setLoading(false)
-      setStep(4)
-      return
-    }
-
     if (step === 3) {
-      // Require upload; button disabled when no file.
+      if (uploadStage === 'saved' && resumeId) setStep(4)
       return
     }
 
@@ -284,11 +241,84 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
     }
   }
 
-  const handleFileSelect = (file: File) => {
-    if (file.type === 'application/pdf') {
-      setUploadedFile(file)
-      console.log('PDF selected:', file.name)
+  const uploadResume = async (file: File) => {
+    uploadController.current?.abort()
+    const controller = new AbortController()
+    uploadController.current = controller
+    const { signal } = controller
+
+    setResumeId(null)
+    setStepError(null)
+    setUploadStage('presigning')
+
+    // Each pick replaces the last one, so drop the previous row before its replacement
+    // is saved and claims the primary pointer.
+    const replacedId = uploadedResumeId.current
+    uploadedResumeId.current = null
+    if (replacedId) {
+      await api.del(`/me/resumes/${replacedId}`).catch(() => undefined)
     }
+
+    const fail = (message: string) => {
+      if (signal.aborted) return
+      setUploadStage('failed')
+      setStepError(message)
+    }
+
+    let presigned: { uploadUrl: string; key: string; resumeId: string }
+    try {
+      const response = await api.post('/me/resumes/upload', {
+        file_name: file.name,
+        file_type: file.type,
+        file_size: file.size
+      }, { signal })
+      if (!response.ok) return fail('could not start the upload. please try again.')
+      presigned = await response.json()
+      uploadedResumeId.current = presigned.resumeId
+    } catch {
+      return fail('could not reach the server. check your connection and try again.')
+    }
+
+    if (signal.aborted) return
+    setUploadStage('uploading')
+    try {
+      const response = await fetch(presigned.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type },
+        body: file,
+        signal
+      })
+      if (!response.ok) return fail('could not upload your file. please try again.')
+    } catch {
+      return fail('could not upload your file. check your connection and try again.')
+    }
+
+    if (signal.aborted) return
+    setUploadStage('saving')
+    try {
+      const response = await api.post('/resumes/save', {
+        resume_id: presigned.resumeId,
+        key: presigned.key,
+        file_name: file.name,
+        file_size_bytes: file.size
+      }, { signal })
+      if (!response.ok) return fail('could not read your resume. make sure it is a valid PDF and try again.')
+    } catch {
+      return fail('could not reach the server. check your connection and try again.')
+    }
+
+    if (signal.aborted) return
+    setResumeId(presigned.resumeId)
+    setUploadStage('saved')
+  }
+
+  const handleFileSelect = (file: File) => {
+    if (file.type !== 'application/pdf') {
+      setStepError('only PDF files are supported.')
+      return
+    }
+    setUploadedFile(file)
+    void uploadResume(file)
   }
 
   const handleDrop = (e: React.DragEvent) => {
@@ -312,13 +342,10 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
+    e.target.value = ''
     if (file) {
       handleFileSelect(file)
     }
-  }
-
-  const removeFile = () => {
-    setUploadedFile(null)
   }
 
   return (
@@ -399,8 +426,15 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
               onDrop={handleDrop}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
-              onClick={() => !uploadedFile && document.getElementById('file-input')?.click()}
+              onClick={() => document.getElementById('file-input')?.click()}
             >
+              <input
+                id="file-input"
+                type="file"
+                accept=".pdf"
+                onChange={handleFileInput}
+                style={{ display: 'none' }}
+              />
               {!uploadedFile ? (
                 <>
                   <div className="upload-icon">📄</div>
@@ -409,13 +443,6 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                   </p>
                   <p className="upload-subtext">or click to browse</p>
                   <p className="upload-format">PDF files only</p>
-                  <input
-                    id="file-input"
-                    type="file"
-                    accept=".pdf"
-                    onChange={handleFileInput}
-                    style={{ display: 'none' }}
-                  />
                 </>
               ) : (
                 <div className="uploaded-file">
@@ -423,15 +450,10 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
                     <span className="file-icon">📄</span>
                     <span className="file-name">{uploadedFile.name}</span>
                   </div>
-                  <button
-                    className="remove-file"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      removeFile()
-                    }}
-                  >
-                    ✕
-                  </button>
+                  {uploadStage && UPLOAD_STAGE_LABELS[uploadStage] && (
+                    <p className="upload-status">{UPLOAD_STAGE_LABELS[uploadStage]}</p>
+                  )}
+                  <p className="upload-format">click or drop a file to replace</p>
                 </div>
               )}
             </div>
@@ -474,7 +496,7 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
               loading ||
               (step === 1 && (!firstName.trim() || !lastName.trim() || !gradYear.trim())) ||
               (step === 2 && selectedJobTypes.length === 0) ||
-              (step === 3 && !uploadedFile) ||
+              (step === 3 && uploadStage !== 'saved') ||
               (step === 4 && selectedInterests.length === 0)
             }
           >

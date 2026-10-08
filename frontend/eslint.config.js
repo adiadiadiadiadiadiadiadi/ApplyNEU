@@ -36,6 +36,7 @@ export default [
         clearInterval: 'readonly',
         console: 'readonly',
         fetch: 'readonly',
+        AbortController: 'readonly',
         performance: 'readonly',
         RequestInit: 'readonly',
         Request: 'readonly',
