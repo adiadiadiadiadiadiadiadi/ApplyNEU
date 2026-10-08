@@ -6,6 +6,8 @@ import { getSearchTerms } from '../services/user/user.ai.service.ts';
 import { setEnrichmentStatus } from '../services/resume/resume.service.ts';
 import { bullConnection } from '../queues/connection.ts';
 import { AppError } from '../errors/AppError.ts';
+import { pool } from '../db/index.ts';
+import { onShutdownSignal, runShutdown } from '../utils/shutdown.ts';
 
 const worker = new Worker('resume-enrichment', async (job) => {
     const { resume_id } = job.data;
@@ -37,4 +39,14 @@ worker.on('failed', async (job, err) => {
     } catch (statusErr) {
         console.error(`[resume-enrichment] could not mark resume_id=${job.data.resume_id} failed:`, statusErr);
     }
+});
+
+// worker.close() waits for active jobs to finish and stops new ones from starting, so a
+// deploy never kills a Haiku call mid-flight.
+onShutdownSignal((signal) => {
+    console.log(`[resume-enrichment] ${signal} received, finishing active jobs`);
+    void runShutdown([
+        () => worker.close(),
+        () => pool.end(),
+    ]);
 });

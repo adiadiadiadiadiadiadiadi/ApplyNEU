@@ -18,11 +18,26 @@ import { meContextController } from './controller/context.controller.ts';
 import { interestController } from './controller/interest.controller.ts';
 import { authenticate } from './controller/middleware/authenticate.ts';
 import errorHandler from './controller/middleware/handlers/errorHandler.ts';
+import { healthRouter, startDraining } from './health.ts';
+import { pool } from './db/index.ts';
+import { redis } from './db/redis.ts';
+import { onShutdownSignal, runShutdown } from './utils/shutdown.ts';
 
-const PORT = 8080;
+const PORT = Number(process.env.PORT) || 8080;
 
 const app = express();
 const server = http.createServer(app);
+
+// A load balancer reuses idle connections for up to 60s (AWS ALB's default). Node's 5s
+// default would close one just as it is reused, which surfaces as a random 502.
+server.keepAliveTimeout = 65_000;
+server.headersTimeout = 66_000;
+
+// Only set behind a proxy: trusting X-Forwarded-For on a directly exposed server lets any
+// client spoof its IP.
+if (process.env.TRUST_PROXY) {
+  app.set('trust proxy', Number(process.env.TRUST_PROXY));
+}
 
 function startServer() {
   server.on('error', (err: NodeJS.ErrnoException) => {
@@ -37,12 +52,27 @@ function startServer() {
   });
 }
 
-process.on('SIGINT', () => {
-  server.close(() => {
-    console.log('Server closed.');
-    process.exit(0);
+const closeServer = () =>
+  new Promise<void>((resolve, reject) => {
+    server.close((err) => (err ? reject(err) : resolve()));
+    server.closeIdleConnections();
   });
+
+/**
+ * Fails readiness first so the load balancer stops sending new requests, lets in-flight
+ * requests finish, then closes Postgres and Redis.
+ */
+onShutdownSignal((signal) => {
+  console.log(`[shutdown] ${signal} received, draining`);
+  startDraining();
+  void runShutdown([
+    closeServer,
+    () => pool.end(),
+    () => redis.quit().catch(() => {}),
+  ]);
 });
+
+app.use(healthRouter());
 
 app.use(cors({ exposedHeaders: ['Retry-After'] }));
 app.use(express.json());
