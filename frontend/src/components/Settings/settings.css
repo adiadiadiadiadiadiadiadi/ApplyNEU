@@ -81,6 +81,11 @@
   color: #a3a3a3;
 }
 
+.prefs-error {
+  margin: -8px 0 12px;
+  color: #f87171;
+}
+
 .prefs-row {
   display: flex;
   justify-content: space-between;

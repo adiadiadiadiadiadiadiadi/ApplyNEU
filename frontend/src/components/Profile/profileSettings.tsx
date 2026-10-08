@@ -1,30 +1,21 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { api } from '../../lib/api'
-import { useAppDispatch, useAppSelector } from '../../store'
-import { fetchUserProfile, setProfileDetails } from '../../store/userSlice'
+import { useProfile, useUpdateProfile } from '../../queries/settings'
 import ComponentLoader from '../common/ComponentLoader'
 import './profile.css'
 
 export default function ProfileSettings() {
   const navigate = useNavigate()
-  const dispatch = useAppDispatch()
-  const cachedProfile = useAppSelector((state) => state.user.profile)
-  const status = useAppSelector((state) => state.user.status)
-  const userId = cachedProfile?.id ?? ''
-  const [firstName, setFirstName] = useState('')
-  const [lastName, setLastName] = useState('')
-  const [email, setEmail] = useState('')
-  const [gradYear, setGradYear] = useState('')
-  const [savedFirstName, setSavedFirstName] = useState('')
-  const [savedLastName, setSavedLastName] = useState('')
-  const [savedEmail, setSavedEmail] = useState('')
-  const [savedGradYear, setSavedGradYear] = useState('')
-  const [savingName, setSavingName] = useState(false)
-  const [savingEmail, setSavingEmail] = useState(false)
-  const [savingGrad, setSavingGrad] = useState(false)
-  const [emailError, setEmailError] = useState<string | null>(null)
+  const profileQuery = useProfile()
+  const profile = profileQuery.data
+  const saveFirstName = useUpdateProfile()
+  const saveLastName = useUpdateProfile()
+  const saveGradYear = useUpdateProfile()
+  const [firstNameDraft, setFirstNameDraft] = useState<string | null>(null)
+  const [lastNameDraft, setLastNameDraft] = useState<string | null>(null)
+  const [gradYearDraft, setGradYearDraft] = useState<string | null>(null)
+  const [gradYearError, setGradYearError] = useState<string | null>(null)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -32,27 +23,12 @@ export default function ProfileSettings() {
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
   const [savingPassword, setSavingPassword] = useState(false)
 
-  useEffect(() => {
-    if (!cachedProfile && status === 'idle') {
-      void dispatch(fetchUserProfile())
-    }
-  }, [dispatch, cachedProfile, status])
-
-  // Seed the inputs from the cached profile once. Later cache updates are
-  // echoes of this page's own saves, and re-seeding would clobber live edits.
-  const seeded = useRef(false)
-  useEffect(() => {
-    if (!cachedProfile || seeded.current) return
-    seeded.current = true
-    setFirstName(cachedProfile.firstName)
-    setLastName(cachedProfile.lastName)
-    setEmail(cachedProfile.email)
-    setGradYear(cachedProfile.gradYear)
-    setSavedFirstName(cachedProfile.firstName)
-    setSavedLastName(cachedProfile.lastName)
-    setSavedEmail(cachedProfile.email)
-    setSavedGradYear(cachedProfile.gradYear)
-  }, [cachedProfile])
+  const savedFirstName = profile?.first_name ?? ''
+  const savedLastName = profile?.last_name ?? ''
+  const savedGradYear = profile ? String(profile.grad_year) : ''
+  const firstName = firstNameDraft ?? savedFirstName
+  const lastName = lastNameDraft ?? savedLastName
+  const gradYear = gradYearDraft ?? savedGradYear
 
   // prevent page scroll while on profile settings
   useEffect(() => {
@@ -63,110 +39,25 @@ export default function ProfileSettings() {
     }
   }, [])
 
-  const saveProfile = async ({
-    nextFirst,
-    nextLast,
-    nextEmail,
-    nextGradYear,
-    onFinally,
-  }: {
-    nextFirst?: string
-    nextLast?: string
-    nextEmail?: string
-    nextGradYear?: string
-    onFinally: () => void
-  }) => {
-    if (!userId) {
-      onFinally()
-      return
-    }
+  const updateFirstName = () => {
+    if (firstName === savedFirstName || saveFirstName.isPending) return
+    saveFirstName.mutate({ first_name: firstName }, { onSuccess: () => setFirstNameDraft(null) })
+  }
 
-    const finalFirst = nextFirst ?? firstName
-    const finalLast = nextLast ?? lastName
-    const finalEmail = (nextEmail ?? email).trim()
-    const finalGradYear = nextGradYear ?? gradYear
-    const gradYearNumber = Number.parseInt(finalGradYear, 10)
+  const updateLastName = () => {
+    if (lastName === savedLastName || saveLastName.isPending) return
+    saveLastName.mutate({ last_name: lastName }, { onSuccess: () => setLastNameDraft(null) })
+  }
 
+  const updateGradYear = () => {
+    if (gradYear === savedGradYear || saveGradYear.isPending) return
+    const gradYearNumber = Number.parseInt(gradYear, 10)
     if (Number.isNaN(gradYearNumber)) {
-      console.error('Graduation year must be a number')
-      onFinally()
+      setGradYearError('Graduation year must be a number.')
       return
     }
-
-    try {
-      const resp = await api.put('/me', {
-        first_name: finalFirst,
-        last_name: finalLast,
-        email: finalEmail,
-        grad_year: gradYearNumber,
-      })
-
-      if (!resp.ok) {
-        console.error('Failed updating user in postgres')
-        return
-      }
-
-      const updated = await resp.json()
-      const nextDetails = {
-        firstName: (updated.first_name ?? finalFirst).toString(),
-        lastName: (updated.last_name ?? finalLast).toString(),
-        email: (updated.email ?? finalEmail).toString(),
-        gradYear: (updated.grad_year ?? gradYearNumber).toString(),
-      }
-      setFirstName(nextDetails.firstName)
-      setLastName(nextDetails.lastName)
-      setEmail(nextDetails.email)
-      setGradYear(nextDetails.gradYear)
-      setSavedFirstName(nextDetails.firstName)
-      setSavedLastName(nextDetails.lastName)
-      setSavedEmail(nextDetails.email)
-      setSavedGradYear(nextDetails.gradYear)
-      dispatch(setProfileDetails(nextDetails))
-    } catch (err) {
-      console.error('Error updating user in postgres', err)
-    } finally {
-      onFinally()
-    }
-  }
-
-  const updateName = async (part: 'first' | 'last', value: string) => {
-    if ((part === 'first' && value === savedFirstName) || (part === 'last' && value === savedLastName)) {
-      return
-    }
-    if (savingName) return
-    setSavingName(true)
-    const nextFirst = part === 'first' ? value : undefined
-    const nextLast = part === 'last' ? value : undefined
-    await saveProfile({
-      nextFirst,
-      nextLast,
-      onFinally: () => setSavingName(false),
-    })
-  }
-
-  const updateEmail = async () => {
-    setEmailError(null)
-    if (email.toLowerCase().endsWith('@northeastern.edu')) {
-      setEmailError('northeastern.edu emails are not allowed.')
-      return
-    }
-    if (email === savedEmail) return
-    if (savingEmail) return
-    setSavingEmail(true)
-    await saveProfile({
-      nextEmail: email,
-      onFinally: () => setSavingEmail(false),
-    })
-  }
-
-  const updateGradYear = async () => {
-    if (gradYear === savedGradYear) return
-    if (savingGrad) return
-    setSavingGrad(true)
-    await saveProfile({
-      nextGradYear: gradYear,
-      onFinally: () => setSavingGrad(false),
-    })
+    setGradYearError(null)
+    saveGradYear.mutate({ grad_year: gradYearNumber }, { onSuccess: () => setGradYearDraft(null) })
   }
 
   const updatePassword = async () => {
@@ -191,10 +82,14 @@ export default function ProfileSettings() {
 
     setSavingPassword(true)
     try {
-      const emailToUse = savedEmail || email
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user?.email) {
+        setPasswordError('Could not load your account. Try again.')
+        return
+      }
 
       const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: emailToUse,
+        email: user.email,
         password: currentPassword,
       })
 
@@ -221,15 +116,15 @@ export default function ProfileSettings() {
     }
   }
 
-  if (!cachedProfile) {
-    if (status === 'failed') {
+  if (!profile) {
+    if (profileQuery.isError) {
       return (
         <div className="profile-blank profile-loading">
           <span className="profile-subtext">could not load your profile.</span>
           <button
             type="button"
             className="profile-check-button"
-            onClick={() => void dispatch(fetchUserProfile())}
+            onClick={() => void profileQuery.refetch()}
           >
             retry
           </button>
@@ -267,20 +162,18 @@ export default function ProfileSettings() {
                 id="profile-first-name"
                 type="text"
                 value={firstName}
-                onChange={(event) => {
-                  const value = event.target.value
-                  setFirstName(value)
-                }}
+                onChange={(event) => setFirstNameDraft(event.target.value)}
               />
               <button
                 type="button"
                 className="profile-check-button"
-                onClick={() => void updateName('first', firstName)}
-                disabled={savingName || firstName === savedFirstName}
+                onClick={updateFirstName}
+                disabled={saveFirstName.isPending || firstName === savedFirstName}
               >
                 ✓
               </button>
             </div>
+            {saveFirstName.isError && <div className="profile-upload-error">Could not save first name.</div>}
           </form>
           <form className="profile-field" onSubmit={(event) => event.preventDefault()}>
             <label htmlFor="profile-last-name">last name</label>
@@ -289,20 +182,18 @@ export default function ProfileSettings() {
                 id="profile-last-name"
                 type="text"
                 value={lastName}
-                onChange={(event) => {
-                  const value = event.target.value
-                  setLastName(value)
-                }}
+                onChange={(event) => setLastNameDraft(event.target.value)}
               />
               <button
                 type="button"
                 className="profile-check-button"
-                onClick={() => void updateName('last', lastName)}
-                disabled={savingName || lastName === savedLastName}
+                onClick={updateLastName}
+                disabled={saveLastName.isPending || lastName === savedLastName}
               >
                 ✓
               </button>
             </div>
+            {saveLastName.isError && <div className="profile-upload-error">Could not save last name.</div>}
           </form>
           <form className="profile-field" onSubmit={(event) => event.preventDefault()}>
             <label htmlFor="profile-current-password">current password</label>
@@ -348,49 +239,26 @@ export default function ProfileSettings() {
             {passwordSuccess && <div className="profile-success">{passwordSuccess}</div>}
           </form>
           <form className="profile-field" onSubmit={(event) => event.preventDefault()}>
-            <label htmlFor="profile-email">email</label>
-            <div className="profile-input-row">
-              <input
-                id="profile-email"
-                type="email"
-                value={email}
-                onChange={(event) => {
-                  const value = event.target.value
-                  setEmail(value)
-                }}
-              />
-              <button
-                type="button"
-                className="profile-check-button"
-                onClick={() => void updateEmail()}
-                disabled={savingEmail || email === savedEmail}
-              >
-                ✓
-              </button>
-            </div>
-            {emailError && <div className="profile-upload-error">{emailError}</div>}
-          </form>
-          <form className="profile-field" onSubmit={(event) => event.preventDefault()}>
             <label htmlFor="profile-grad-year">grad year</label>
             <div className="profile-input-row">
               <input
                 id="profile-grad-year"
                 type="text"
                 value={gradYear}
-                onChange={(event) => {
-                  const value = event.target.value
-                  setGradYear(value)
-                }}
+                onChange={(event) => setGradYearDraft(event.target.value)}
               />
               <button
                 type="button"
                 className="profile-check-button"
-                onClick={() => void updateGradYear()}
-                disabled={savingGrad || gradYear === savedGradYear}
+                onClick={updateGradYear}
+                disabled={saveGradYear.isPending || gradYear === savedGradYear}
               >
                 ✓
               </button>
             </div>
+            {(gradYearError || saveGradYear.isError) && (
+              <div className="profile-upload-error">{gradYearError ?? 'Could not save grad year.'}</div>
+            )}
           </form>
         </div>
       </div>

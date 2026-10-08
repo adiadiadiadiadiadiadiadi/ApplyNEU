@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/api'
-import { useAppDispatch, useAppSelector } from '../../store'
-import { fetchUserProfile } from '../../store/userSlice'
 import { suppressErrorRedirect, releaseErrorRedirect } from '../../lib/fetchErrorControl'
+import { settingsKeys } from '../../queries/settings'
 import ComponentLoader from '../common/ComponentLoader'
 import PdfViewer from '../common/PdfViewer'
 import ResumeMenu from './resumeMenu'
@@ -31,20 +31,51 @@ const formatUploadDate = (value?: string) => {
 const LIST_SUPPRESSOR = 'resumes-list'
 const SELECT_SUPPRESSOR = 'resumes-select'
 const VIEW_SUPPRESSOR = 'resumes-view'
-const POLL_SUPPRESSOR = 'resumes-poll'
 const RETRY_SUPPRESSOR = 'resumes-retry'
 const DELETE_SUPPRESSOR = 'resumes-delete'
 const POLL_INTERVAL_MS = 3000
 
+// The list is the source of truth; /primary only covers the list call erroring
+// out, so an empty list stays empty rather than resurfacing a resume the filter
+// below deliberately dropped. Suppressed so a 404 cannot trip the global
+// interceptor into replacing this screen with the /error page.
+const fetchResumes = async (): Promise<ResumeRow[]> => {
+  suppressErrorRedirect(LIST_SUPPRESSOR)
+  try {
+    const listResp = await api.get('/me/resumes')
+    if (listResp.ok) {
+      const rows = await listResp.json()
+      return Array.isArray(rows) ? rows.filter((row: ResumeRow) => row.upload_complete !== false) : []
+    }
+
+    const primaryResp = await api.get('/me/resumes/primary')
+    if (!primaryResp.ok) throw new Error('Could not load resumes')
+    const primary = await primaryResp.json()
+    if (!primary?.resume_id) return []
+    return [{
+      resume_id: primary.resume_id,
+      file_name: primary.file_name ?? '',
+      created_at: primary.created_at,
+      is_primary: true,
+    }]
+  } finally {
+    releaseErrorRedirect(LIST_SUPPRESSOR)
+  }
+}
+
 export default function Resumes() {
   const navigate = useNavigate()
-  const dispatch = useAppDispatch()
-  const profile = useAppSelector((state) => state.user.profile)
-  const status = useAppSelector((state) => state.user.status)
-  const userId = profile?.id ?? ''
-  const [resumes, setResumes] = useState<ResumeRow[]>([])
-  const [loadingResumes, setLoadingResumes] = useState(true)
-  const [selectedId, setSelectedId] = useState('')
+  const queryClient = useQueryClient()
+  const resumesQuery = useQuery({
+    queryKey: settingsKeys.resumeList,
+    queryFn: fetchResumes,
+    refetchInterval: (query) =>
+      query.state.data?.some((row) => row.enrichment_status === 'pending') ? POLL_INTERVAL_MS : false,
+  })
+  const savedResumes = resumesQuery.data ?? []
+  const [uploadingRow, setUploadingRow] = useState<ResumeRow | null>(null)
+  const resumes = uploadingRow ? [uploadingRow, ...savedResumes] : savedResumes
+  const selectedId = (savedResumes.find((row) => row.is_primary) ?? savedResumes[0])?.resume_id ?? ''
   const [selecting, setSelecting] = useState<string | null>(null)
   const [viewing, setViewing] = useState<string | null>(null)
   const [retrying, setRetrying] = useState<string | null>(null)
@@ -73,99 +104,9 @@ export default function Resumes() {
     return () => window.removeEventListener('keydown', onKey)
   }, [confirmingDelete])
 
-  useEffect(() => {
-    if (!profile && status === 'idle') {
-      void dispatch(fetchUserProfile())
-    }
-  }, [dispatch, profile, status])
-
-  useEffect(() => {
-    let cancelled = false
-
-    // The list is the source of truth; /primary only covers the list call erroring
-    // out, so an empty list stays empty rather than resurfacing a resume the filter
-    // below deliberately dropped. Suppressed so a 404 cannot trip the global
-    // interceptor into replacing this screen with the /error page.
-    const loadResumes = async () => {
-      suppressErrorRedirect(LIST_SUPPRESSOR)
-      try {
-        const listResp = await api.get('/me/resumes')
-        if (cancelled) return
-
-        if (listResp.ok) {
-          const rows = await listResp.json()
-          const uploaded = Array.isArray(rows)
-            ? rows.filter((row: ResumeRow) => row.upload_complete !== false)
-            : []
-          setResumes(uploaded)
-          if (uploaded.length) {
-            setSelectedId((uploaded.find((row: ResumeRow) => row.is_primary) ?? uploaded[0]).resume_id)
-          }
-          return
-        }
-
-        const primaryResp = await api.get('/me/resumes/primary')
-        if (cancelled || !primaryResp.ok) return
-        const primary = await primaryResp.json()
-        if (!primary?.resume_id) return
-        setResumes([{
-          resume_id: primary.resume_id,
-          file_name: primary.file_name ?? '',
-          created_at: primary.created_at,
-          is_primary: true,
-        }])
-        setSelectedId(primary.resume_id)
-      } catch (err) {
-        console.error('Failed fetching resumes', err)
-      } finally {
-        releaseErrorRedirect(LIST_SUPPRESSOR)
-        if (!cancelled) setLoadingResumes(false)
-      }
-    }
-
-    void loadResumes()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  const hasPending = resumes.some((row) => row.enrichment_status === 'pending')
-
-  useEffect(() => {
-    if (!hasPending) return
-    let cancelled = false
-
-    const refreshStatuses = async () => {
-      suppressErrorRedirect(POLL_SUPPRESSOR)
-      try {
-        const resp = await api.get('/me/resumes')
-        if (cancelled || !resp.ok) return
-        const rows = await resp.json()
-        if (cancelled || !Array.isArray(rows)) return
-        const latestById = new Map<string, ResumeRow>(
-          rows.map((row: ResumeRow) => [row.resume_id, row])
-        )
-        setResumes((current) =>
-          current.map((row) => {
-            const latest = latestById.get(row.resume_id)
-            return latest
-              ? { ...row, enrichment_status: latest.enrichment_status, can_retry: latest.can_retry }
-              : row
-          })
-        )
-      } catch (err) {
-        console.error('Failed refreshing resume statuses', err)
-      } finally {
-        releaseErrorRedirect(POLL_SUPPRESSOR)
-      }
-    }
-
-    const timer = window.setInterval(() => void refreshStatuses(), POLL_INTERVAL_MS)
-    return () => {
-      cancelled = true
-      window.clearInterval(timer)
-    }
-  }, [hasPending])
+  const updateResumes = (update: (rows: ResumeRow[]) => ResumeRow[]) => {
+    queryClient.setQueryData<ResumeRow[]>(settingsKeys.resumeList, (rows) => rows && update(rows))
+  }
 
   const retryEnrichment = async (resumeId: string) => {
     if (retrying) return
@@ -175,16 +116,16 @@ export default function Resumes() {
     try {
       const resp = await api.post(`/resumes/${resumeId}/enrichment/retry`, {})
       if (resp.status === 429) {
-        setResumes((current) =>
-          current.map((row) => (row.resume_id === resumeId ? { ...row, can_retry: false } : row))
+        updateResumes((rows) =>
+          rows.map((row) => (row.resume_id === resumeId ? { ...row, can_retry: false } : row))
         )
         return
       }
       if (!resp.ok && resp.status !== 409) {
         throw new Error('Could not retry enrichment')
       }
-      setResumes((current) =>
-        current.map((row) =>
+      updateResumes((rows) =>
+        rows.map((row) =>
           row.resume_id === resumeId ? { ...row, enrichment_status: 'pending' } : row
         )
       )
@@ -224,9 +165,10 @@ export default function Resumes() {
 
   const selectResume = async (resumeId: string) => {
     if (selecting || uploading) return
-    const previous = selectedId
     setSelecting(resumeId)
-    setSelectedId(resumeId)
+    await queryClient.cancelQueries({ queryKey: settingsKeys.resumeList })
+    const previous = queryClient.getQueryData<ResumeRow[]>(settingsKeys.resumeList)
+    updateResumes((rows) => rows.map((row) => ({ ...row, is_primary: row.resume_id === resumeId })))
     setError(null)
     // Reverts and reports inline, so a failure must not become the /error page.
     suppressErrorRedirect(SELECT_SUPPRESSOR)
@@ -237,11 +179,12 @@ export default function Resumes() {
       }
     } catch (err) {
       console.error('Failed selecting resume', err)
-      setSelectedId(previous)
+      queryClient.setQueryData(settingsKeys.resumeList, previous)
       setError('Could not switch resumes. Please try again.')
     } finally {
       releaseErrorRedirect(SELECT_SUPPRESSOR)
       setSelecting(null)
+      void queryClient.invalidateQueries({ queryKey: settingsKeys.resumes })
     }
   }
 
@@ -257,37 +200,32 @@ export default function Resumes() {
       if (!resp.ok && resp.status !== 404) {
         throw new Error('Could not delete resume')
       }
-      setResumes((current) => current.filter((row) => row.resume_id !== resumeId))
-      if (selectedId === resumeId) {
-        setSelectedId(resumes.find((row) => row.resume_id !== resumeId)?.resume_id ?? '')
-      }
+      updateResumes((rows) => {
+        const remaining = rows.filter((row) => row.resume_id !== resumeId)
+        return selectedId === resumeId
+          ? remaining.map((row, index) => ({ ...row, is_primary: index === 0 }))
+          : remaining
+      })
     } catch (err) {
       console.error('Failed deleting resume', err)
       setError('Could not delete resume. Please try again.')
     } finally {
       releaseErrorRedirect(DELETE_SUPPRESSOR)
       setDeleting(null)
+      void queryClient.invalidateQueries({ queryKey: settingsKeys.resumes })
     }
   }
 
   const uploadResume = async (file: File) => {
     if (uploading) return
-    if (!userId) {
-      setError('Could not load your account. Try again.')
-      return
-    }
     setUploading(true)
     setError(null)
-    const placeholderId = `uploading-${Date.now()}`
-    setResumes((current) => [
-      {
-        resume_id: placeholderId,
-        file_name: file.name,
-        created_at: new Date().toISOString(),
-        enrichment_status: 'pending',
-      },
-      ...current,
-    ])
+    setUploadingRow({
+      resume_id: `uploading-${Date.now()}`,
+      file_name: file.name,
+      created_at: new Date().toISOString(),
+      enrichment_status: 'pending',
+    })
 
     try {
       const presignResp = await api.post('/me/resumes/upload', {
@@ -326,32 +264,29 @@ export default function Resumes() {
       }
 
       const saved: ResumeRow = await saveResp.json()
-      setResumes((current) =>
-        current.map((row) =>
-          row.resume_id === placeholderId
-            ? {
-                ...row,
-                resume_id: saved.resume_id,
-                created_at: saved.created_at ?? row.created_at,
-                upload_complete: true,
-                enrichment_status: saved.enrichment_status ?? 'pending',
-              }
-            : row
-        )
-      )
-      setSelectedId(saved.resume_id)
+      updateResumes((rows) => [
+        {
+          resume_id: saved.resume_id,
+          file_name: file.name,
+          created_at: saved.created_at ?? new Date().toISOString(),
+          upload_complete: true,
+          enrichment_status: saved.enrichment_status ?? 'pending',
+        },
+        ...rows,
+      ])
     } catch (err) {
       console.error('Resume upload failed', err)
-      setResumes((current) => current.filter((row) => row.resume_id !== placeholderId))
       setError('Could not upload resume. Please try again.')
     } finally {
+      setUploadingRow(null)
       setUploading(false)
+      void queryClient.invalidateQueries({ queryKey: settingsKeys.resumes })
     }
   }
 
   return (
     <div className="settings-page page-stagger">
-      <div className={`settings-inner stagger-children${loadingResumes ? ' settings-inner--loading' : ''}`}>
+      <div className={`settings-inner stagger-children${resumesQuery.isPending ? ' settings-inner--loading' : ''}`}>
         <h1 className="settings-title">
           <button
             type="button"
@@ -364,7 +299,7 @@ export default function Resumes() {
           resumes
         </h1>
 
-        {loadingResumes ? (
+        {resumesQuery.isPending ? (
           <ComponentLoader fullPage label="loading resumes" />
         ) : (
           <div className="settings-card resume-card">
@@ -493,7 +428,9 @@ export default function Resumes() {
           </div>
         )}
 
-        {error && <p className="resume-error">{error}</p>}
+        {(error || resumesQuery.isError) && (
+          <p className="resume-error">{error ?? 'Could not load resumes. Please try again.'}</p>
+        )}
       </div>
 
       {confirmingDelete && (

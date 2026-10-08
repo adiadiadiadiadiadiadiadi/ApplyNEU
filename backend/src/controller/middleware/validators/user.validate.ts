@@ -19,9 +19,12 @@ export const validateAddUser = [
 ];
 
 export const validateUpdateUser = [
-    body('first_name').notEmpty().withMessage('first_name is required.'),
-    body('last_name').notEmpty().withMessage('last_name is required.'),
-    body('grad_year').isInt({ min: 2000, max: 2040 }).withMessage('grad_year must be between 2000 and 2040.'),
+    body().custom((value) =>
+        ['first_name', 'last_name', 'grad_year'].some((field) => value?.[field] !== undefined)
+    ).withMessage('Provide at least one of first_name, last_name or grad_year.'),
+    body('first_name').optional().trim().notEmpty().withMessage('first_name cannot be empty.'),
+    body('last_name').optional().trim().notEmpty().withMessage('last_name cannot be empty.'),
+    body('grad_year').optional().isInt({ min: 2000, max: 2040 }).withMessage('grad_year must be between 2000 and 2040.'),
     handleValidation,
 ];
 

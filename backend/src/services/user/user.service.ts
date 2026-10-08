@@ -75,17 +75,20 @@ export const getUser = async (user_id: string) => {
 };
 
 /**
- * Updates a user's profile fields.
+ * Updates whichever profile fields are provided; omitted fields keep their stored value.
  * @param user_id - ID of the user to update
  * @param first_name - Updated first name
  * @param last_name - Updated last name
  * @param grad_year - Updated graduation year
  */
-export const updateUser = async (user_id: string, first_name: string, last_name: string, grad_year: number) => {
+export const updateUser = async (user_id: string, first_name?: string, last_name?: string, grad_year?: number) => {
     try {
         const result = await pool.query(
             `
-            UPDATE profile SET first_name = $1, last_name = $2, grad_year = $3
+            UPDATE profile
+            SET first_name = COALESCE($1, first_name),
+                last_name  = COALESCE($2, last_name),
+                grad_year  = COALESCE($3, grad_year)
             WHERE user_id = $4
             RETURNING user_id, first_name, last_name, grad_year;
             `,
@@ -98,4 +101,3 @@ export const updateUser = async (user_id: string, first_name: string, last_name:
         throw new AppError(500, 'Error updating user.');
     }
 };
-
