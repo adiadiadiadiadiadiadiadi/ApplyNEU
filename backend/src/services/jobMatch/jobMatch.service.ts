@@ -1,4 +1,6 @@
+import { createHash } from 'node:crypto';
 import { pool } from '../../db/index.ts';
+import { redis } from '../../db/redis.ts';
 import { AppError } from '../../errors/AppError.ts';
 import { normalizeAndHash } from '../../utils/hash.ts';
 import { getCandidateContext, renderCandidateContext } from '../candidateContext/candidateContext.service.ts';
@@ -22,6 +24,15 @@ export const MATCH_THRESHOLDS: Record<JobMatchSensitivity, number> = {
 export const decideFromScore = (match_score: number, job_match: JobMatchSensitivity) =>
   match_score >= (MATCH_THRESHOLDS[job_match] ?? MATCH_THRESHOLDS.medium) ? 'APPLY' : 'DO_NOT_APPLY';
 
+const MATCH_CACHE_TTL = 3600;
+
+const matchCacheKey = (user_id: string, job: JobMatchJob, description_hash: string, candidate_hash: string) => {
+  const digest = createHash('sha256')
+    .update([job.company, job.title, description_hash, candidate_hash].join('\u0000'))
+    .digest('hex');
+  return `job_match:v${SCORING_VERSION}:${user_id}:${digest}`;
+};
+
 const parseMatchScore = (value: unknown): number => {
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 100) {
     throw new AppError(502, 'Invalid match score.');
@@ -31,8 +42,9 @@ const parseMatchScore = (value: unknown): number => {
 
 /**
  * Looks up a score already bought for this user and job, valid only while the rendered
- * candidate and SCORING_VERSION are unchanged. A lookup failure is logged and treated as a
- * miss, so the request falls through to the model instead of failing.
+ * candidate and SCORING_VERSION are unchanged. Redis is checked first and filled from
+ * Postgres hits; misses are not cached. A Redis failure falls through to Postgres, and a
+ * Postgres failure is logged and treated as a miss, so the request calls the model instead.
  */
 const checkMatchCache = async (
   user_id: string,
@@ -40,6 +52,9 @@ const checkMatchCache = async (
   description_hash: string,
   candidate_hash: string
 ): Promise<number | null> => {
+  const cacheKey = matchCacheKey(user_id, job, description_hash, candidate_hash);
+  const cached = await redis.get(cacheKey).catch(() => null);
+  if (cached !== null) return Number(cached);
   try {
     const result = await pool.query(
       `
@@ -53,7 +68,9 @@ const checkMatchCache = async (
     );
     const row = result.rows[0];
     console.log(`[jobMatch] cache ${row ? 'hit' : 'miss'} user=${user_id} description_hash=${description_hash}`);
-    return row ? row.match_score : null;
+    if (!row) return null;
+    await redis.set(cacheKey, String(row.match_score), 'EX', MATCH_CACHE_TTL).catch(() => {});
+    return row.match_score;
   } catch (error) {
     console.error('[jobMatch] cache read failed, calling the model:', error);
     return null;
@@ -62,8 +79,9 @@ const checkMatchCache = async (
 
 /**
  * Stores a fresh score so the next request for this user and job is a cache hit. Does
- * nothing when the job row doesn't exist. A write failure is logged and never fails the
- * request, since the score has already been returned to the caller.
+ * nothing when the job row doesn't exist, and only writes Redis once Postgres has the row,
+ * so Redis never holds a score Postgres doesn't. A write failure is logged and never fails
+ * the request, since the score has already been returned to the caller.
  */
 const saveMatch = async (
   user_id: string,
@@ -73,7 +91,7 @@ const saveMatch = async (
   match_score: number
 ) => {
   try {
-    await pool.query(
+    const result = await pool.query(
       `
         INSERT INTO job_matches (user_id, job_id, candidate_hash, scoring_version, match_score)
         SELECT $4, job_id, $5, $6, $7
@@ -87,6 +105,10 @@ const saveMatch = async (
       `,
       [job.company, job.title, description_hash, user_id, candidate_hash, SCORING_VERSION, match_score]
     );
+    if (result.rowCount) {
+      const cacheKey = matchCacheKey(user_id, job, description_hash, candidate_hash);
+      await redis.set(cacheKey, String(match_score), 'EX', MATCH_CACHE_TTL).catch(() => {});
+    }
   } catch (error) {
     console.error('[jobMatch] cache write failed:', error);
   }
