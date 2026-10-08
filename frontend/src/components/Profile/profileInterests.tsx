@@ -1,19 +1,17 @@
-import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useInterestOptions, usePreferences, useSaveInterests } from '../../queries/settings'
 import './profile.css'
 import '../Onboarding/onboarding.css'
+import '../Settings/settings.css'
 
 export default function ProfileInterests() {
   const navigate = useNavigate()
   const optionsQuery = useInterestOptions()
   const preferencesQuery = usePreferences()
   const saveInterests = useSaveInterests()
-  const [selectionDraft, setSelectionDraft] = useState<string[] | null>(null)
 
   const interests = optionsQuery.data ?? []
-  const storedInterests = (preferencesQuery.data?.interests ?? []).filter((interest) => interests.includes(interest))
-  const selectedInterests = selectionDraft ?? storedInterests
+  const selectedInterests = (preferencesQuery.data?.interests ?? []).filter((interest) => interests.includes(interest))
   const loadFailed = optionsQuery.isError || preferencesQuery.isError
   const error = saveInterests.isError
     ? 'Could not save interests. Please try again.'
@@ -21,47 +19,41 @@ export default function ProfileInterests() {
       ? 'Could not load interests. Please try again.'
       : null
 
+  // The API requires at least one interest, so the last selected one can't be cleared.
   const toggleInterest = (interest: string) => {
-    setSelectionDraft(
-      selectedInterests.includes(interest)
-        ? selectedInterests.filter((i) => i !== interest)
-        : [...selectedInterests, interest],
+    const isSelected = selectedInterests.includes(interest)
+    if (isSelected && selectedInterests.length === 1) return
+    saveInterests.mutate(
+      isSelected ? selectedInterests.filter((i) => i !== interest) : [...selectedInterests, interest],
     )
   }
 
-  const submitInterests = () => {
-    if (selectedInterests.length === 0) return
-    saveInterests.mutate(selectedInterests, { onSuccess: () => navigate('/settings') })
-  }
-
   return (
-    <div className="onboarding-container page-stagger">
-      <div className="onboarding-content stagger-children">
-        <div className="onboarding-step">
-          <h1 className="onboarding-title">select your interests</h1>
-          <p className="onboarding-description">we'll use these to filter jobs for you.</p>
-          <div className="interests-grid profile-interests-offset">
-            {interests.map((interest) => (
-              <span
-                key={interest}
-                className={`interest-tag ${selectedInterests.includes(interest) ? 'interest-tag--selected' : ''}`}
-                onClick={() => toggleInterest(interest)}
-              >
-                {interest}
-              </span>
-            ))}
-          </div>
-          {error && <div className="profile-upload-error">{error}</div>}
-        </div>
-        <div className="onboarding-actions">
+    <div className="settings-page page-stagger">
+      <div className="settings-inner profile-interests-inner stagger-children">
+        <h1 className="settings-title">
           <button
-            className="onboarding-button onboarding-button--primary"
-            onClick={submitInterests}
-            disabled={saveInterests.isPending || selectedInterests.length === 0}
+            type="button"
+            className="settings-back"
+            aria-label="Back to settings"
+            onClick={() => navigate('/settings')}
           >
-            {saveInterests.isPending ? 'saving...' : 'finish'}
+            ←
           </button>
+          interests
+        </h1>
+        <div className="interests-grid profile-interests-offset">
+          {interests.map((interest) => (
+            <span
+              key={interest}
+              className={`interest-tag ${selectedInterests.includes(interest) ? 'interest-tag--selected' : ''}`}
+              onClick={() => toggleInterest(interest)}
+            >
+              {interest}
+            </span>
+          ))}
         </div>
+        {error && <p className="resume-error">{error}</p>}
       </div>
     </div>
   )

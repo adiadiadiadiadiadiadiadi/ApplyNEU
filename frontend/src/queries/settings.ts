@@ -147,15 +147,39 @@ export const useInterestOptions = () =>
     staleTime: Infinity,
   })
 
-export const useSaveInterests = () => {
-  const queryClient = useQueryClient()
-  return useMutation({
+const INTERESTS_MUTATION = ['interests', 'update'] as const
+
+// Each click sends the full selection. Saves are queued in click order like preferences,
+// so the stored list always ends up matching the last click.
+export const interestsMutationOptions = (queryClient: QueryClient) =>
+  mutationOptions({
+    mutationKey: INTERESTS_MUTATION,
+    scope: { id: 'interests' },
     mutationFn: (interests: string[]) =>
       putSuppressed('interests-save', '/me/preferences/interests', { interests }),
-    onSuccess: () =>
-      Promise.all([
-        queryClient.invalidateQueries({ queryKey: settingsKeys.preferences }),
-        queryClient.invalidateQueries({ queryKey: settingsKeys.resumes }),
-      ]),
+    onMutate: async (interests) => {
+      await queryClient.cancelQueries({ queryKey: settingsKeys.preferences })
+      const previous = queryClient.getQueryData<Preferences>(settingsKeys.preferences)?.interests
+      queryClient.setQueryData<Preferences>(settingsKeys.preferences, (current) =>
+        current ? { ...current, interests } : current,
+      )
+      return { previous }
+    },
+    onError: (_error, _interests, context) => {
+      const previous = context?.previous
+      if (!previous) return
+      queryClient.setQueryData<Preferences>(settingsKeys.preferences, (current) =>
+        current ? { ...current, interests: previous } : current,
+      )
+    },
+    onSettled: () => {
+      if (queryClient.isMutating({ mutationKey: INTERESTS_MUTATION }) === 1) {
+        void queryClient.invalidateQueries({ queryKey: settingsKeys.preferences })
+      }
+    },
   })
+
+export const useSaveInterests = () => {
+  const queryClient = useQueryClient()
+  return useMutation(interestsMutationOptions(queryClient))
 }
