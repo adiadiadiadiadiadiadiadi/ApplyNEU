@@ -11,6 +11,14 @@ jest.unstable_mockModule('../../src/db/index.ts', () => ({
     pool: { query },
 }));
 
+const redisStore = new Map<string, string>();
+const redisGet = jest.fn<(key: string) => Promise<string | null>>();
+const redisSet = jest.fn<(key: string, value: string, ...args: unknown[]) => Promise<string>>();
+
+jest.unstable_mockModule('../../src/db/redis.ts', () => ({
+    redis: { get: redisGet, set: redisSet },
+}));
+
 jest.unstable_mockModule('../../src/services/candidateContext/candidateContext.service.ts', () => ({
     getCandidateContext,
     renderCandidateContext: (context: { profile: { grad_year: number }; resume: { resume_text: string } }) =>
@@ -85,6 +93,12 @@ beforeEach(() => {
     query.mockResolvedValue({ rows: [] });
     create.mockReset();
     getCandidateContext.mockReset();
+    redisStore.clear();
+    redisGet.mockReset().mockImplementation(async (key) => redisStore.get(key) ?? null);
+    redisSet.mockReset().mockImplementation(async (key, value) => {
+        redisStore.set(key, value);
+        return 'OK';
+    });
 });
 
 describe('sendJobDescription', () => {
@@ -382,6 +396,82 @@ describe('sendJobDescription', () => {
         create.mockResolvedValue({ content: [{ type: 'thinking', thinking: '', signature: 'sig' }] });
 
         await expect(analyze()).rejects.toMatchObject({ status: 502 });
+    });
+
+    describe('redis cache', () => {
+        const scoreReads = () => query.mock.calls.filter(([sql]) => sql.includes('SELECT m.match_score')).length;
+        const memoReads = () => query.mock.calls.filter(([sql]) => sql.includes('FROM instruction_extractions')).length;
+        const scoreKeys = () => [...redisStore.keys()].filter((key) => key.startsWith('job_match:'));
+
+        it('serves a repeat request from redis without touching postgres or the model', async () => {
+            getCandidateContext.mockResolvedValue(candidateContext());
+            db({ memo: memoHit([]), score: scoreHit(80) });
+
+            await analyze();
+            const result = await analyze();
+
+            expect(scoreReads()).toBe(1);
+            expect(memoReads()).toBe(1);
+            expect(create).not.toHaveBeenCalled();
+            expect(result).toMatchObject({ match_score: 80, employer_instructions: [] });
+        });
+
+        it('keys scores by scoring version and user, with a TTL', async () => {
+            getCandidateContext.mockResolvedValue(candidateContext());
+            db({ memo: memoHit([]), score: scoreHit(80) });
+
+            await analyze();
+
+            const [key, value, ...ttl] = redisSet.mock.calls.find(([k]) => k.startsWith('job_match:'))!;
+            expect(key).toMatch(new RegExp(`^job_match:v${SCORING_VERSION}:${USER_ID}:[0-9a-f]{64}$`));
+            expect(value).toBe('80');
+            expect(ttl).toEqual(['EX', 3600]);
+        });
+
+        it('does not cache a miss', async () => {
+            getCandidateContext.mockResolvedValue(candidateContext());
+            create.mockResolvedValue(fit());
+
+            await analyze();
+
+            expect(scoreKeys()).toEqual([]);
+        });
+
+        it('writes a fresh score to redis once postgres stores it, so the next request skips the model', async () => {
+            getCandidateContext.mockResolvedValue(candidateContext());
+            create.mockResolvedValue(fit());
+            query.mockImplementation(async (sql: string) =>
+                sql.includes('INSERT INTO') ? { rows: [], rowCount: 1 } : { rows: [] });
+
+            await analyze();
+            await analyze();
+
+            expect(create).toHaveBeenCalledTimes(1);
+            expect(scoreReads()).toBe(1);
+        });
+
+        it('misses when the candidate changes', async () => {
+            db({ memo: memoHit([]), score: scoreHit(80) });
+            getCandidateContext.mockResolvedValue(candidateContext());
+            await analyze();
+
+            getCandidateContext.mockResolvedValue(candidateContext({ profile: { grad_year: GRAD_YEAR + 1 } }));
+            await analyze();
+
+            expect(scoreReads()).toBe(2);
+        });
+
+        it('falls back to postgres when redis is down', async () => {
+            getCandidateContext.mockResolvedValue(candidateContext());
+            db({ memo: memoHit([]), score: scoreHit(80) });
+            redisGet.mockRejectedValue(new Error('redis down'));
+            redisSet.mockRejectedValue(new Error('redis down'));
+
+            const result = await analyze();
+
+            expect(result).toMatchObject({ match_score: 80 });
+            expect(create).not.toHaveBeenCalled();
+        });
     });
 
     describe('instruction memo', () => {
