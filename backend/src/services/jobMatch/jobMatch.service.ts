@@ -7,6 +7,7 @@ import { getCandidateContext, renderCandidateContext } from '../candidateContext
 import { getInstructions, normalizeEmployerInstructions, saveInstructions } from '../instructions/instructions.service.ts';
 import { SCORING_VERSION, type JobMatchJob } from './jobMatch.prompt.ts';
 import { runJobMatch } from './jobMatch.agent.ts';
+import { consumeModelCall } from '../rateLimit/rateLimit.service.ts';
 
 export type JobMatchSensitivity = 'low' | 'medium' | 'high';
 
@@ -153,6 +154,7 @@ export const sendJobDescription = async (user_id: string, job_description: strin
       };
     }
 
+    await consumeModelCall(user_id, 'job_match');
     const parsed = await runJobMatch(candidateBlock, job, memoInstructions === null);
     if (!parsed || typeof parsed !== 'object') {
       throw new AppError(502, 'Error with API.');
