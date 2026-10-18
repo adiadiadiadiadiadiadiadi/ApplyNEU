@@ -242,3 +242,51 @@ $$;
 CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- LangGraph checkpoints, written by the PostgresSaver in src/agents/checkpointer.ts. Kept in
+-- their own schema so Supabase's REST API, which serves public, never exposes agent state.
+--
+-- This mirrors the migrations bundled with @langchain/langgraph-checkpoint-postgres 1.1.0
+-- (versions 0-5). The app never calls setup(), so when an upgrade adds a migration, copy its
+-- SQL from the package's getMigrations(), record its version below, and run it on Supabase.
+CREATE SCHEMA IF NOT EXISTS langgraph;
+
+CREATE TABLE langgraph.checkpoint_migrations (
+    v integer PRIMARY KEY
+);
+
+CREATE TABLE langgraph.checkpoints (
+    thread_id text NOT NULL,
+    checkpoint_ns text NOT NULL DEFAULT '',
+    checkpoint_id text NOT NULL,
+    parent_checkpoint_id text,
+    type text,
+    checkpoint jsonb NOT NULL,
+    metadata jsonb NOT NULL DEFAULT '{}',
+    PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id)
+);
+
+CREATE TABLE langgraph.checkpoint_blobs (
+    thread_id text NOT NULL,
+    checkpoint_ns text NOT NULL DEFAULT '',
+    channel text NOT NULL,
+    version text NOT NULL,
+    type text NOT NULL,
+    blob bytea,
+    PRIMARY KEY (thread_id, checkpoint_ns, channel, version)
+);
+
+CREATE TABLE langgraph.checkpoint_writes (
+    thread_id text NOT NULL,
+    checkpoint_ns text NOT NULL DEFAULT '',
+    checkpoint_id text NOT NULL,
+    task_id text NOT NULL,
+    idx integer NOT NULL,
+    channel text NOT NULL,
+    type text,
+    blob bytea NOT NULL,
+    task_path text NOT NULL DEFAULT '',
+    PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, task_id, idx)
+);
+
+INSERT INTO langgraph.checkpoint_migrations (v) VALUES (0), (1), (2), (3), (4), (5);
