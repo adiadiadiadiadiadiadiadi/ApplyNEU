@@ -17,6 +17,23 @@ CREATE TYPE public.job_match_sensitivity AS ENUM (
     'high'
 );
 
+CREATE TYPE public.agent_run_type AS ENUM (
+    'sweep',
+    'job',
+    'external_apply',
+    'cover_letter'
+);
+
+CREATE TYPE public.agent_run_status AS ENUM (
+    'queued',
+    'running',
+    'waiting_for_you',
+    'done',
+    'failed',
+    'handed_off',
+    'cancelled'
+);
+
 CREATE TABLE public.job_applications (
     job_id uuid NOT NULL,
     user_id uuid NOT NULL,
@@ -50,6 +67,24 @@ CREATE TABLE public.job_matches (
     scoring_version smallint NOT NULL,
     match_score smallint NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+-- One row per agent run, whatever the agent: the place the homepage, the inbox and per-user
+-- limits read from. A sweep is one press of Play in the desktop app and has no LangGraph
+-- thread; every other run does, under a thread_id generated when the run is created.
+CREATE TABLE public.agent_runs (
+    run_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    user_id uuid NOT NULL,
+    type public.agent_run_type NOT NULL,
+    parent_run_id uuid,
+    job_id uuid,
+    thread_id uuid,
+    status public.agent_run_status DEFAULT 'queued'::public.agent_run_status NOT NULL,
+    title text NOT NULL,
+    started_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT agent_runs_thread_unless_sweep CHECK (type = 'sweep' OR thread_id IS NOT NULL),
+    CONSTRAINT agent_runs_job_has_job_id CHECK (type <> 'job' OR job_id IS NOT NULL)
 );
 
 CREATE TABLE public.preferences (
@@ -115,6 +150,12 @@ ALTER TABLE ONLY public.instruction_extractions
 ALTER TABLE ONLY public.job_matches
     ADD CONSTRAINT job_matches_pkey PRIMARY KEY (user_id, job_id);
 
+ALTER TABLE ONLY public.agent_runs
+    ADD CONSTRAINT agent_runs_pkey PRIMARY KEY (run_id);
+
+ALTER TABLE ONLY public.agent_runs
+    ADD CONSTRAINT agent_runs_thread_id_key UNIQUE (thread_id);
+
 ALTER TABLE ONLY public.job_matches
     ADD CONSTRAINT job_matches_score_range CHECK (match_score BETWEEN 0 AND 100);
 
@@ -144,6 +185,16 @@ CREATE INDEX idx_resumes_user_id ON public.resumes USING btree (user_id);
 -- this, every job delete would scan the whole table to cascade.
 CREATE INDEX idx_job_matches_job_id ON public.job_matches USING btree (job_id);
 
+-- At most one unfinished job run per user and posting, so two analyze calls for the same job
+-- can't start two threads. Finished runs don't count, so a repost seen later starts fresh.
+CREATE UNIQUE INDEX agent_runs_one_active_job ON public.agent_runs USING btree (user_id, job_id)
+    WHERE type = 'job' AND status IN ('queued', 'running', 'waiting_for_you');
+
+-- Serves the homepage list, newest activity first.
+CREATE INDEX idx_agent_runs_user_updated ON public.agent_runs USING btree (user_id, updated_at DESC);
+
+CREATE INDEX idx_agent_runs_parent ON public.agent_runs USING btree (parent_run_id);
+
 CREATE UNIQUE INDEX unique_user_job ON public.job_applications USING btree (job_id, user_id);
 
 ALTER TABLE ONLY public.job_applications
@@ -157,6 +208,16 @@ ALTER TABLE ONLY public.job_matches
 
 ALTER TABLE ONLY public.job_matches
     ADD CONSTRAINT job_matches_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(user_id) ON DELETE CASCADE;
+
+ALTER TABLE ONLY public.agent_runs
+    ADD CONSTRAINT agent_runs_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(user_id) ON DELETE CASCADE;
+
+-- A deleted parent leaves its children as standalone runs rather than erasing their history.
+ALTER TABLE ONLY public.agent_runs
+    ADD CONSTRAINT agent_runs_parent_run_id_fkey FOREIGN KEY (parent_run_id) REFERENCES public.agent_runs(run_id) ON DELETE SET NULL;
+
+ALTER TABLE ONLY public.agent_runs
+    ADD CONSTRAINT agent_runs_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.jobs(job_id) ON DELETE CASCADE;
 
 ALTER TABLE ONLY public.preferences
     ADD CONSTRAINT preferences_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(user_id) ON DELETE CASCADE;
@@ -194,6 +255,7 @@ ALTER TABLE public.resumes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.jobs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.job_applications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.job_matches ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.agent_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.instruction_extractions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
 
