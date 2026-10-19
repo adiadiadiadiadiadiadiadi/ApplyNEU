@@ -30,3 +30,25 @@ export const addJob = async (company: string, title: string, description: string
     throw new AppError(500, 'Error creating job.');
   }
 };
+/**
+ * Fetches a stored posting by id.
+ * @param job_id - Job to fetch
+ * @throws AppError(404) when no job has that id
+ */
+export const getJobById = async (job_id: string) => {
+  try {
+    const result = await pool.query(
+      `
+        SELECT job_id, company, title, description
+        FROM jobs
+        WHERE job_id = $1;
+      `,
+      [job_id]
+    );
+    if (!result.rows[0]) throw new AppError(404, 'Job not found.');
+    return result.rows[0];
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    throw new AppError(500, 'Error fetching job.');
+  }
+};
