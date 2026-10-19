@@ -7,7 +7,7 @@ jest.unstable_mockModule('../../src/db/index.ts', () => ({
     pool: { query },
 }));
 
-const { addJob } = await import('../../src/services/job.service.ts');
+const { addJob, getJobById } = await import('../../src/services/job.service.ts');
 
 const COMPANY = 'Acme';
 const TITLE = 'Software Engineer';
@@ -56,5 +56,21 @@ describe('addJob', () => {
         query.mockResolvedValue({ rows: [] });
 
         await expect(addJob(COMPANY, TITLE, DESCRIPTION)).rejects.toMatchObject({ status: 500 });
+    });
+});
+
+describe('getJobById', () => {
+    it('returns the posting for that id', async () => {
+        const row = { job_id: 'job-1', company: COMPANY, title: TITLE, description: DESCRIPTION };
+        query.mockResolvedValue({ rows: [row] });
+
+        await expect(getJobById('job-1')).resolves.toEqual(row);
+        expect(lastCall()[1]).toEqual(['job-1']);
+    });
+
+    it('throws 404 when the job does not exist', async () => {
+        query.mockResolvedValue({ rows: [] });
+
+        await expect(getJobById('missing')).rejects.toMatchObject({ status: 404 });
     });
 });
