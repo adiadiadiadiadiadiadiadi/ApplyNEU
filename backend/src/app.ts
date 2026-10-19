@@ -15,6 +15,7 @@ import taskController, { meTaskController } from './controller/task.controller.t
 import { meApplicationController } from './controller/application.controller.ts';
 import { mePreferenceController } from './controller/preference.controller.ts';
 import { meContextController } from './controller/context.controller.ts';
+import { meAgentController } from './controller/agent.controller.ts';
 import { interestController } from './controller/interest.controller.ts';
 import { authenticate } from './controller/middleware/authenticate.ts';
 import errorHandler from './controller/middleware/handlers/errorHandler.ts';
@@ -95,6 +96,7 @@ meRouter.use('/jobs', meJobController());
 meRouter.use('/tasks', meTaskController());
 meRouter.use('/applications', meApplicationController());
 meRouter.use('/context', meContextController());
+meRouter.use('/agents', meAgentController());
 app.use('/me', meRouter);
 
 app.use(errorHandler);
