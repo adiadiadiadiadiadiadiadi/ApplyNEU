@@ -66,6 +66,7 @@ CREATE TABLE public.job_matches (
     candidate_hash text NOT NULL,
     scoring_version smallint NOT NULL,
     match_score smallint NOT NULL,
+    rationale text,
     created_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
@@ -96,7 +97,9 @@ CREATE TABLE public.preferences (
     email_notifications boolean DEFAULT true NOT NULL,
     unpaid_roles boolean DEFAULT false NOT NULL,
     primary_resume_id uuid,
-    interests text[] DEFAULT '{}'::text[] NOT NULL
+    interests text[] DEFAULT '{}'::text[] NOT NULL,
+    max_agents smallint DEFAULT 2 NOT NULL,
+    CONSTRAINT preferences_max_agents_range CHECK (max_agents BETWEEN 1 AND 5)
 );
 
 CREATE TABLE public.profile (
