@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.ts';
 import { AppError } from '../../errors/AppError.ts';
-import type { AgentRun, AgentRunGroups, AgentRunStatus, AgentRunType } from '../../types/agentRuns.ts';
+import type { AgentRun, AgentRunGroups, AgentRunStatus, AgentRunType, WokenRun } from '../../types/agentRuns.ts';
 
 /** Finished runs shown on the homepage; active runs are always shown in full. */
 const RECENT_LIMIT = 20;
@@ -60,7 +61,7 @@ type NewAgentRun = {
 
 /**
  * Records a new run. Every type except sweep gets a fresh thread_id for its LangGraph thread,
- * returned so the caller can start the graph on it.
+ * returned so the caller can start the graph on it. A queued run joins the back of the line.
  * @throws AppError(409) when the user already has an unfinished run for this job
  */
 export const createAgentRun = async ({
@@ -69,8 +70,8 @@ export const createAgentRun = async ({
   try {
     const result = await pool.query(
       `
-        INSERT INTO agent_runs (user_id, type, title, job_id, parent_run_id, thread_id, status)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO agent_runs (user_id, type, title, job_id, parent_run_id, thread_id, status, queued_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7::agent_run_status, CASE WHEN $7::agent_run_status = 'queued' THEN clock_timestamp() END)
         RETURNING ${RUN_COLUMNS}, thread_id;
       `,
       [user_id, type, title, job_id ?? null, parent_run_id ?? null, type === 'sweep' ? null : randomUUID(), status]
@@ -178,46 +179,13 @@ export const getAgentRunForUser = async (run_id: string, user_id: string): Promi
   return result.rows[0];
 };
 
-export type ClaimResult = 'claimed' | 'full' | 'gone';
-
-/**
- * Moves a run to running if the user has fewer running runs than their num_agents; runs waiting
- * on the user don't hold a slot. A per-user advisory lock serializes claims, so two workers
- * can't both take the last slot.
- * @param from - Statuses the run may be claimed from: queued for a start, waiting_for_you for a resume
- * @returns claimed, full (try again later), or gone (cancelled or finished; drop the job)
- */
-export const claimAgentRun = async (run_id: string, from: AgentRunStatus[]): Promise<ClaimResult> => {
+const transaction = async <T>(work: (client: PoolClient) => Promise<T>): Promise<T> => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const { rows: [run] } = await client.query(
-      `SELECT user_id, status FROM agent_runs WHERE run_id = $1;`,
-      [run_id]
-    );
-    if (!run || !from.includes(run.status)) {
-      await client.query('ROLLBACK');
-      return 'gone';
-    }
-    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1));`, [run.user_id]);
-    const { rows: [slots] } = await client.query(
-      `
-        SELECT
-          (SELECT count(*)::int FROM agent_runs WHERE user_id = $1 AND status = 'running') AS running,
-          (SELECT num_agents FROM preferences WHERE user_id = $1) AS num_agents;
-      `,
-      [run.user_id]
-    );
-    if (slots.running >= (slots.num_agents ?? 15)) {
-      await client.query('ROLLBACK');
-      return 'full';
-    }
-    await client.query(
-      `UPDATE agent_runs SET status = 'running', updated_at = now() WHERE run_id = $1;`,
-      [run_id]
-    );
+    const result = await work(client);
     await client.query('COMMIT');
-    return 'claimed';
+    return result;
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     throw error;
@@ -226,36 +194,141 @@ export const claimAgentRun = async (run_id: string, from: AgentRunStatus[]): Pro
   }
 };
 
+/** Serializes every change to who holds or waits for one of the user's slots. */
+const lockLine = (client: PoolClient, user_id: string) =>
+  client.query(`SELECT pg_advisory_xact_lock(hashtext($1));`, [user_id]);
+
 /**
- * Moves a run between statuses only if it's still in one of `from`, so a run cancelled while
- * a node was running isn't flipped back to done or waiting.
- * @returns whether the run moved
+ * Gives each of the user's free slots to the next run in line and moves it to running. Runs
+ * waiting on the user don't hold a slot. The line is every queued run plus every paused run the
+ * user has answered: answered resumes first, then by queued_at. Call with the line locked.
+ * @returns the runs that took a slot, whose jobs the caller enqueues after commit
  */
-export const moveAgentRun = async (run_id: string, from: AgentRunStatus[], to: AgentRunStatus) => {
-  const result = await pool.query(
+const fillSlots = async (client: PoolClient, user_id: string): Promise<WokenRun[]> => {
+  const result = await client.query<WokenRun>(
     `
-      UPDATE agent_runs SET status = $3, updated_at = now()
-      WHERE run_id = $1 AND status = ANY($2::agent_run_status[]);
+      WITH next AS (
+        SELECT run_id FROM agent_runs
+        WHERE user_id = $1 AND (status = 'queued' OR (status = 'waiting_for_you' AND resume IS NOT NULL))
+        ORDER BY resume IS NULL, queued_at, run_id
+        LIMIT GREATEST(
+          COALESCE((SELECT num_agents FROM preferences WHERE user_id = $1), 15)
+            - (SELECT count(*) FROM agent_runs WHERE user_id = $1 AND status = 'running'),
+          0
+        )
+      )
+      UPDATE agent_runs SET status = 'running', updated_at = now()
+      WHERE run_id IN (SELECT run_id FROM next)
+      RETURNING run_id, thread_id, resume;
     `,
-    [run_id, from, to]
+    [user_id]
   );
-  return (result.rowCount ?? 0) > 0;
+  return result.rows;
 };
 
 /**
- * Cancels one of the caller's unfinished runs.
+ * Hands the user's free slots to the head of their line, e.g. after a new run joins it.
+ * @returns the runs that took a slot, whose jobs the caller enqueues
+ */
+export const wakeNextRuns = (user_id: string): Promise<WokenRun[]> =>
+  transaction(async (client) => {
+    await lockLine(client, user_id);
+    return fillSlots(client, user_id);
+  });
+
+/**
+ * Records the user's answer to a paused run and puts the run back in line, ahead of every
+ * queued start, then hands it a slot if one is free. Answering the same pause twice changes
+ * nothing.
+ * @param step - The pause being answered, e.g. 'approval'
+ * @param value - What the paused node receives
+ * @returns the runs that took a slot, whose jobs the caller enqueues
+ * @throws AppError(404) when no run has that thread
+ */
+export const answerAgentRun = (thread_id: string, step: string, value: unknown): Promise<WokenRun[]> =>
+  transaction(async (client) => {
+    const { rows: [run] } = await client.query(`SELECT user_id FROM agent_runs WHERE thread_id = $1;`, [thread_id]);
+    if (!run) throw new AppError(404, 'Agent run not found.');
+    await lockLine(client, run.user_id);
+    await client.query(
+      `
+        UPDATE agent_runs SET resume = $2, queued_at = clock_timestamp(), updated_at = now()
+        WHERE thread_id = $1 AND status = 'waiting_for_you' AND resume IS NULL;
+      `,
+      [thread_id, JSON.stringify({ step, value })]
+    );
+    return fillSlots(client, run.user_id);
+  });
+
+/**
+ * Moves a run between statuses only if it's still in one of `from`, so a run cancelled while
+ * a node was running isn't flipped back to done or waiting. In the same transaction, a slot the
+ * move frees goes to the next run in line.
+ * @returns whether the run moved, and the runs that took a slot, whose jobs the caller enqueues
+ */
+export const moveAgentRun = (
+  run_id: string,
+  from: AgentRunStatus[],
+  to: AgentRunStatus
+): Promise<{ moved: boolean; woken: WokenRun[] }> =>
+  transaction(async (client) => {
+    const { rows: [run] } = await client.query(`SELECT user_id FROM agent_runs WHERE run_id = $1;`, [run_id]);
+    if (!run) return { moved: false, woken: [] };
+    await lockLine(client, run.user_id);
+    const result = await client.query(
+      `
+        UPDATE agent_runs SET status = $3, resume = NULL, updated_at = now()
+        WHERE run_id = $1 AND status = ANY($2::agent_run_status[]);
+      `,
+      [run_id, from, to]
+    );
+    return { moved: (result.rowCount ?? 0) > 0, woken: await fillSlots(client, run.user_id) };
+  });
+
+/**
+ * Cancels one of the caller's unfinished runs and hands a slot it frees to the next run in line.
+ * @returns the cancelled run, and the runs that took a slot, whose jobs the caller enqueues
  * @throws AppError(404) when the run doesn't exist or isn't theirs; AppError(409) when it already finished
  */
-export const cancelAgentRun = async (run_id: string, user_id: string): Promise<AgentRun> => {
-  const run = await getAgentRunForUser(run_id, user_id);
-  if (FINISHED.includes(run.status)) throw new AppError(409, 'This run has already finished.');
-  const result = await pool.query<AgentRun>(
+export const cancelAgentRun = (run_id: string, user_id: string): Promise<{ run: AgentRun; woken: WokenRun[] }> =>
+  transaction(async (client) => {
+    await lockLine(client, user_id);
+    const { rows: [run] } = await client.query<AgentRun>(
+      `SELECT ${RUN_COLUMNS} FROM agent_runs WHERE run_id = $1 AND user_id = $2;`,
+      [run_id, user_id]
+    );
+    if (!run) throw new AppError(404, 'Agent run not found.');
+    if (FINISHED.includes(run.status)) throw new AppError(409, 'This run has already finished.');
+    const result = await client.query<AgentRun>(
+      `
+        UPDATE agent_runs SET status = 'cancelled', resume = NULL, updated_at = now()
+        WHERE run_id = $1
+        RETURNING ${RUN_COLUMNS};
+      `,
+      [run_id]
+    );
+    return { run: result.rows[0]!, woken: await fillSlots(client, user_id) };
+  });
+
+/**
+ * The periodic safety net: hands out free slots for every user who has one and someone in line,
+ * then lists every run holding a slot it took from the line, so a job lost between a hand-off's
+ * commit and its enqueue is added again. Re-adding a job that still exists is a no-op.
+ * @returns every run holding a slot it was handed, whose jobs the caller enqueues
+ */
+export const wakeStalledRuns = async (): Promise<WokenRun[]> => {
+  const { rows: users } = await pool.query<{ user_id: string }>(
     `
-      UPDATE agent_runs SET status = 'cancelled', updated_at = now()
-      WHERE run_id = $1 AND user_id = $2
-      RETURNING ${RUN_COLUMNS};
-    `,
-    [run_id, user_id]
+      SELECT DISTINCT line.user_id
+      FROM agent_runs line
+      WHERE (line.status = 'queued' OR (line.status = 'waiting_for_you' AND line.resume IS NOT NULL))
+        AND (SELECT count(*) FROM agent_runs r WHERE r.user_id = line.user_id AND r.status = 'running')
+          < COALESCE((SELECT num_agents FROM preferences p WHERE p.user_id = line.user_id), 15);
+    `
   );
-  return result.rows[0]!;
+  for (const { user_id } of users) await wakeNextRuns(user_id);
+  const { rows } = await pool.query<WokenRun>(
+    `SELECT run_id, thread_id, resume FROM agent_runs WHERE status = 'running' AND queued_at IS NOT NULL;`
+  );
+  return rows;
 };

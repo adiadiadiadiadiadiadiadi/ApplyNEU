@@ -13,6 +13,13 @@ export type AgentRun = {
   updated_at: string;
 };
 
+/** A run just handed a slot: a start, or a resume carrying the user's answer. */
+export type WokenRun = {
+  run_id: string;
+  thread_id: string | null;
+  resume: { step: string; value: unknown } | null;
+};
+
 export type AgentRunGroups = {
   needs_you: AgentRun[];
   running: AgentRun[];
