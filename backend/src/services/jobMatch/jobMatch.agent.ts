@@ -7,6 +7,8 @@ import {
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+export const JOB_MATCH_MODEL = 'claude-haiku-4-5-20251001';
+
 /**
  * Scores one job for one candidate with Claude Haiku and parses the JSON it returns, which
  * structured output holds to the schema for the variant sent. Never touches the database.
@@ -17,7 +19,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
  */
 export const runJobMatch = async (candidateBlock: string, job: JobMatchJob, withExtraction: boolean) => {
   const message = await withRetry(() => anthropic.messages.create({
-    model: 'claude-haiku-4-5-20251001',
+    model: JOB_MATCH_MODEL,
     max_tokens: 16000,
     output_config: {
       format: {

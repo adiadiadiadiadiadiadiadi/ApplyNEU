@@ -14,13 +14,20 @@ jest.unstable_mockModule('../../src/db/index.ts', () => ({
     pool: { query },
 }));
 
-const { getInstructions, saveInstructions } = await import('../../src/services/instructions/instructions.service.ts');
+const { destinationDomain, getInstructions, saveInstructions } = await import('../../src/services/instructions/instructions.service.ts');
 const { EXTRACTION_VERSION } = await import('../../src/services/instructions/instructions.prompt.ts');
 
 const HASH = 'abc123';
 const INSTRUCTIONS = [
     { kind: 'external_application' as const, instruction: 'Apply through Acme careers portal', description: 'https://acme.com/jobs/1' },
 ];
+
+const MODEL = 'claude-haiku-4-5-20251001';
+
+/** The memo read's rows: one per stored step, or one all-null row for an empty extraction. */
+const extracted = (instructions: unknown[]) => ({
+    rows: instructions.length ? instructions : [{ kind: null, instruction: null, description: null }],
+});
 
 const lastCall = () => query.mock.calls[query.mock.calls.length - 1]!;
 
@@ -36,37 +43,55 @@ beforeEach(() => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
 });
 
+describe('destinationDomain', () => {
+    it.each([
+        ['https://www.Acme.com/jobs/1', 'acme.com'],
+        ['Apply at http://careers.acme.com:8443/apply?id=1', 'careers.acme.com'],
+        ['https://acme.wd5.myworkdayjobs.com#apply', 'acme.wd5.myworkdayjobs.com'],
+        ['Email jobs@Acme.example with your transcript', 'acme.example'],
+        ['https://ats.rippling.com/tive or recruiting@tive.com', 'ats.rippling.com'],
+    ])('reads %s as %s', (text, domain) => {
+        expect(destinationDomain(text)).toBe(domain);
+    });
+
+    it('returns null when the text has no URL or email', () => {
+        expect(destinationDomain('Complete the HackerRank assessment')).toBeNull();
+    });
+});
+
 describe('getInstructions', () => {
-    it('looks up the posting hash under the current extraction version', async () => {
+    it('looks up the posting hash under the current extraction version, in extraction order', async () => {
         query.mockResolvedValue({ rows: [] });
 
         await getInstructions(HASH);
 
         const [text, params] = lastCall();
         expect(text).toContain('FROM instruction_extractions');
+        expect(text).toContain('LEFT JOIN job_instructions');
+        expect(text).toContain('ORDER BY i.source, i.position');
         expect(params).toEqual([HASH, EXTRACTION_VERSION]);
     });
 
-    it('returns null when the posting has not been extracted', async () => {
+    it('returns null when the posting has no extraction header', async () => {
         query.mockResolvedValue({ rows: [] });
 
         await expect(getInstructions(HASH)).resolves.toBeNull();
     });
 
-    it('returns the stored instructions on a hit', async () => {
-        query.mockResolvedValue({ rows: [{ instructions: INSTRUCTIONS }] });
+    it('returns the stored steps on a hit', async () => {
+        query.mockResolvedValue(extracted(INSTRUCTIONS));
 
         await expect(getInstructions(HASH)).resolves.toEqual(INSTRUCTIONS);
     });
 
-    it('returns an empty array, not null, for a posting that requires nothing', async () => {
-        query.mockResolvedValue({ rows: [{ instructions: [] }] });
+    it('returns an empty array, not null, for a header with no steps', async () => {
+        query.mockResolvedValue(extracted([]));
 
         await expect(getInstructions(HASH)).resolves.toEqual([]);
     });
 
     it('serves a repeat hit from redis', async () => {
-        query.mockResolvedValue({ rows: [{ instructions: INSTRUCTIONS }] });
+        query.mockResolvedValue(extracted(INSTRUCTIONS));
 
         await getInstructions(HASH);
         await expect(getInstructions(HASH)).resolves.toEqual(INSTRUCTIONS);
@@ -76,7 +101,7 @@ describe('getInstructions', () => {
     });
 
     it('keeps an empty extraction in redis too', async () => {
-        query.mockResolvedValue({ rows: [{ instructions: [] }] });
+        query.mockResolvedValue(extracted([]));
 
         await getInstructions(HASH);
         await expect(getInstructions(HASH)).resolves.toEqual([]);
@@ -85,7 +110,7 @@ describe('getInstructions', () => {
     });
 
     it('does not cache a miss', async () => {
-        query.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [{ instructions: INSTRUCTIONS }] });
+        query.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce(extracted(INSTRUCTIONS));
 
         await getInstructions(HASH);
         await expect(getInstructions(HASH)).resolves.toEqual(INSTRUCTIONS);
@@ -93,7 +118,7 @@ describe('getInstructions', () => {
 
     it('falls back to postgres when redis is down', async () => {
         redisGet.mockRejectedValueOnce(new Error('redis down'));
-        query.mockResolvedValue({ rows: [{ instructions: INSTRUCTIONS }] });
+        query.mockResolvedValue(extracted(INSTRUCTIONS));
 
         await expect(getInstructions(HASH)).resolves.toEqual(INSTRUCTIONS);
     });
@@ -106,37 +131,55 @@ describe('getInstructions', () => {
 });
 
 describe('saveInstructions', () => {
-    it('inserts under the current extraction version and keeps the first write', async () => {
-        query.mockResolvedValue({ rows: [] });
+    it('writes the header and the steps in one statement, keeping the first write', async () => {
+        query.mockResolvedValue({ rows: [{ won: true }] });
 
-        await saveInstructions(HASH, INSTRUCTIONS);
+        await saveInstructions(HASH, INSTRUCTIONS, MODEL);
 
-        const [text, params] = lastCall();
+        expect(query).toHaveBeenCalledTimes(1);
+        const [text] = lastCall();
         expect(text).toContain('INSERT INTO instruction_extractions');
         expect(text).toContain('ON CONFLICT (description_hash, extraction_version) DO NOTHING');
-        expect(params).toEqual([HASH, EXTRACTION_VERSION, JSON.stringify(INSTRUCTIONS)]);
+        expect(text).toContain('INSERT INTO job_instructions');
+        expect(text).toContain('FROM header');
     });
 
-    it('stores an empty extraction as an empty array', async () => {
-        query.mockResolvedValue({ rows: [] });
+    it('sends each step as parallel arrays with its destination domain', async () => {
+        query.mockResolvedValue({ rows: [{ won: true }] });
 
-        await saveInstructions(HASH, []);
+        await saveInstructions(HASH, INSTRUCTIONS, MODEL);
 
-        expect(lastCall()[1]![2]).toBe('[]');
+        expect(lastCall()[1]).toEqual([
+            HASH,
+            EXTRACTION_VERSION,
+            MODEL,
+            ['external_application'],
+            ['Apply through Acme careers portal'],
+            ['https://acme.com/jobs/1'],
+            ['acme.com'],
+        ]);
+    });
+
+    it('stores an empty extraction as a header with no steps', async () => {
+        query.mockResolvedValue({ rows: [{ won: true }] });
+
+        await saveInstructions(HASH, [], MODEL);
+
+        expect(lastCall()[1]!.slice(3)).toEqual([[], [], [], []]);
     });
 
     it('writes redis when this request won the insert', async () => {
-        query.mockResolvedValue({ rows: [], rowCount: 1 });
+        query.mockResolvedValue({ rows: [{ won: true }] });
 
-        await saveInstructions(HASH, INSTRUCTIONS);
+        await saveInstructions(HASH, INSTRUCTIONS, MODEL);
 
         expect(redisStore.get(`instructions:${EXTRACTION_VERSION}:${HASH}`)).toBe(JSON.stringify(INSTRUCTIONS));
     });
 
     it('leaves redis alone when another request already stored the posting', async () => {
-        query.mockResolvedValue({ rows: [], rowCount: 0 });
+        query.mockResolvedValue({ rows: [{ won: false }] });
 
-        await saveInstructions(HASH, INSTRUCTIONS);
+        await saveInstructions(HASH, INSTRUCTIONS, MODEL);
 
         expect(redisSet).not.toHaveBeenCalled();
     });
@@ -144,6 +187,6 @@ describe('saveInstructions', () => {
     it('does not throw when the write fails', async () => {
         query.mockRejectedValue(new Error('connection lost'));
 
-        await expect(saveInstructions(HASH, INSTRUCTIONS)).resolves.toBeUndefined();
+        await expect(saveInstructions(HASH, INSTRUCTIONS, MODEL)).resolves.toBeUndefined();
     });
 });

@@ -1,9 +1,10 @@
 /**
- * Stored on every instruction_extractions row; a row extracted under a different version is
- * ignored. Bump it when a change to EXTRACTION_RULES or the model should re-extract postings.
+ * Stored on every instruction_extractions and job_instructions row; rows extracted under a
+ * different version are ignored. Bump it when a change to EXTRACTION_RULES or the model should re-extract postings.
  */
 export const EXTRACTION_VERSION = 1;
 
+/** Mirrors the instruction_kind enum in db/schema.sql; add a kind to both. */
 export const INSTRUCTION_KINDS = ['external_application', 'cover_letter', 'other'] as const;
 
 export const INSTRUCTION_LIST_SCHEMA = {
