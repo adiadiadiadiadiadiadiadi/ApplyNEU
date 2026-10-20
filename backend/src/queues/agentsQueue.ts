@@ -6,12 +6,10 @@ import { bullConnection } from './connection.ts';
 export const AGENTS_QUEUE = 'agents';
 
 /**
- * BullMQ runs lower numbers first: a resume the user just answered, then a run the sweep is
- * blocked on (a cover letter NUWorks asks for), then a run the user started, then runs from the
- * router. Run-now moves a job to 0, which BullMQ treats as unprioritized and processes before
- * every prioritized job.
+ * First in, first out, except that a resume the user just answered goes ahead of new starts.
+ * BullMQ runs lower numbers first and keeps arrival order within a priority.
  */
-export const AGENT_PRIORITY = { resume: 1, blocking: 2, user: 3, router: 4 } as const;
+export const AGENT_PRIORITY = { resume: 1, start: 2 } as const;
 
 let queue: Queue | null = null;
 

@@ -48,7 +48,7 @@ const waitForSlot = async (job: Job, token?: string) => {
 const start = async (job: Job, token?: string) => {
     const run = await getAgentRun(job.data.run_id);
     const { graph, start: runGraph } = graphFor(run.type);
-    const claim = await claimAgentRun(run.run_id, ['queued'], { force: job.data.force });
+    const claim = await claimAgentRun(run.run_id, ['queued']);
     if (claim === 'gone') return;
     if (claim === 'full') return waitForSlot(job, token);
     await runGraph({ thread_id: run.thread_id!, user_id: run.user_id, job_id: run.job_id! });

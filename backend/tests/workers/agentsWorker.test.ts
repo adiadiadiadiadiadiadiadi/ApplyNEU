@@ -43,7 +43,7 @@ await import('../../src/workers/agentsWorker.ts');
 
 const RUN = { run_id: 'run-1', type: 'job', user_id: 'user-1', job_id: 'job-1', thread_id: 'thread-1' };
 const moveToDelayed = jest.fn<(ts: number, token?: string) => Promise<void>>();
-const startJob = (data: Record<string, unknown> = {}) => ({ name: 'start', id: 'start:run-1', data: { run_id: 'run-1', ...data }, moveToDelayed, attemptsMade: 0, opts: { attempts: 3 } });
+const startJob = () => ({ name: 'start', id: 'start:run-1', data: { run_id: 'run-1' }, moveToDelayed, attemptsMade: 0, opts: { attempts: 3 } });
 const resumeJob = { name: 'resume', id: 'thread-1:approval', data: { thread_id: 'thread-1', value: { approved: true } }, moveToDelayed, attemptsMade: 0, opts: { attempts: 3 } };
 
 beforeEach(() => {
@@ -63,7 +63,7 @@ describe('start', () => {
     it('claims a slot, runs the graph, and marks a finished thread done', async () => {
         await processor(startJob(), 'token');
 
-        expect(claimAgentRun).toHaveBeenCalledWith('run-1', ['queued'], { force: undefined });
+        expect(claimAgentRun).toHaveBeenCalledWith('run-1', ['queued']);
         expect(runJobThread).toHaveBeenCalledWith('thread-1', { user_id: 'user-1', job_id: 'job-1' });
         expect(moveAgentRun).toHaveBeenCalledWith('run-1', ['running'], 'done');
     });
@@ -74,12 +74,6 @@ describe('start', () => {
         await processor(startJob(), 'token');
 
         expect(moveAgentRun).toHaveBeenCalledWith('run-1', ['running'], 'waiting_for_you');
-    });
-
-    it('passes run-now through as force', async () => {
-        await processor(startJob({ force: true }), 'token');
-
-        expect(claimAgentRun).toHaveBeenCalledWith('run-1', ['queued'], { force: true });
     });
 
     it('parks the job without running when the user has no free slot', async () => {

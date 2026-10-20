@@ -1,6 +1,5 @@
 import { getAgentsQueue, AGENT_PRIORITY } from '../queues/agentsQueue.ts';
-import { createAgentRun, getAgentRunForUser, cancelAgentRun } from '../services/agentRun/agentRun.service.ts';
-import { AppError } from '../errors/AppError.ts';
+import { createAgentRun, cancelAgentRun } from '../services/agentRun/agentRun.service.ts';
 import type { AgentRunType } from '../types/agentRuns.ts';
 
 /** How long a finished job is kept, so a repeated start or resume for the same step is ignored. */
@@ -21,19 +20,19 @@ type StartAgent = {
   title: string;
   job_id?: string;
   parent_run_id?: string;
-  source: Exclude<keyof typeof AGENT_PRIORITY, 'resume'>;
 };
 
 /**
- * The only way to start an agent: records a queued run and enqueues its start, so the worker
- * decides when it actually runs under the user's limits. Nothing starts a graph directly.
+ * Starts an agent in the background: records a queued run and enqueues its start, so the worker
+ * decides when it runs under the user's num_agents limit. The job the sweep is on doesn't come
+ * through here; its thread runs inline in the analyze request (#149).
  */
-export const startAgent = async ({ source, ...run }: StartAgent) => {
+export const startAgent = async (run: StartAgent) => {
   const created = await createAgentRun({ ...run, status: 'queued' });
   await getAgentsQueue().add('start', { run_id: created.run_id }, {
     ...JOB_OPTIONS,
     jobId: startJobId(created.run_id),
-    priority: AGENT_PRIORITY[source],
+    priority: AGENT_PRIORITY.start,
   });
   return created;
 };
@@ -52,22 +51,6 @@ export const resumeJobThread = (thread_id: string, step: string, value: unknown)
     jobId: `${thread_id}:${step}`,
     priority: AGENT_PRIORITY.resume,
   });
-
-/**
- * Starts one of the caller's queued runs as soon as a worker is free, ahead of every
- * prioritized job and past the user's num_agents limit.
- * @throws AppError(409) when the run isn't queued
- */
-export const runAgentNow = async (run_id: string, user_id: string) => {
-  const run = await getAgentRunForUser(run_id, user_id);
-  if (run.status !== 'queued') throw new AppError(409, 'Only a queued run can be started now.');
-  const job = await getAgentsQueue().getJob(startJobId(run_id));
-  if (!job) throw new AppError(409, 'This run is no longer waiting to start.');
-  await job.updateData({ ...job.data, force: true });
-  if (await job.isDelayed()) await job.promote();
-  await job.changePriority({ priority: 0 });
-  return run;
-};
 
 /**
  * Cancels one of the caller's unfinished runs and drops its start job if it hasn't run yet.

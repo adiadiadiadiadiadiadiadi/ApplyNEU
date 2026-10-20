@@ -115,11 +115,10 @@ type RunWithThread = AgentRun & { user_id: string; thread_id: string | null };
 const FINISHED: AgentRunStatus[] = ['done', 'failed', 'handed_off', 'cancelled'];
 
 /**
- * Runs that open a browser and so count toward the user's num_agents. Everything else (job
- * threads, cover letters) goes through the queue without taking a slot; their model calls are
- * limited separately.
+ * Runs that count toward the user's num_agents: job threads in flight. The browser that an
+ * external application needs has its own cap (#240).
  */
-const SLOT_TYPES: AgentRunType[] = ['external_apply'];
+const SLOT_TYPES: AgentRunType[] = ['job'];
 
 /**
  * Fetches a run by id with its owner and thread, for the worker.
@@ -163,18 +162,14 @@ export const getAgentRunForUser = async (run_id: string, user_id: string): Promi
 export type ClaimResult = 'claimed' | 'full' | 'gone';
 
 /**
- * Moves a run to running. A browser run (SLOT_TYPES) only moves if the user has fewer running
- * browser runs than their num_agents; runs waiting on the user don't hold a slot. A per-user
- * advisory lock serializes those claims, so two workers can't both take the last slot. Other
- * runs move straight away. `force` (run-now) skips num_agents.
+ * Moves a run to running. A job thread (SLOT_TYPES) only moves if the user has fewer running job
+ * threads than their num_agents; runs waiting on the user don't hold a slot. A per-user advisory
+ * lock serializes those claims, so two workers can't both take the last slot. Other runs move
+ * straight away.
  * @param from - Statuses the run may be claimed from: queued for a start, waiting_for_you for a resume
  * @returns claimed, full (try again later), or gone (cancelled or finished; drop the job)
  */
-export const claimAgentRun = async (
-  run_id: string,
-  from: AgentRunStatus[],
-  { force = false }: { force?: boolean } = {}
-): Promise<ClaimResult> => {
+export const claimAgentRun = async (run_id: string, from: AgentRunStatus[]): Promise<ClaimResult> => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -186,7 +181,7 @@ export const claimAgentRun = async (
       await client.query('ROLLBACK');
       return 'gone';
     }
-    if (SLOT_TYPES.includes(run.type) && !force) {
+    if (SLOT_TYPES.includes(run.type)) {
       await client.query(`SELECT pg_advisory_xact_lock(hashtext($1));`, [run.user_id]);
       const { rows: [slots] } = await client.query(
         `
@@ -197,7 +192,7 @@ export const claimAgentRun = async (
         `,
         [run.user_id, SLOT_TYPES]
       );
-      if (slots.running >= (slots.num_agents ?? 2)) {
+      if (slots.running >= (slots.num_agents ?? 10)) {
         await client.query('ROLLBACK');
         return 'full';
       }
