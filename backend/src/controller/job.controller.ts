@@ -1,6 +1,6 @@
 import express, { type Response } from 'express';
 import { addJob } from '../services/job.service.ts';
-import { sendJobDescription } from '../services/jobMatch/jobMatch.service.ts';
+import { analyzeJob } from '../services/jobRun/jobRun.service.ts';
 import type { AddJobRequest, SendJobDescriptionRequest } from '../types/jobs.ts';
 import { validateAddJob, validateSendJobDescription } from './middleware/validators/job.validate.ts';
 import asyncHandler from './middleware/handlers/asyncHandler.ts';
@@ -24,11 +24,11 @@ export const meJobController = (): express.Router => {
     const router = express.Router();
 
     /** POST /me/jobs/analyze
-     * analyze a job description using Claude Haiku and return matched resume/interest data for the caller.
+     * run the posting's job thread for the caller and return its decision, score and employer instructions.
     **/
     const analyzeJobDescriptionRoute = async (req: SendJobDescriptionRequest, res: Response) => {
         const { job_description, company, title } = req.body;
-        const result = await sendJobDescription(req.auth!.userId, job_description, company, title);
+        const result = await analyzeJob(req.auth!.userId, job_description, company, title);
         res.status(200).json(result);
     };
 

@@ -24,6 +24,17 @@ CREATE TYPE public.agent_run_type AS ENUM (
     'cover_letter'
 );
 
+CREATE TYPE public.instruction_kind AS ENUM (
+    'external_application',
+    'cover_letter',
+    'other'
+);
+
+CREATE TYPE public.instruction_source AS ENUM (
+    'description',
+    'nuworks_modal'
+);
+
 CREATE TYPE public.agent_run_status AS ENUM (
     'queued',
     'running',
@@ -51,13 +62,27 @@ CREATE TABLE public.jobs (
 );
 
 -- Instructions depend only on the posting text, so they are keyed by its hash and shared by
--- every user and every job row with that description. '[]' means "extracted, nothing
--- required"; no row means "not extracted yet".
+-- every user and every job row with that description. A header with no job_instructions
+-- means "extracted, nothing required"; no header means "not extracted yet".
 CREATE TABLE public.instruction_extractions (
     description_hash text NOT NULL,
     extraction_version smallint NOT NULL,
-    instructions jsonb NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    model text NOT NULL,
+    extracted_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+-- One row per required step, so each can be routed and tracked by id. position keeps the
+-- order the steps were extracted in.
+CREATE TABLE public.job_instructions (
+    instruction_id uuid DEFAULT gen_random_uuid() NOT NULL,
+    description_hash text NOT NULL,
+    extraction_version smallint NOT NULL,
+    kind public.instruction_kind NOT NULL,
+    instruction text NOT NULL,
+    description text NOT NULL,
+    destination_domain text,
+    source public.instruction_source NOT NULL,
+    position smallint NOT NULL
 );
 
 CREATE TABLE public.job_matches (
@@ -66,6 +91,7 @@ CREATE TABLE public.job_matches (
     candidate_hash text NOT NULL,
     scoring_version smallint NOT NULL,
     match_score smallint NOT NULL,
+    rationale text,
     created_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
@@ -149,6 +175,12 @@ ALTER TABLE ONLY public.jobs
 ALTER TABLE ONLY public.instruction_extractions
     ADD CONSTRAINT instruction_extractions_pkey PRIMARY KEY (description_hash, extraction_version);
 
+ALTER TABLE ONLY public.job_instructions
+    ADD CONSTRAINT job_instructions_pkey PRIMARY KEY (instruction_id);
+
+ALTER TABLE ONLY public.job_instructions
+    ADD CONSTRAINT job_instructions_position_uniq UNIQUE (description_hash, extraction_version, source, position);
+
 ALTER TABLE ONLY public.job_matches
     ADD CONSTRAINT job_matches_pkey PRIMARY KEY (user_id, job_id);
 
@@ -205,6 +237,9 @@ ALTER TABLE ONLY public.job_applications
 ALTER TABLE ONLY public.job_applications
     ADD CONSTRAINT job_applications_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(user_id) ON DELETE CASCADE;
 
+ALTER TABLE ONLY public.job_instructions
+    ADD CONSTRAINT job_instructions_extraction_fkey FOREIGN KEY (description_hash, extraction_version) REFERENCES public.instruction_extractions(description_hash, extraction_version) ON DELETE CASCADE;
+
 ALTER TABLE ONLY public.job_matches
     ADD CONSTRAINT job_matches_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.jobs(job_id) ON DELETE CASCADE;
 
@@ -259,6 +294,7 @@ ALTER TABLE public.job_applications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.job_matches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.agent_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.instruction_extractions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.job_instructions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
 
 -- Give every new signup their starter rows: the users record every other table points

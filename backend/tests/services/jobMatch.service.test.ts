@@ -86,8 +86,10 @@ const db = ({ memo, score }: { memo?: (params: unknown[]) => Rows; score?: (para
         return { rows: [] };
     });
 
-const memoHit = (instructions: unknown[]) => () => ({ rows: [{ instructions }] });
-const scoreHit = (match_score: number) => () => ({ rows: [{ match_score }] });
+const memoHit = (instructions: unknown[]) => () => ({
+    rows: instructions.length ? instructions : [{ kind: null, instruction: null, description: null }],
+});
+const scoreHit = (match_score: number, rationale: string | null = 'Stored rationale.') => () => ({ rows: [{ match_score, rationale }] });
 
 const lastRequest = () => create.mock.calls[create.mock.calls.length - 1]![0];
 const systemText = () => (lastRequest().system as { text: string }[]).map((block) => block.text).join('\n');
@@ -167,7 +169,7 @@ describe('sendJobDescription', () => {
             expect(create).not.toHaveBeenCalled();
             expect(cacheWrite()).toBeUndefined();
             expect(memoWrite()).toBeUndefined();
-            expect(result).toEqual({ decision: 'APPLY', match_score: 72, rationale: null, employer_instructions: instructions });
+            expect(result).toEqual({ decision: 'APPLY', match_score: 72, rationale: 'Stored rationale.', employer_instructions: instructions });
         });
 
         it('keys the lookup on the posting, the user, the rendered candidate and SCORING_VERSION', async () => {
@@ -236,7 +238,7 @@ describe('sendJobDescription', () => {
             const [sql, params] = cacheWrite()!;
             expect(sql).not.toContain('employer_instructions');
             expect(params).toEqual([
-                COMPANY, TITLE, normalizeAndHash(DESCRIPTION), USER_ID, candidateHashSent(), SCORING_VERSION, 80,
+                COMPANY, TITLE, normalizeAndHash(DESCRIPTION), USER_ID, candidateHashSent(), SCORING_VERSION, 80, 'Good fit.',
             ]);
         });
 
@@ -459,8 +461,8 @@ describe('sendJobDescription', () => {
             await analyze();
 
             const [key, value, ...ttl] = redisSet.mock.calls.find(([k]) => k.startsWith('job_match:'))!;
-            expect(key).toMatch(new RegExp(`^job_match:v${SCORING_VERSION}:${USER_ID}:[0-9a-f]{64}$`));
-            expect(value).toBe('80');
+            expect(key).toMatch(new RegExp(`^job_match:v${SCORING_VERSION}:rationale:${USER_ID}:[0-9a-f]{64}$`));
+            expect(JSON.parse(value)).toEqual({ match_score: 80, rationale: 'Stored rationale.' });
             expect(ttl).toEqual(['EX', 3600]);
         });
 
@@ -477,7 +479,7 @@ describe('sendJobDescription', () => {
             getCandidateContext.mockResolvedValue(candidateContext());
             create.mockResolvedValue(fit());
             query.mockImplementation(async (sql: string) =>
-                sql.includes('INSERT INTO') ? { rows: [], rowCount: 1 } : { rows: [] });
+                sql.includes('INSERT INTO') ? { rows: [{ won: true }], rowCount: 1 } : { rows: [] });
 
             await analyze();
             await analyze();
@@ -532,7 +534,15 @@ describe('sendJobDescription', () => {
             await analyze();
 
             expect(systemText()).toContain(EXTRACTION_RULES);
-            expect(memoWrite()![1]).toEqual([normalizeAndHash(DESCRIPTION), EXTRACTION_VERSION, JSON.stringify(stored)]);
+            expect(memoWrite()![1]).toEqual([
+                normalizeAndHash(DESCRIPTION),
+                EXTRACTION_VERSION,
+                'claude-haiku-4-5-20251001',
+                ['external_application'],
+                ['Apply through Acme portal'],
+                ['https://acme.example/jobs'],
+                ['acme.example'],
+            ]);
         });
 
         it('gives a second user on the same posting one scoring-only call and the stored instructions', async () => {
@@ -587,7 +597,7 @@ describe('sendJobDescription', () => {
 
         it('re-extracts a posting stored only under an older extraction version', async () => {
             getCandidateContext.mockResolvedValue(candidateContext());
-            db({ memo: (params) => (params[1] === EXTRACTION_VERSION - 1 ? { rows: [{ instructions: stored }] } : { rows: [] }) });
+            db({ memo: (params) => (params[1] === EXTRACTION_VERSION - 1 ? memoHit(stored)() : { rows: [] }) });
             create.mockResolvedValue(fit());
 
             await analyze();

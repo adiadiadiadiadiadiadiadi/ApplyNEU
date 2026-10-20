@@ -5,13 +5,14 @@ import type { JobState } from './state.ts';
 
 /**
  * Scores the posting through the existing job match path, so the score cache, instruction memo
- * and per-user rate limit still apply. The instructions it returns aren't kept yet; #150 stores
- * them and puts their ids in state.
+ * and per-user rate limit still apply, and job_matches is upserted, so a re-run after a crash
+ * is harmless. The instructions it returns aren't kept yet; #150 stores them and puts their ids
+ * in state.
  */
 export const jobMatch = async (state: JobState): Promise<Partial<JobState>> => {
   const job = await getJobById(state.job_id);
-  const { match_score } = await sendJobDescription(state.user_id, job.description, job.company, job.title);
-  return { match_score };
+  const { match_score, rationale } = await sendJobDescription(state.user_id, job.description, job.company, job.title);
+  return { match_score, rationale };
 };
 
 /**
@@ -20,6 +21,7 @@ export const jobMatch = async (state: JobState): Promise<Partial<JobState>> => {
  */
 export const decide = async (state: JobState): Promise<Partial<JobState>> => {
   if (state.match_score === null) throw new Error('decide ran before jobMatch scored the job.');
-  const { job_match } = await getUserPreferences(state.user_id);
-  return { decision: decideFromScore(state.match_score, job_match) };
+  const { job_match, wait_for_approval } = await getUserPreferences(state.user_id);
+  const decision = decideFromScore(state.match_score, job_match);
+  return { decision, requires_approval: decision === 'APPLY' && wait_for_approval };
 };
