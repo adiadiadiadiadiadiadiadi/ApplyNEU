@@ -23,9 +23,9 @@ jest.unstable_mockModule('../../src/db/index.ts', () => ({ pool }));
 const { createAgentRun, claimAgentRun, cancelAgentRun, moveAgentRun, getAgentRun } =
     await import('../../src/services/agentRun/agentRun.service.ts');
 
-const newUser = async (max_agents?: number) => {
+const newUser = async (num_agents?: number) => {
     const { rows: [user] } = await db.pool.query(`INSERT INTO auth.users DEFAULT VALUES RETURNING id`);
-    if (max_agents) await db.pool.query(`UPDATE preferences SET max_agents = $2 WHERE user_id = $1`, [user.id, max_agents]);
+    if (num_agents) await db.pool.query(`UPDATE preferences SET num_agents = $2 WHERE user_id = $1`, [user.id, num_agents]);
     return user.id as string;
 };
 
@@ -41,7 +41,7 @@ const queuedBrowserRun = async (user_id: string) =>
     createAgentRun({ user_id, type: 'external_apply', title: 'Apply @ Acme', job_id: await newJob() });
 
 describeWithDatabase('agent slots against Postgres', () => {
-    it('lets a user run up to max_agents at once, then reports full', async () => {
+    it('lets a user run up to num_agents at once, then reports full', async () => {
         const user = await newUser();
         const runs = [await queuedBrowserRun(user), await queuedBrowserRun(user), await queuedBrowserRun(user)];
 
@@ -51,7 +51,7 @@ describeWithDatabase('agent slots against Postgres', () => {
         expect((await getAgentRun(runs[2]!.run_id)).status).toBe('queued');
     });
 
-    it('follows the user\'s own max_agents', async () => {
+    it('follows the user\'s own num_agents', async () => {
         const user = await newUser(1);
         const first = await queuedBrowserRun(user);
         const second = await queuedBrowserRun(user);
@@ -72,7 +72,7 @@ describeWithDatabase('agent slots against Postgres', () => {
         expect(await claimAgentRun(first.run_id, ['waiting_for_you'])).toBe('full');
     });
 
-    it('lets run-now go past max_agents', async () => {
+    it('lets run-now go past num_agents', async () => {
         const user = await newUser(1);
         const first = await queuedBrowserRun(user);
         const second = await queuedBrowserRun(user);

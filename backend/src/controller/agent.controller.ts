@@ -16,7 +16,7 @@ export const meAgentController = (): express.Router => {
     };
 
     /** POST /me/agents/:run_id/run-now
-     * start one of the caller's queued runs next, past their max_agents limit.
+     * start one of the caller's queued runs next, past their num_agents limit.
     **/
     const runNowRoute = async (req: Request<{ run_id: string }>, res: Response) => {
         const result = await runAgentNow(req.params.run_id, req.auth!.userId);

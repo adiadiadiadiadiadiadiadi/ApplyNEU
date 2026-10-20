@@ -55,7 +55,7 @@ export const resumeJobThread = (thread_id: string, step: string, value: unknown)
 
 /**
  * Starts one of the caller's queued runs as soon as a worker is free, ahead of every
- * prioritized job and past the user's max_agents limit.
+ * prioritized job and past the user's num_agents limit.
  * @throws AppError(409) when the run isn't queued
  */
 export const runAgentNow = async (run_id: string, user_id: string) => {

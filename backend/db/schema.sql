@@ -98,8 +98,8 @@ CREATE TABLE public.preferences (
     unpaid_roles boolean DEFAULT false NOT NULL,
     primary_resume_id uuid,
     interests text[] DEFAULT '{}'::text[] NOT NULL,
-    max_agents smallint DEFAULT 2 NOT NULL,
-    CONSTRAINT preferences_max_agents_range CHECK (max_agents BETWEEN 1 AND 5)
+    num_agents smallint DEFAULT 2 NOT NULL,
+    CONSTRAINT preferences_num_agents_range CHECK (num_agents BETWEEN 1 AND 5)
 );
 
 CREATE TABLE public.profile (
