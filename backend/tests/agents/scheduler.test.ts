@@ -28,15 +28,8 @@ describe('startAgent', () => {
     const run = await startAgent({ user_id: 'user-1', type: 'job', title: 'SWE @ Acme', job_id: 'job-1' });
 
     expect(createAgentRun).toHaveBeenCalledWith({ user_id: 'user-1', type: 'job', title: 'SWE @ Acme', job_id: 'job-1', status: 'queued' });
-    expect(add).toHaveBeenCalledWith('start', { run_id: 'run-1', step: undefined }, expect.objectContaining({ jobId: 'start:run-1', priority: 2 }));
+    expect(add).toHaveBeenCalledWith('start', { run_id: 'run-1' }, expect.objectContaining({ jobId: 'start:run-1', priority: 2 }));
     expect(run.run_id).toBe('run-1');
-  });
-
-  it('carries the step a run starts in, without storing it on the run', async () => {
-    await startAgent({ user_id: 'user-1', type: 'job', title: 'Apply @ Acme', job_id: 'job-1', step: 'external_apply' });
-
-    expect(createAgentRun.mock.calls[0]![0]).not.toHaveProperty('step');
-    expect(add.mock.calls[0]![1]).toEqual({ run_id: 'run-1', step: 'external_apply' });
   });
 
   it('enqueues nothing when the run cannot be created', async () => {
@@ -49,10 +42,10 @@ describe('startAgent', () => {
 
 describe('resumeJobThread', () => {
   it('enqueues the resume ahead of new starts, keyed on thread and step', async () => {
-    await resumeJobThread('thread-1', 'external_apply', { approved: true });
+    await resumeJobThread('thread-1', 'approval', { approved: true });
 
-    expect(add).toHaveBeenCalledWith('resume', { thread_id: 'thread-1', step: 'external_apply', value: { approved: true } }, expect.objectContaining({
-      jobId: 'thread-1:external_apply', priority: 1, removeOnComplete: { age: 86400 },
+    expect(add).toHaveBeenCalledWith('resume', { thread_id: 'thread-1', value: { approved: true } }, expect.objectContaining({
+      jobId: 'thread-1:approval', priority: 1, removeOnComplete: { age: 86400 },
     }));
   });
 });

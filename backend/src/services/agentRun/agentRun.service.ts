@@ -6,7 +6,7 @@ import type { AgentRun, AgentRunGroups, AgentRunStatus, AgentRunType } from '../
 /** Finished runs shown on the homepage; active runs are always shown in full. */
 const RECENT_LIMIT = 20;
 
-const RUN_COLUMNS = 'run_id, type, parent_run_id, job_id, status, current_step, title, started_at, updated_at';
+const RUN_COLUMNS = 'run_id, type, parent_run_id, job_id, status, title, started_at, updated_at';
 
 /**
  * Lists the caller's agent runs grouped for the homepage, each group newest activity first:
@@ -115,13 +115,6 @@ type RunWithThread = AgentRun & { user_id: string; thread_id: string | null };
 const FINISHED: AgentRunStatus[] = ['done', 'failed', 'handed_off', 'cancelled'];
 
 /**
- * The only step that takes a slot. Job match and the cover letter run inline with the sweep,
- * one job at a time, so they never wait; an external application runs in a browser alongside
- * others, so at most num_agents of them run per user.
- */
-export const EXTERNAL_STEP = 'external_apply';
-
-/**
  * Fetches a run by id with its owner and thread, for the worker.
  * @throws AppError(404) when no run has that id
  */
@@ -163,53 +156,40 @@ export const getAgentRunForUser = async (run_id: string, user_id: string): Promi
 export type ClaimResult = 'claimed' | 'full' | 'gone';
 
 /**
- * Moves a run to running. A run entering or resuming its external application step only moves
- * if the user has fewer than num_agents runs running in that step; runs waiting on the user
- * don't hold a slot. A per-user advisory lock serializes those claims, so two workers can't
- * both take the last slot. Any other claim moves straight away.
+ * Moves a run to running if the user has fewer running runs than their num_agents; runs waiting
+ * on the user don't hold a slot. A per-user advisory lock serializes claims, so two workers
+ * can't both take the last slot.
  * @param from - Statuses the run may be claimed from: queued for a start, waiting_for_you for a resume
- * @param step - The step the run is entering, recorded as its current_step; omit to keep its current one
  * @returns claimed, full (try again later), or gone (cancelled or finished; drop the job)
  */
-export const claimAgentRun = async (
-  run_id: string,
-  from: AgentRunStatus[],
-  step?: string
-): Promise<ClaimResult> => {
+export const claimAgentRun = async (run_id: string, from: AgentRunStatus[]): Promise<ClaimResult> => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const { rows: [run] } = await client.query(
-      `SELECT user_id, status, current_step FROM agent_runs WHERE run_id = $1;`,
+      `SELECT user_id, status FROM agent_runs WHERE run_id = $1;`,
       [run_id]
     );
     if (!run || !from.includes(run.status)) {
       await client.query('ROLLBACK');
       return 'gone';
     }
-    if ((step ?? run.current_step) === EXTERNAL_STEP) {
-      await client.query(`SELECT pg_advisory_xact_lock(hashtext($1));`, [run.user_id]);
-      const { rows: [slots] } = await client.query(
-        `
-          SELECT
-            (SELECT count(*)::int FROM agent_runs
-             WHERE user_id = $1 AND status = 'running' AND current_step = $2) AS running,
-            (SELECT num_agents FROM preferences WHERE user_id = $1) AS num_agents;
-        `,
-        [run.user_id, EXTERNAL_STEP]
-      );
-      if (slots.running >= (slots.num_agents ?? 15)) {
-        await client.query('ROLLBACK');
-        return 'full';
-      }
+    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1));`, [run.user_id]);
+    const { rows: [slots] } = await client.query(
+      `
+        SELECT
+          (SELECT count(*)::int FROM agent_runs WHERE user_id = $1 AND status = 'running') AS running,
+          (SELECT num_agents FROM preferences WHERE user_id = $1) AS num_agents;
+      `,
+      [run.user_id]
+    );
+    if (slots.running >= (slots.num_agents ?? 15)) {
+      await client.query('ROLLBACK');
+      return 'full';
     }
     await client.query(
-      `
-        UPDATE agent_runs
-        SET status = 'running', current_step = COALESCE($2, current_step), updated_at = now()
-        WHERE run_id = $1;
-      `,
-      [run_id, step ?? null]
+      `UPDATE agent_runs SET status = 'running', updated_at = now() WHERE run_id = $1;`,
+      [run_id]
     );
     await client.query('COMMIT');
     return 'claimed';

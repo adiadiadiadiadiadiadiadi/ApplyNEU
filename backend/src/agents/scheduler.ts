@@ -20,18 +20,16 @@ type StartAgent = {
   title: string;
   job_id?: string;
   parent_run_id?: string;
-  step?: string;
 };
 
 /**
  * Starts an agent in the background: records a queued run and enqueues its start, so the worker
- * decides when it runs. A run started straight into its external step (`step`) waits for a slot
- * under the user's num_agents. The job the sweep is on doesn't come through here; its thread
- * runs inline in the analyze request (#149).
+ * decides when it runs under the user's num_agents limit. The job the sweep is on doesn't come
+ * through here; its thread runs inline in the analyze request (#149).
  */
-export const startAgent = async ({ step, ...run }: StartAgent) => {
+export const startAgent = async (run: StartAgent) => {
   const created = await createAgentRun({ ...run, status: 'queued' });
-  await getAgentsQueue().add('start', { run_id: created.run_id, step }, {
+  await getAgentsQueue().add('start', { run_id: created.run_id }, {
     ...JOB_OPTIONS,
     jobId: startJobId(created.run_id),
     priority: AGENT_PRIORITY.start,
@@ -43,13 +41,12 @@ export const startAgent = async ({ step, ...run }: StartAgent) => {
  * Hands a paused thread to the worker instead of resuming it inline, so long nodes never run
  * inside an API request. The job id is `${thread_id}:${step}`, so resuming the same pause twice
  * (a double-clicked approve) enqueues once, while the thread's next pause gets a new id.
- * Resuming into `external_apply` waits for a slot under the user's num_agents.
  * @param thread_id - Thread to resume
- * @param step - The step the thread resumes into, e.g. 'external_apply', recorded as its current_step
+ * @param step - The pause being resumed, e.g. 'approval'
  * @param value - What the paused node receives, e.g. { approved: true }
  */
 export const resumeJobThread = (thread_id: string, step: string, value: unknown) =>
-  getAgentsQueue().add('resume', { thread_id, step, value }, {
+  getAgentsQueue().add('resume', { thread_id, value }, {
     ...JOB_OPTIONS,
     jobId: `${thread_id}:${step}`,
     priority: AGENT_PRIORITY.resume,
