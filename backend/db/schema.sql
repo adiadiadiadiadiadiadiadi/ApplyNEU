@@ -66,7 +66,6 @@ CREATE TABLE public.job_matches (
     candidate_hash text NOT NULL,
     scoring_version smallint NOT NULL,
     match_score smallint NOT NULL,
-    rationale text,
     created_at timestamp with time zone DEFAULT now() NOT NULL
 );
 
