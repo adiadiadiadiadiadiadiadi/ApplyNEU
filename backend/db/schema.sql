@@ -122,7 +122,9 @@ CREATE TABLE public.preferences (
     email_notifications boolean DEFAULT true NOT NULL,
     unpaid_roles boolean DEFAULT false NOT NULL,
     primary_resume_id uuid,
-    interests text[] DEFAULT '{}'::text[] NOT NULL
+    interests text[] DEFAULT '{}'::text[] NOT NULL,
+    num_agents smallint DEFAULT 15 NOT NULL,
+    CONSTRAINT preferences_num_agents_range CHECK (num_agents BETWEEN 1 AND 15)
 );
 
 CREATE TABLE public.profile (

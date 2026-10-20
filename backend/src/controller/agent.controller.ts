@@ -1,5 +1,7 @@
 import express, { type Request, type Response } from 'express';
 import { listAgentRuns } from '../services/agentRun/agentRun.service.ts';
+import { cancelAgent } from '../agents/scheduler.ts';
+import { validateRunIdParam } from './middleware/validators/agent.validate.ts';
 import asyncHandler from './middleware/handlers/asyncHandler.ts';
 
 export const meAgentController = (): express.Router => {
@@ -13,7 +15,16 @@ export const meAgentController = (): express.Router => {
         res.status(200).json(result);
     };
 
+    /** POST /me/agents/:run_id/cancel
+     * cancel one of the caller's unfinished runs.
+    **/
+    const cancelRoute = async (req: Request<{ run_id: string }>, res: Response) => {
+        const result = await cancelAgent(req.params.run_id, req.auth!.userId);
+        res.status(200).json(result);
+    };
+
     router.get('/', asyncHandler(listAgentsRoute));
+    router.post('/:run_id/cancel', validateRunIdParam, asyncHandler(cancelRoute));
 
     return router;
 };
