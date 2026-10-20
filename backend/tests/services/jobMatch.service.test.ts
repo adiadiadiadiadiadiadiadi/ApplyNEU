@@ -86,7 +86,9 @@ const db = ({ memo, score }: { memo?: (params: unknown[]) => Rows; score?: (para
         return { rows: [] };
     });
 
-const memoHit = (instructions: unknown[]) => () => ({ rows: [{ instructions }] });
+const memoHit = (instructions: unknown[]) => () => ({
+    rows: instructions.length ? instructions : [{ kind: null, instruction: null, description: null }],
+});
 const scoreHit = (match_score: number) => () => ({ rows: [{ match_score }] });
 
 const lastRequest = () => create.mock.calls[create.mock.calls.length - 1]![0];
@@ -477,7 +479,7 @@ describe('sendJobDescription', () => {
             getCandidateContext.mockResolvedValue(candidateContext());
             create.mockResolvedValue(fit());
             query.mockImplementation(async (sql: string) =>
-                sql.includes('INSERT INTO') ? { rows: [], rowCount: 1 } : { rows: [] });
+                sql.includes('INSERT INTO') ? { rows: [{ won: true }], rowCount: 1 } : { rows: [] });
 
             await analyze();
             await analyze();
@@ -532,7 +534,15 @@ describe('sendJobDescription', () => {
             await analyze();
 
             expect(systemText()).toContain(EXTRACTION_RULES);
-            expect(memoWrite()![1]).toEqual([normalizeAndHash(DESCRIPTION), EXTRACTION_VERSION, JSON.stringify(stored)]);
+            expect(memoWrite()![1]).toEqual([
+                normalizeAndHash(DESCRIPTION),
+                EXTRACTION_VERSION,
+                'claude-haiku-4-5-20251001',
+                ['external_application'],
+                ['Apply through Acme portal'],
+                ['https://acme.example/jobs'],
+                ['acme.example'],
+            ]);
         });
 
         it('gives a second user on the same posting one scoring-only call and the stored instructions', async () => {
@@ -587,7 +597,7 @@ describe('sendJobDescription', () => {
 
         it('re-extracts a posting stored only under an older extraction version', async () => {
             getCandidateContext.mockResolvedValue(candidateContext());
-            db({ memo: (params) => (params[1] === EXTRACTION_VERSION - 1 ? { rows: [{ instructions: stored }] } : { rows: [] }) });
+            db({ memo: (params) => (params[1] === EXTRACTION_VERSION - 1 ? memoHit(stored)() : { rows: [] }) });
             create.mockResolvedValue(fit());
 
             await analyze();

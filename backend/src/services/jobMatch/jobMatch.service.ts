@@ -6,7 +6,7 @@ import { normalizeAndHash } from '../../utils/hash.ts';
 import { getCandidateContext, renderCandidateContext } from '../candidateContext/candidateContext.service.ts';
 import { getInstructions, normalizeEmployerInstructions, saveInstructions } from '../instructions/instructions.service.ts';
 import { SCORING_VERSION, type JobMatchJob } from './jobMatch.prompt.ts';
-import { runJobMatch } from './jobMatch.agent.ts';
+import { JOB_MATCH_MODEL, runJobMatch } from './jobMatch.agent.ts';
 import { consumeModelCall } from '../rateLimit/rateLimit.service.ts';
 
 export type JobMatchSensitivity = 'low' | 'medium' | 'high';
@@ -162,7 +162,7 @@ export const sendJobDescription = async (user_id: string, job_description: strin
     const match_score = parseMatchScore(parsed.match_score);
     const employer_instructions = memoInstructions ?? normalizeEmployerInstructions(parsed.employer_instructions);
     await Promise.all([
-      memoInstructions ? null : saveInstructions(description_hash, employer_instructions),
+      memoInstructions ? null : saveInstructions(description_hash, employer_instructions, JOB_MATCH_MODEL),
       saveMatch(user_id, job, description_hash, candidate_hash, match_score),
     ]);
     return {
