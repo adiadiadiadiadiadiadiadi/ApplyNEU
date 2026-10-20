@@ -21,7 +21,7 @@ type StartAgent = {
   title: string;
   job_id?: string;
   parent_run_id?: string;
-  source: 'user' | 'sweep';
+  source: Exclude<keyof typeof AGENT_PRIORITY, 'resume'>;
 };
 
 /**
@@ -55,7 +55,7 @@ export const resumeJobThread = (thread_id: string, step: string, value: unknown)
 
 /**
  * Starts one of the caller's queued runs as soon as a worker is free, ahead of every
- * prioritized job and past the user's max_agents limit. The one-NUWorks-run rule still holds.
+ * prioritized job and past the user's max_agents limit.
  * @throws AppError(409) when the run isn't queued
  */
 export const runAgentNow = async (run_id: string, user_id: string) => {

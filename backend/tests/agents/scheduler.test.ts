@@ -10,7 +10,7 @@ const cancelAgentRun = jest.fn<(run_id: string, user_id: string) => Promise<any>
 
 jest.unstable_mockModule('../../src/queues/agentsQueue.ts', () => ({
   getAgentsQueue: () => ({ add, getJob, remove }),
-  AGENT_PRIORITY: { resume: 1, user: 2, sweep: 3 },
+  AGENT_PRIORITY: { resume: 1, blocking: 2, user: 3, router: 4 },
 }));
 jest.unstable_mockModule('../../src/services/agentRun/agentRun.service.ts', () => ({
   createAgentRun, getAgentRunForUser, cancelAgentRun,
@@ -38,23 +38,25 @@ beforeEach(() => {
 
 describe('startAgent', () => {
   it('records a queued run and enqueues its start', async () => {
-    const run = await startAgent({ user_id: 'user-1', type: 'job', title: 'SWE @ Acme', job_id: 'job-1', source: 'sweep' });
+    const run = await startAgent({ user_id: 'user-1', type: 'external_apply', title: 'Apply @ Acme', job_id: 'job-1', source: 'router' });
 
-    expect(createAgentRun).toHaveBeenCalledWith({ user_id: 'user-1', type: 'job', title: 'SWE @ Acme', job_id: 'job-1', status: 'queued' });
-    expect(add).toHaveBeenCalledWith('start', { run_id: 'run-1' }, expect.objectContaining({ jobId: 'start:run-1', priority: 3 }));
+    expect(createAgentRun).toHaveBeenCalledWith({ user_id: 'user-1', type: 'external_apply', title: 'Apply @ Acme', job_id: 'job-1', status: 'queued' });
+    expect(add).toHaveBeenCalledWith('start', { run_id: 'run-1' }, expect.objectContaining({ jobId: 'start:run-1', priority: 4 }));
     expect(run.run_id).toBe('run-1');
   });
 
-  it('puts runs the user started ahead of sweep runs', async () => {
+  it('orders runs the sweep is blocked on, then user-started runs, ahead of router runs', async () => {
+    await startAgent({ user_id: 'user-1', type: 'cover_letter', title: 'Cover letter', job_id: 'job-1', source: 'blocking' });
     await startAgent({ user_id: 'user-1', type: 'external_apply', title: 'Apply', job_id: 'job-1', source: 'user' });
+    await startAgent({ user_id: 'user-1', type: 'external_apply', title: 'Apply', job_id: 'job-1', source: 'router' });
 
-    expect(add.mock.calls[0]![2].priority).toBe(2);
+    expect(add.mock.calls.map(([, , opts]) => opts.priority)).toEqual([2, 3, 4]);
   });
 
   it('enqueues nothing when the run cannot be created', async () => {
     createAgentRun.mockRejectedValue(new AppError(409, 'This job already has an active run.'));
 
-    await expect(startAgent({ user_id: 'user-1', type: 'job', title: 'a', job_id: 'job-1', source: 'sweep' })).rejects.toMatchObject({ status: 409 });
+    await expect(startAgent({ user_id: 'user-1', type: 'external_apply', title: 'a', job_id: 'job-1', source: 'router' })).rejects.toMatchObject({ status: 409 });
     expect(add).not.toHaveBeenCalled();
   });
 });

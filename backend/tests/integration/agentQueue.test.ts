@@ -37,13 +37,13 @@ const newJob = async () => {
     return job.job_id as string;
 };
 
-const queuedJobRun = async (user_id: string) =>
-    createAgentRun({ user_id, type: 'job', title: 'SWE @ Acme', job_id: await newJob() });
+const queuedBrowserRun = async (user_id: string) =>
+    createAgentRun({ user_id, type: 'external_apply', title: 'Apply @ Acme', job_id: await newJob() });
 
 describeWithDatabase('agent slots against Postgres', () => {
     it('lets a user run up to max_agents at once, then reports full', async () => {
         const user = await newUser();
-        const runs = [await queuedJobRun(user), await queuedJobRun(user), await queuedJobRun(user)];
+        const runs = [await queuedBrowserRun(user), await queuedBrowserRun(user), await queuedBrowserRun(user)];
 
         expect(await claimAgentRun(runs[0]!.run_id, ['queued'])).toBe('claimed');
         expect(await claimAgentRun(runs[1]!.run_id, ['queued'])).toBe('claimed');
@@ -53,8 +53,8 @@ describeWithDatabase('agent slots against Postgres', () => {
 
     it('follows the user\'s own max_agents', async () => {
         const user = await newUser(1);
-        const first = await queuedJobRun(user);
-        const second = await queuedJobRun(user);
+        const first = await queuedBrowserRun(user);
+        const second = await queuedBrowserRun(user);
 
         expect(await claimAgentRun(first.run_id, ['queued'])).toBe('claimed');
         expect(await claimAgentRun(second.run_id, ['queued'])).toBe('full');
@@ -62,8 +62,8 @@ describeWithDatabase('agent slots against Postgres', () => {
 
     it('frees a slot while a run waits on the user', async () => {
         const user = await newUser(1);
-        const first = await queuedJobRun(user);
-        const second = await queuedJobRun(user);
+        const first = await queuedBrowserRun(user);
+        const second = await queuedBrowserRun(user);
         await claimAgentRun(first.run_id, ['queued']);
 
         await moveAgentRun(first.run_id, ['running'], 'waiting_for_you');
@@ -74,33 +74,35 @@ describeWithDatabase('agent slots against Postgres', () => {
 
     it('lets run-now go past max_agents', async () => {
         const user = await newUser(1);
-        const first = await queuedJobRun(user);
-        const second = await queuedJobRun(user);
+        const first = await queuedBrowserRun(user);
+        const second = await queuedBrowserRun(user);
         await claimAgentRun(first.run_id, ['queued']);
 
         expect(await claimAgentRun(second.run_id, ['queued'], { force: true })).toBe('claimed');
     });
 
-    it('allows one NUWorks run per user, even with run-now', async () => {
-        const user = await newUser();
-        const first = await createAgentRun({ user_id: user, type: 'sweep', title: 'Sweep' });
-        const second = await createAgentRun({ user_id: user, type: 'sweep', title: 'Sweep' });
-        await claimAgentRun(first.run_id, ['queued']);
+    it('never makes a non-browser run wait, and never counts it', async () => {
+        const user = await newUser(1);
+        const coverLetter = await createAgentRun({ user_id: user, type: 'cover_letter', title: 'Cover letter', job_id: await newJob() });
+        const browser = await queuedBrowserRun(user);
+        const jobThread = await createAgentRun({ user_id: user, type: 'job', title: 'SWE @ Acme', job_id: await newJob() });
 
-        expect(await claimAgentRun(second.run_id, ['queued'], { force: true })).toBe('full');
+        expect(await claimAgentRun(coverLetter.run_id, ['queued'])).toBe('claimed');
+        expect(await claimAgentRun(browser.run_id, ['queued'])).toBe('claimed');
+        expect(await claimAgentRun(jobThread.run_id, ['queued'])).toBe('claimed');
     });
 
     it('does not count other users\' runs', async () => {
         const busy = await newUser(1);
-        await claimAgentRun((await queuedJobRun(busy)).run_id, ['queued']);
+        await claimAgentRun((await queuedBrowserRun(busy)).run_id, ['queued']);
 
         const other = await newUser(1);
-        expect(await claimAgentRun((await queuedJobRun(other)).run_id, ['queued'])).toBe('claimed');
+        expect(await claimAgentRun((await queuedBrowserRun(other)).run_id, ['queued'])).toBe('claimed');
     });
 
     it('reports a cancelled run as gone and leaves it cancelled', async () => {
         const user = await newUser();
-        const run = await queuedJobRun(user);
+        const run = await queuedBrowserRun(user);
         await cancelAgentRun(run.run_id, user);
 
         expect(await claimAgentRun(run.run_id, ['queued'])).toBe('gone');
@@ -110,7 +112,7 @@ describeWithDatabase('agent slots against Postgres', () => {
 
     it('refuses to cancel a finished run or someone else\'s', async () => {
         const user = await newUser();
-        const run = await queuedJobRun(user);
+        const run = await queuedBrowserRun(user);
 
         await expect(cancelAgentRun(run.run_id, await newUser())).rejects.toMatchObject({ status: 404 });
         await moveAgentRun(run.run_id, ['queued'], 'done');

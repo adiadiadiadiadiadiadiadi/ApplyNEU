@@ -114,8 +114,12 @@ type RunWithThread = AgentRun & { user_id: string; thread_id: string | null };
 
 const FINISHED: AgentRunStatus[] = ['done', 'failed', 'handed_off', 'cancelled'];
 
-/** Runs that drive the user's NUWorks session. Two at once would act on the same account. */
-const NUWORKS_TYPES: AgentRunType[] = ['sweep'];
+/**
+ * Runs that open a browser and so count toward the user's max_agents. Everything else (job
+ * threads, cover letters) goes through the queue without taking a slot; their model calls are
+ * limited separately.
+ */
+const SLOT_TYPES: AgentRunType[] = ['external_apply'];
 
 /**
  * Fetches a run by id with its owner and thread, for the worker.
@@ -159,10 +163,10 @@ export const getAgentRunForUser = async (run_id: string, user_id: string): Promi
 export type ClaimResult = 'claimed' | 'full' | 'gone';
 
 /**
- * Moves a run to running if the user has a free slot: fewer running runs than their
- * max_agents, and no other NUWorks run when this is one. Runs waiting on the user don't hold a
- * slot. A per-user advisory lock serializes claims, so two workers can't both take the last
- * slot. `force` (run-now) skips max_agents but never the NUWorks rule.
+ * Moves a run to running. A browser run (SLOT_TYPES) only moves if the user has fewer running
+ * browser runs than their max_agents; runs waiting on the user don't hold a slot. A per-user
+ * advisory lock serializes those claims, so two workers can't both take the last slot. Other
+ * runs move straight away. `force` (run-now) skips max_agents.
  * @param from - Statuses the run may be claimed from: queued for a start, waiting_for_you for a resume
  * @returns claimed, full (try again later), or gone (cancelled or finished; drop the job)
  */
@@ -182,23 +186,21 @@ export const claimAgentRun = async (
       await client.query('ROLLBACK');
       return 'gone';
     }
-    await client.query(`SELECT pg_advisory_xact_lock(hashtext($1));`, [run.user_id]);
-    const { rows: [slots] } = await client.query(
-      `
-        SELECT
-          count(*) FILTER (WHERE r.status = 'running')::int AS running,
-          count(*) FILTER (WHERE r.status = 'running' AND r.type = ANY($2))::int AS nuworks_running,
-          (SELECT max_agents FROM preferences WHERE user_id = $1) AS max_agents
-        FROM agent_runs r
-        WHERE r.user_id = $1;
-      `,
-      [run.user_id, NUWORKS_TYPES]
-    );
-    const nuworksBusy = NUWORKS_TYPES.includes(run.type) && slots.nuworks_running > 0;
-    const atLimit = !force && slots.running >= (slots.max_agents ?? 2);
-    if (nuworksBusy || atLimit) {
-      await client.query('ROLLBACK');
-      return 'full';
+    if (SLOT_TYPES.includes(run.type) && !force) {
+      await client.query(`SELECT pg_advisory_xact_lock(hashtext($1));`, [run.user_id]);
+      const { rows: [slots] } = await client.query(
+        `
+          SELECT
+            (SELECT count(*)::int FROM agent_runs
+             WHERE user_id = $1 AND status = 'running' AND type = ANY($2)) AS running,
+            (SELECT max_agents FROM preferences WHERE user_id = $1) AS max_agents;
+        `,
+        [run.user_id, SLOT_TYPES]
+      );
+      if (slots.running >= (slots.max_agents ?? 2)) {
+        await client.query('ROLLBACK');
+        return 'full';
+      }
     }
     await client.query(
       `UPDATE agent_runs SET status = 'running', updated_at = now() WHERE run_id = $1;`,
