@@ -20,7 +20,7 @@ const pool = {
 
 jest.unstable_mockModule('../../src/db/index.ts', () => ({ pool }));
 
-const { createAgentRun, claimAgentRun, cancelAgentRun, moveAgentRun, getAgentRun } =
+const { createAgentRun, claimAgentRun, cancelAgentRun, moveAgentRun, getAgentRun, EXTERNAL_STEP } =
     await import('../../src/services/agentRun/agentRun.service.ts');
 
 const newUser = async (num_agents?: number) => {
@@ -41,61 +41,63 @@ const queuedJobRun = async (user_id: string) =>
     createAgentRun({ user_id, type: 'job', title: 'SWE @ Acme', job_id: await newJob() });
 
 describeWithDatabase('agent slots against Postgres', () => {
-    it('lets a user run up to num_agents job threads at once, then reports full', async () => {
+    it('lets a user run up to num_agents external applications at once, then reports full', async () => {
         const user = await newUser(2);
         const runs = [await queuedJobRun(user), await queuedJobRun(user), await queuedJobRun(user)];
 
-        expect(await claimAgentRun(runs[0]!.run_id, ['queued'])).toBe('claimed');
-        expect(await claimAgentRun(runs[1]!.run_id, ['queued'])).toBe('claimed');
-        expect(await claimAgentRun(runs[2]!.run_id, ['queued'])).toBe('full');
+        expect(await claimAgentRun(runs[0]!.run_id, ['queued'], EXTERNAL_STEP)).toBe('claimed');
+        expect(await claimAgentRun(runs[1]!.run_id, ['queued'], EXTERNAL_STEP)).toBe('claimed');
+        expect(await claimAgentRun(runs[2]!.run_id, ['queued'], EXTERNAL_STEP)).toBe('full');
         expect((await getAgentRun(runs[2]!.run_id)).status).toBe('queued');
     });
 
-    it('follows the user\'s own num_agents', async () => {
-        const user = await newUser(1);
-        const first = await queuedJobRun(user);
-        const second = await queuedJobRun(user);
+    it('defaults to 15 external applications at once', async () => {
+        const user = await newUser();
+        const runs = [];
+        for (let i = 0; i < 16; i += 1) runs.push(await queuedJobRun(user));
 
-        expect(await claimAgentRun(first.run_id, ['queued'])).toBe('claimed');
-        expect(await claimAgentRun(second.run_id, ['queued'])).toBe('full');
+        for (const run of runs.slice(0, 15)) expect(await claimAgentRun(run.run_id, ['queued'], EXTERNAL_STEP)).toBe('claimed');
+        expect(await claimAgentRun(runs[15]!.run_id, ['queued'], EXTERNAL_STEP)).toBe('full');
     });
 
-    it('frees a slot while a run waits on the user', async () => {
+    it('records the step a claim enters on the run', async () => {
+        const user = await newUser();
+        const run = await queuedJobRun(user);
+
+        await claimAgentRun(run.run_id, ['queued'], EXTERNAL_STEP);
+
+        expect((await getAgentRun(run.run_id)).current_step).toBe(EXTERNAL_STEP);
+    });
+
+    it('never makes an inline step wait, and never counts it', async () => {
+        const user = await newUser(1);
+        const inline = await queuedJobRun(user);
+        const external = await queuedJobRun(user);
+        const another = await queuedJobRun(user);
+
+        expect(await claimAgentRun(inline.run_id, ['queued'])).toBe('claimed');
+        expect(await claimAgentRun(external.run_id, ['queued'], EXTERNAL_STEP)).toBe('claimed');
+        expect(await claimAgentRun(another.run_id, ['queued'])).toBe('claimed');
+    });
+
+    it('frees a slot while an external application waits on the user, and needs one to resume', async () => {
         const user = await newUser(1);
         const first = await queuedJobRun(user);
         const second = await queuedJobRun(user);
-        await claimAgentRun(first.run_id, ['queued']);
+        await claimAgentRun(first.run_id, ['queued'], EXTERNAL_STEP);
 
         await moveAgentRun(first.run_id, ['running'], 'waiting_for_you');
 
-        expect(await claimAgentRun(second.run_id, ['queued'])).toBe('claimed');
+        expect(await claimAgentRun(second.run_id, ['queued'], EXTERNAL_STEP)).toBe('claimed');
         expect(await claimAgentRun(first.run_id, ['waiting_for_you'])).toBe('full');
-    });
-
-    it('defaults to 10 job threads at once', async () => {
-        const user = await newUser();
-        const runs = [];
-        for (let i = 0; i < 11; i += 1) runs.push(await queuedJobRun(user));
-
-        for (const run of runs.slice(0, 10)) expect(await claimAgentRun(run.run_id, ['queued'])).toBe('claimed');
-        expect(await claimAgentRun(runs[10]!.run_id, ['queued'])).toBe('full');
-    });
-
-    it('only counts job threads toward the limit', async () => {
-        const user = await newUser(1);
-        const sweep = await createAgentRun({ user_id: user, type: 'sweep', title: 'NUWorks sweep' });
-        const job = await queuedJobRun(user);
-
-        expect(await claimAgentRun(sweep.run_id, ['queued'])).toBe('claimed');
-        expect(await claimAgentRun(job.run_id, ['queued'])).toBe('claimed');
     });
 
     it('does not count other users\' runs', async () => {
         const busy = await newUser(1);
-        await claimAgentRun((await queuedJobRun(busy)).run_id, ['queued']);
+        await claimAgentRun((await queuedJobRun(busy)).run_id, ['queued'], EXTERNAL_STEP);
 
         const other = await newUser(1);
-        expect(await claimAgentRun((await queuedJobRun(other)).run_id, ['queued'])).toBe('claimed');
+        expect(await claimAgentRun((await queuedJobRun(other)).run_id, ['queued'], EXTERNAL_STEP)).toBe('claimed');
     });
 
     it('reports a cancelled run as gone and leaves it cancelled', async () => {

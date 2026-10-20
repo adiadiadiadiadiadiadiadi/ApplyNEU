@@ -43,8 +43,8 @@ await import('../../src/workers/agentsWorker.ts');
 
 const RUN = { run_id: 'run-1', type: 'job', user_id: 'user-1', job_id: 'job-1', thread_id: 'thread-1' };
 const moveToDelayed = jest.fn<(ts: number, token?: string) => Promise<void>>();
-const startJob = () => ({ name: 'start', id: 'start:run-1', data: { run_id: 'run-1' }, moveToDelayed, attemptsMade: 0, opts: { attempts: 3 } });
-const resumeJob = { name: 'resume', id: 'thread-1:approval', data: { thread_id: 'thread-1', value: { approved: true } }, moveToDelayed, attemptsMade: 0, opts: { attempts: 3 } };
+const startJob = (data: Record<string, unknown> = {}) => ({ name: 'start', id: 'start:run-1', data: { run_id: 'run-1', ...data }, moveToDelayed, attemptsMade: 0, opts: { attempts: 3 } });
+const resumeJob = { name: 'resume', id: 'thread-1:external_apply', data: { thread_id: 'thread-1', step: 'external_apply', value: { approved: true } }, moveToDelayed, attemptsMade: 0, opts: { attempts: 3 } };
 
 beforeEach(() => {
     runJobThread.mockReset().mockResolvedValue({});
@@ -63,9 +63,15 @@ describe('start', () => {
     it('claims a slot, runs the graph, and marks a finished thread done', async () => {
         await processor(startJob(), 'token');
 
-        expect(claimAgentRun).toHaveBeenCalledWith('run-1', ['queued']);
+        expect(claimAgentRun).toHaveBeenCalledWith('run-1', ['queued'], undefined);
         expect(runJobThread).toHaveBeenCalledWith('thread-1', { user_id: 'user-1', job_id: 'job-1' });
         expect(moveAgentRun).toHaveBeenCalledWith('run-1', ['running'], 'done');
+    });
+
+    it('passes the step a run starts in to the claim', async () => {
+        await processor(startJob({ step: 'external_apply' }), 'token');
+
+        expect(claimAgentRun).toHaveBeenCalledWith('run-1', ['queued'], 'external_apply');
     });
 
     it('marks a thread stopped at an interrupt as waiting for the user', async () => {
@@ -102,11 +108,11 @@ describe('start', () => {
 });
 
 describe('resume', () => {
-    it('reclaims a slot from waiting and resumes the thread with the value', async () => {
+    it('reclaims from waiting into the resumed step and resumes the thread with the value', async () => {
         await processor(resumeJob, 'token');
 
         expect(getAgentRunByThread).toHaveBeenCalledWith('thread-1');
-        expect(claimAgentRun).toHaveBeenCalledWith('run-1', ['waiting_for_you']);
+        expect(claimAgentRun).toHaveBeenCalledWith('run-1', ['waiting_for_you'], 'external_apply');
         const [input, config] = invoke.mock.calls[0]!;
         expect((input as Command).args).toEqual({ resume: { approved: true } });
         expect(config).toEqual({ configurable: { thread_id: 'thread-1' } });

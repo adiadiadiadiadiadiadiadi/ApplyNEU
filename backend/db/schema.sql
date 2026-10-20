@@ -71,7 +71,8 @@ CREATE TABLE public.job_matches (
 );
 
 -- One row per agent run, whatever the agent: the place the homepage, the inbox and per-user
--- limits read from. A sweep is one press of Play in the desktop app and has no LangGraph
+-- limits read from. A job keeps one run through all its steps; current_step says which one
+-- it's on, and only runs in external_apply count toward preferences.num_agents. A sweep is one press of Play in the desktop app and has no LangGraph
 -- thread; every other run does, under a thread_id generated when the run is created.
 CREATE TABLE public.agent_runs (
     run_id uuid DEFAULT gen_random_uuid() NOT NULL,
@@ -81,6 +82,7 @@ CREATE TABLE public.agent_runs (
     job_id uuid,
     thread_id uuid,
     status public.agent_run_status DEFAULT 'queued'::public.agent_run_status NOT NULL,
+    current_step text,
     title text NOT NULL,
     started_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
@@ -98,7 +100,7 @@ CREATE TABLE public.preferences (
     unpaid_roles boolean DEFAULT false NOT NULL,
     primary_resume_id uuid,
     interests text[] DEFAULT '{}'::text[] NOT NULL,
-    num_agents smallint DEFAULT 10 NOT NULL,
+    num_agents smallint DEFAULT 15 NOT NULL,
     CONSTRAINT preferences_num_agents_range CHECK (num_agents BETWEEN 1 AND 15)
 );
 

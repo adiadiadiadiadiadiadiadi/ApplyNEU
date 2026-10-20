@@ -8,6 +8,7 @@ export type AgentRun = {
   parent_run_id: string | null;
   job_id: string | null;
   status: AgentRunStatus;
+  current_step: string | null;
   title: string;
   started_at: string;
   updated_at: string;
