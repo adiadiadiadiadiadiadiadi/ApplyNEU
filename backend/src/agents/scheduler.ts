@@ -16,7 +16,7 @@ const JOB_OPTIONS = {
 
 const WAKE_EVERY_MS = 60_000;
 
-const startJobId =(run_id: string) => `start:${run_id}`;
+const startJobId = (run_id: string) => `start:${run_id}`;
 
 /**
  * A resume's job id is `${thread_id}:${step}`, so the same pause is resumed once, while the
