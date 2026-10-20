@@ -4,7 +4,7 @@ const query = jest.fn<(text: string, params?: any[]) => Promise<any>>();
 
 jest.unstable_mockModule('../../src/db/index.ts', () => ({ pool: { query } }));
 
-const { listAgentRuns, createAgentRun, updateAgentRunStatus } = await import('../../src/services/agentRun/agentRun.service.ts');
+const { listAgentRuns, createAgentRun, getActiveJobRun, updateAgentRunStatus } = await import('../../src/services/agentRun/agentRun.service.ts');
 
 const USER_ID = 'user-1';
 
@@ -117,6 +117,32 @@ describe('createAgentRun', () => {
     query.mockRejectedValue(new Error('connection refused'));
 
     await expect(createAgentRun({ user_id: USER_ID, type: 'job', title: 'a', job_id: 'job-1' })).rejects.toMatchObject({ status: 500 });
+  });
+});
+
+describe('getActiveJobRun', () => {
+  it("returns the user's unfinished job run for the posting with its thread", async () => {
+    query.mockResolvedValue({ rows: [{ ...run('a', 'running'), thread_id: 'thread-1' }] });
+
+    const active = await getActiveJobRun(USER_ID, 'job-1');
+
+    expect(active).toMatchObject({ run_id: 'a', thread_id: 'thread-1' });
+    const [sql, params] = query.mock.calls[0]!;
+    expect(sql).toContain("type = 'job'");
+    expect(sql).toContain("status IN ('queued', 'running', 'waiting_for_you')");
+    expect(params).toEqual([USER_ID, 'job-1']);
+  });
+
+  it('returns null when the job has no active run', async () => {
+    query.mockResolvedValue({ rows: [] });
+
+    await expect(getActiveJobRun(USER_ID, 'job-1')).resolves.toBeNull();
+  });
+
+  it('wraps a database error in a 500', async () => {
+    query.mockRejectedValue(new Error('connection refused'));
+
+    await expect(getActiveJobRun(USER_ID, 'job-1')).rejects.toMatchObject({ status: 500 });
   });
 });
 

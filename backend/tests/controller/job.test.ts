@@ -2,7 +2,7 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import request from 'supertest';
 import { AppError } from '../../src/errors/AppError.ts';
 
-const sendJobDescription =
+const analyzeJob =
   jest.fn<(user_id: string, job_description: string, company?: string, title?: string) => Promise<any>>();
 const addJob = jest.fn<(company: string, title: string, description: string) => Promise<any>>();
 
@@ -15,8 +15,8 @@ jest.unstable_mockModule('../../src/services/job.service.ts', () => ({
   addJob,
 }));
 
-jest.unstable_mockModule('../../src/services/jobMatch/jobMatch.service.ts', () => ({
-  sendJobDescription,
+jest.unstable_mockModule('../../src/services/jobRun/jobRun.service.ts', () => ({
+  analyzeJob,
 }));
 
 jest.unstable_mockModule('../../src/controller/middleware/authenticate.ts', () => ({
@@ -36,7 +36,7 @@ const rejectAuth = () =>
   );
 
 beforeEach(() => {
-  sendJobDescription.mockReset();
+  analyzeJob.mockReset();
   addJob.mockReset();
   authenticate.mockReset();
   authenticate.mockImplementation((req: any, _res: any, next: any) => {
@@ -48,9 +48,11 @@ beforeEach(() => {
 describe('POST /me/jobs/analyze', () => {
   const url = '/me/jobs/analyze';
 
-  it('returns 200 and the AI decision on valid input', async () => {
-    const decision = { decision: 'APPLY', employer_instructions: [] };
-    sendJobDescription.mockResolvedValue(decision);
+  it('returns 200 and the decision from the job thread on valid input', async () => {
+    const decision = {
+      decision: 'APPLY', match_score: 72, rationale: 'Good fit.', requires_approval: true, employer_instructions: [],
+    };
+    analyzeJob.mockResolvedValue(decision);
 
     const res = await request(app)
       .post(url)
@@ -58,7 +60,7 @@ describe('POST /me/jobs/analyze', () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual(decision);
-    expect(sendJobDescription).toHaveBeenCalledWith(USER_ID, JOB_DESCRIPTION, COMPANY, TITLE);
+    expect(analyzeJob).toHaveBeenCalledWith(USER_ID, JOB_DESCRIPTION, COMPANY, TITLE);
   });
 
   it('returns 400 when company is missing', async () => {
@@ -66,7 +68,7 @@ describe('POST /me/jobs/analyze', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.message).toBe('company is required.');
-    expect(sendJobDescription).not.toHaveBeenCalled();
+    expect(analyzeJob).not.toHaveBeenCalled();
   });
 
   it('returns 400 when title is missing', async () => {
@@ -74,7 +76,7 @@ describe('POST /me/jobs/analyze', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.message).toBe('title is required.');
-    expect(sendJobDescription).not.toHaveBeenCalled();
+    expect(analyzeJob).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -87,22 +89,22 @@ describe('POST /me/jobs/analyze', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.message).toBe(message);
-    expect(sendJobDescription).not.toHaveBeenCalled();
+    expect(analyzeJob).not.toHaveBeenCalled();
   });
 
   it('trims surrounding whitespace from company and title before calling the service', async () => {
-    sendJobDescription.mockResolvedValue({ decision: 'APPLY' });
+    analyzeJob.mockResolvedValue({ decision: 'APPLY' });
 
     const res = await request(app)
       .post(url)
       .send({ job_description: JOB_DESCRIPTION, company: '  Acme  ', title: '  Software Engineer  ' });
 
     expect(res.status).toBe(200);
-    expect(sendJobDescription).toHaveBeenCalledWith(USER_ID, JOB_DESCRIPTION, COMPANY, TITLE);
+    expect(analyzeJob).toHaveBeenCalledWith(USER_ID, JOB_DESCRIPTION, COMPANY, TITLE);
   });
 
   it('ignores extra body fields and only forwards the known ones', async () => {
-    sendJobDescription.mockResolvedValue({ decision: 'APPLY' });
+    analyzeJob.mockResolvedValue({ decision: 'APPLY' });
 
     const res = await request(app)
       .post(url)
@@ -115,7 +117,7 @@ describe('POST /me/jobs/analyze', () => {
       });
 
     expect(res.status).toBe(200);
-    expect(sendJobDescription).toHaveBeenCalledWith(USER_ID, JOB_DESCRIPTION, COMPANY, TITLE);
+    expect(analyzeJob).toHaveBeenCalledWith(USER_ID, JOB_DESCRIPTION, COMPANY, TITLE);
   });
 
   it('returns 400 when job_description is missing', async () => {
@@ -123,7 +125,7 @@ describe('POST /me/jobs/analyze', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.message).toBe('job_description is required.');
-    expect(sendJobDescription).not.toHaveBeenCalled();
+    expect(analyzeJob).not.toHaveBeenCalled();
   });
 
   it('returns 400 when the body is empty', async () => {
@@ -131,7 +133,7 @@ describe('POST /me/jobs/analyze', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.message).toBe('job_description is required.');
-    expect(sendJobDescription).not.toHaveBeenCalled();
+    expect(analyzeJob).not.toHaveBeenCalled();
   });
 
   it('returns 400 when job_description is an empty string', async () => {
@@ -139,7 +141,7 @@ describe('POST /me/jobs/analyze', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.message).toBe('job_description is required.');
-    expect(sendJobDescription).not.toHaveBeenCalled();
+    expect(analyzeJob).not.toHaveBeenCalled();
   });
 
   it('returns 400 when job_description is whitespace only', async () => {
@@ -147,18 +149,18 @@ describe('POST /me/jobs/analyze', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.message).toBe('job_description is required.');
-    expect(sendJobDescription).not.toHaveBeenCalled();
+    expect(analyzeJob).not.toHaveBeenCalled();
   });
 
   it('trims surrounding whitespace from job_description before calling the service', async () => {
-    sendJobDescription.mockResolvedValue({ decision: 'APPLY' });
+    analyzeJob.mockResolvedValue({ decision: 'APPLY' });
 
     const res = await request(app)
       .post(url)
       .send({ job_description: `  ${JOB_DESCRIPTION}  `, company: COMPANY, title: TITLE });
 
     expect(res.status).toBe(200);
-    expect(sendJobDescription).toHaveBeenCalledWith(USER_ID, JOB_DESCRIPTION, COMPANY, TITLE);
+    expect(analyzeJob).toHaveBeenCalledWith(USER_ID, JOB_DESCRIPTION, COMPANY, TITLE);
   });
 
   it('returns 401 when the token is rejected', async () => {
@@ -169,7 +171,7 @@ describe('POST /me/jobs/analyze', () => {
       .send({ job_description: JOB_DESCRIPTION, company: COMPANY, title: TITLE });
 
     expect(res.status).toBe(401);
-    expect(sendJobDescription).not.toHaveBeenCalled();
+    expect(analyzeJob).not.toHaveBeenCalled();
   });
 
   it('authenticates before validating the body (invalid body + rejected token -> 401)', async () => {
@@ -178,11 +180,11 @@ describe('POST /me/jobs/analyze', () => {
     const res = await request(app).post(url).send({}); // missing job_description
 
     expect(res.status).toBe(401);
-    expect(sendJobDescription).not.toHaveBeenCalled();
+    expect(analyzeJob).not.toHaveBeenCalled();
   });
 
   it('returns 429 with Retry-After when the service is rate limited', async () => {
-    sendJobDescription.mockRejectedValue(new AppError(429, 'Too many requests.', 38));
+    analyzeJob.mockRejectedValue(new AppError(429, 'Too many requests.', 38));
 
     const res = await request(app)
       .post(url)
@@ -194,7 +196,7 @@ describe('POST /me/jobs/analyze', () => {
   });
 
   it('omits Retry-After on errors that do not set it', async () => {
-    sendJobDescription.mockRejectedValue(new AppError(404, 'Resume not found.'));
+    analyzeJob.mockRejectedValue(new AppError(404, 'Resume not found.'));
 
     const res = await request(app)
       .post(url)
@@ -204,7 +206,7 @@ describe('POST /me/jobs/analyze', () => {
   });
 
   it('propagates an AppError status from the service (e.g. 404 resume not found)', async () => {
-    sendJobDescription.mockRejectedValue(new AppError(404, 'Resume not found.'));
+    analyzeJob.mockRejectedValue(new AppError(404, 'Resume not found.'));
 
     const res = await request(app)
       .post(url)
@@ -215,7 +217,7 @@ describe('POST /me/jobs/analyze', () => {
   });
 
   it('returns 500 when the service throws a non-AppError', async () => {
-    sendJobDescription.mockRejectedValue(new Error('boom'));
+    analyzeJob.mockRejectedValue(new Error('boom'));
 
     const res = await request(app)
       .post(url)

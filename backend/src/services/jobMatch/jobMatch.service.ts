@@ -31,8 +31,10 @@ const matchCacheKey = (user_id: string, job: JobMatchJob, description_hash: stri
   const digest = createHash('sha256')
     .update([job.company, job.title, description_hash, candidate_hash].join('\u0000'))
     .digest('hex');
-  return `job_match:v${SCORING_VERSION}:${user_id}:${digest}`;
+  return `job_match:v${SCORING_VERSION}:rationale:${user_id}:${digest}`;
 };
+
+type StoredMatch = { match_score: number; rationale: string | null };
 
 const parseMatchScore = (value: unknown): number => {
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 100) {
@@ -42,7 +44,7 @@ const parseMatchScore = (value: unknown): number => {
 };
 
 /**
- * Looks up a score already bought for this user and job, valid only while the rendered
+ * Looks up a score and rationale already bought for this user and job, valid only while the rendered
  * candidate and SCORING_VERSION are unchanged. Redis is checked first and filled from
  * Postgres hits; misses are not cached. A Redis failure falls through to Postgres, and a
  * Postgres failure is logged and treated as a miss, so the request calls the model instead.
@@ -52,14 +54,14 @@ const checkMatchCache = async (
   job: JobMatchJob,
   description_hash: string,
   candidate_hash: string
-): Promise<number | null> => {
+): Promise<StoredMatch | null> => {
   const cacheKey = matchCacheKey(user_id, job, description_hash, candidate_hash);
   const cached = await redis.get(cacheKey).catch(() => null);
-  if (cached !== null) return Number(cached);
+  if (cached !== null) return JSON.parse(cached);
   try {
     const result = await pool.query(
       `
-        SELECT m.match_score
+        SELECT m.match_score, m.rationale
         FROM jobs j
         JOIN job_matches m ON m.job_id = j.job_id
         WHERE j.company = $1 AND j.title = $2 AND j.description_hash = $3
@@ -70,8 +72,9 @@ const checkMatchCache = async (
     const row = result.rows[0];
     console.log(`[jobMatch] cache ${row ? 'hit' : 'miss'} user=${user_id} description_hash=${description_hash}`);
     if (!row) return null;
-    await redis.set(cacheKey, String(row.match_score), 'EX', MATCH_CACHE_TTL).catch(() => {});
-    return row.match_score;
+    const match: StoredMatch = { match_score: row.match_score, rationale: row.rationale };
+    await redis.set(cacheKey, JSON.stringify(match), 'EX', MATCH_CACHE_TTL).catch(() => {});
+    return match;
   } catch (error) {
     console.error('[jobMatch] cache read failed, calling the model:', error);
     return null;
@@ -89,26 +92,27 @@ const saveMatch = async (
   job: JobMatchJob,
   description_hash: string,
   candidate_hash: string,
-  match_score: number
+  match: StoredMatch
 ) => {
   try {
     const result = await pool.query(
       `
-        INSERT INTO job_matches (user_id, job_id, candidate_hash, scoring_version, match_score)
-        SELECT $4, job_id, $5, $6, $7
+        INSERT INTO job_matches (user_id, job_id, candidate_hash, scoring_version, match_score, rationale)
+        SELECT $4, job_id, $5, $6, $7, $8
         FROM jobs
         WHERE company = $1 AND title = $2 AND description_hash = $3
         ON CONFLICT (user_id, job_id) DO UPDATE
         SET candidate_hash = EXCLUDED.candidate_hash,
             scoring_version = EXCLUDED.scoring_version,
             match_score = EXCLUDED.match_score,
+            rationale = EXCLUDED.rationale,
             created_at = now();
       `,
-      [job.company, job.title, description_hash, user_id, candidate_hash, SCORING_VERSION, match_score]
+      [job.company, job.title, description_hash, user_id, candidate_hash, SCORING_VERSION, match.match_score, match.rationale]
     );
     if (result.rowCount) {
       const cacheKey = matchCacheKey(user_id, job, description_hash, candidate_hash);
-      await redis.set(cacheKey, String(match_score), 'EX', MATCH_CACHE_TTL).catch(() => {});
+      await redis.set(cacheKey, JSON.stringify(match), 'EX', MATCH_CACHE_TTL).catch(() => {});
     }
   } catch (error) {
     console.error('[jobMatch] cache write failed:', error);
@@ -141,15 +145,15 @@ export const sendJobDescription = async (user_id: string, job_description: strin
     const candidate_hash = normalizeAndHash(candidateBlock);
 
     const description_hash = normalizeAndHash(job_description);
-    const [memoInstructions, cachedScore] = await Promise.all([
+    const [memoInstructions, cachedMatch] = await Promise.all([
       getInstructions(description_hash),
       checkMatchCache(user_id, job, description_hash, candidate_hash),
     ]);
-    if (memoInstructions && cachedScore !== null) {
+    if (memoInstructions && cachedMatch) {
       return {
-        decision: decideFromScore(cachedScore, context.preferences.job_match),
-        match_score: cachedScore,
-        rationale: null,
+        decision: decideFromScore(cachedMatch.match_score, context.preferences.job_match),
+        match_score: cachedMatch.match_score,
+        rationale: cachedMatch.rationale,
         employer_instructions: memoInstructions,
       };
     }
@@ -160,15 +164,16 @@ export const sendJobDescription = async (user_id: string, job_description: strin
       throw new AppError(502, 'Error with API.');
     }
     const match_score = parseMatchScore(parsed.match_score);
+    const rationale = typeof parsed.rationale === 'string' ? parsed.rationale : '';
     const employer_instructions = memoInstructions ?? normalizeEmployerInstructions(parsed.employer_instructions);
     await Promise.all([
       memoInstructions ? null : saveInstructions(description_hash, employer_instructions, JOB_MATCH_MODEL),
-      saveMatch(user_id, job, description_hash, candidate_hash, match_score),
+      saveMatch(user_id, job, description_hash, candidate_hash, { match_score, rationale }),
     ]);
     return {
       decision: decideFromScore(match_score, context.preferences.job_match),
       match_score,
-      rationale: typeof parsed.rationale === 'string' ? parsed.rationale : '',
+      rationale,
       employer_instructions,
     };
   } catch (error) {

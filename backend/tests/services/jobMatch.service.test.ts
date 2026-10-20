@@ -89,7 +89,7 @@ const db = ({ memo, score }: { memo?: (params: unknown[]) => Rows; score?: (para
 const memoHit = (instructions: unknown[]) => () => ({
     rows: instructions.length ? instructions : [{ kind: null, instruction: null, description: null }],
 });
-const scoreHit = (match_score: number) => () => ({ rows: [{ match_score }] });
+const scoreHit = (match_score: number, rationale: string | null = 'Stored rationale.') => () => ({ rows: [{ match_score, rationale }] });
 
 const lastRequest = () => create.mock.calls[create.mock.calls.length - 1]![0];
 const systemText = () => (lastRequest().system as { text: string }[]).map((block) => block.text).join('\n');
@@ -169,7 +169,7 @@ describe('sendJobDescription', () => {
             expect(create).not.toHaveBeenCalled();
             expect(cacheWrite()).toBeUndefined();
             expect(memoWrite()).toBeUndefined();
-            expect(result).toEqual({ decision: 'APPLY', match_score: 72, rationale: null, employer_instructions: instructions });
+            expect(result).toEqual({ decision: 'APPLY', match_score: 72, rationale: 'Stored rationale.', employer_instructions: instructions });
         });
 
         it('keys the lookup on the posting, the user, the rendered candidate and SCORING_VERSION', async () => {
@@ -238,7 +238,7 @@ describe('sendJobDescription', () => {
             const [sql, params] = cacheWrite()!;
             expect(sql).not.toContain('employer_instructions');
             expect(params).toEqual([
-                COMPANY, TITLE, normalizeAndHash(DESCRIPTION), USER_ID, candidateHashSent(), SCORING_VERSION, 80,
+                COMPANY, TITLE, normalizeAndHash(DESCRIPTION), USER_ID, candidateHashSent(), SCORING_VERSION, 80, 'Good fit.',
             ]);
         });
 
@@ -461,8 +461,8 @@ describe('sendJobDescription', () => {
             await analyze();
 
             const [key, value, ...ttl] = redisSet.mock.calls.find(([k]) => k.startsWith('job_match:'))!;
-            expect(key).toMatch(new RegExp(`^job_match:v${SCORING_VERSION}:${USER_ID}:[0-9a-f]{64}$`));
-            expect(value).toBe('80');
+            expect(key).toMatch(new RegExp(`^job_match:v${SCORING_VERSION}:rationale:${USER_ID}:[0-9a-f]{64}$`));
+            expect(JSON.parse(value)).toEqual({ match_score: 80, rationale: 'Stored rationale.' });
             expect(ttl).toEqual(['EX', 3600]);
         });
 
