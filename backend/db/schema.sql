@@ -98,6 +98,9 @@ CREATE TABLE public.job_matches (
 -- One row per agent run, whatever the agent: the place the homepage, the inbox and per-user
 -- limits read from. A sweep is one press of Play in the desktop app and has no LangGraph
 -- thread; every other run does, under a thread_id generated when the run is created.
+-- A run waiting for a slot is in the user's line: queued, or paused with the user's answer in
+-- resume ({ step, value }). queued_at is when it last joined the line, and stays null for runs
+-- that never went through it.
 CREATE TABLE public.agent_runs (
     run_id uuid DEFAULT gen_random_uuid() NOT NULL,
     user_id uuid NOT NULL,
@@ -109,6 +112,8 @@ CREATE TABLE public.agent_runs (
     title text NOT NULL,
     started_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    queued_at timestamp with time zone,
+    resume jsonb,
     CONSTRAINT agent_runs_thread_unless_sweep CHECK (type = 'sweep' OR thread_id IS NOT NULL),
     CONSTRAINT agent_runs_job_has_job_id CHECK (type <> 'job' OR job_id IS NOT NULL)
 );
@@ -226,6 +231,10 @@ CREATE UNIQUE INDEX agent_runs_one_active_job ON public.agent_runs USING btree (
 
 -- Serves the homepage list, newest activity first.
 CREATE INDEX idx_agent_runs_user_updated ON public.agent_runs USING btree (user_id, updated_at DESC);
+
+-- Serves picking the next run in a user's line.
+CREATE INDEX idx_agent_runs_line ON public.agent_runs USING btree (user_id, queued_at)
+    WHERE status IN ('queued', 'waiting_for_you');
 
 CREATE INDEX idx_agent_runs_parent ON public.agent_runs USING btree (parent_run_id);
 

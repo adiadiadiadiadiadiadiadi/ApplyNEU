@@ -1,12 +1,11 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 
-class DelayedError extends Error {}
 class UnrecoverableError extends Error {}
 class Command {
     constructor(public args: { resume: unknown }) {}
 }
 
-let processor: (job: any, token?: string) => Promise<unknown>;
+let processor: (job: any) => Promise<unknown>;
 const handlers: Record<string, (...args: any[]) => Promise<void>> = {};
 
 const runJobThread = jest.fn<(thread_id: string, input: any) => Promise<unknown>>();
@@ -14,11 +13,12 @@ const invoke = jest.fn<(input: unknown, config: any) => Promise<unknown>>();
 const getState = jest.fn<(config: any) => Promise<any>>();
 const getAgentRun = jest.fn<(run_id: string) => Promise<any>>();
 const getAgentRunByThread = jest.fn<(thread_id: string) => Promise<any>>();
-const claimAgentRun = jest.fn<(run_id: string, from: string[], opts?: any) => Promise<string>>();
-const moveAgentRun = jest.fn<(run_id: string, from: string[], to: string) => Promise<boolean>>();
+const moveAgentRun = jest.fn<(run_id: string, from: string[], to: string) => Promise<any>>();
+const enqueueWokenRuns = jest.fn<(runs: any[]) => Promise<void>>();
+const wakeStalledAgents = jest.fn<() => Promise<void>>();
+const scheduleWakeStalledAgents = jest.fn<() => Promise<unknown>>().mockResolvedValue({});
 
 jest.unstable_mockModule('bullmq', () => ({
-    DelayedError,
     UnrecoverableError,
     Worker: class {
         constructor(_name: string, fn: typeof processor) {
@@ -31,63 +31,65 @@ jest.unstable_mockModule('bullmq', () => ({
 }));
 jest.unstable_mockModule('@langchain/langgraph', () => ({ Command }));
 jest.unstable_mockModule('../../src/agents/jobGraph/graph.ts', () => ({ jobGraph: { invoke, getState }, runJobThread }));
+jest.unstable_mockModule('../../src/agents/scheduler.ts', () => ({ enqueueWokenRuns, scheduleWakeStalledAgents, wakeStalledAgents }));
 jest.unstable_mockModule('../../src/queues/agentsQueue.ts', () => ({ AGENTS_QUEUE: 'agents' }));
 jest.unstable_mockModule('../../src/queues/connection.ts', () => ({ bullConnection: {} }));
 jest.unstable_mockModule('../../src/db/index.ts', () => ({ pool: { end: jest.fn() } }));
 jest.unstable_mockModule('../../src/services/agentRun/agentRun.service.ts', () => ({
-    claimAgentRun, getAgentRun, getAgentRunByThread, moveAgentRun,
+    getAgentRun, getAgentRunByThread, moveAgentRun,
 }));
 jest.unstable_mockModule('../../src/utils/shutdown.ts', () => ({ onShutdownSignal: jest.fn(), runShutdown: jest.fn() }));
 
 await import('../../src/workers/agentsWorker.ts');
 
-const RUN = { run_id: 'run-1', type: 'job', user_id: 'user-1', job_id: 'job-1', thread_id: 'thread-1' };
-const moveToDelayed = jest.fn<(ts: number, token?: string) => Promise<void>>();
-const startJob = () => ({ name: 'start', id: 'start:run-1', data: { run_id: 'run-1' }, moveToDelayed, attemptsMade: 0, opts: { attempts: 3 } });
-const resumeJob = { name: 'resume', id: 'thread-1:approval', data: { thread_id: 'thread-1', value: { approved: true } }, moveToDelayed, attemptsMade: 0, opts: { attempts: 3 } };
+const RUN = { run_id: 'run-1', type: 'job', user_id: 'user-1', job_id: 'job-1', thread_id: 'thread-1', status: 'running' };
+const NEXT = [{ run_id: 'run-2', thread_id: 'thread-2', resume: null }];
+const startJob = () => ({ name: 'start', id: 'start:run-1', data: { run_id: 'run-1' }, attemptsMade: 0, opts: { attempts: 3 } });
+const resumeJob = { name: 'resume', id: 'thread-1:approval', data: { thread_id: 'thread-1', value: { approved: true } }, attemptsMade: 0, opts: { attempts: 3 } };
 
 beforeEach(() => {
     runJobThread.mockReset().mockResolvedValue({});
     invoke.mockReset().mockResolvedValue({});
     getState.mockReset().mockResolvedValue({ next: [] });
     getAgentRun.mockReset().mockResolvedValue(RUN);
-    getAgentRunByThread.mockReset().mockResolvedValue({ ...RUN, status: 'waiting_for_you' });
-    claimAgentRun.mockReset().mockResolvedValue('claimed');
-    moveAgentRun.mockReset().mockResolvedValue(true);
-    moveToDelayed.mockReset().mockResolvedValue();
+    getAgentRunByThread.mockReset().mockResolvedValue(RUN);
+    moveAgentRun.mockReset().mockResolvedValue({ moved: true, woken: NEXT });
+    enqueueWokenRuns.mockReset().mockResolvedValue();
+    wakeStalledAgents.mockReset().mockResolvedValue();
     jest.spyOn(console, 'log').mockImplementation(() => {});
     jest.spyOn(console, 'error').mockImplementation(() => {});
 });
 
-describe('start', () => {
-    it('claims a slot, runs the graph, and marks a finished thread done', async () => {
-        await processor(startJob(), 'token');
+it('schedules the safety net when the worker boots', () => {
+    expect(scheduleWakeStalledAgents).toHaveBeenCalled();
+});
 
-        expect(claimAgentRun).toHaveBeenCalledWith('run-1', ['queued']);
+describe('start', () => {
+    it('runs the graph of a run holding a slot and marks a finished thread done', async () => {
+        await processor(startJob());
+
         expect(runJobThread).toHaveBeenCalledWith('thread-1', { user_id: 'user-1', job_id: 'job-1' });
         expect(moveAgentRun).toHaveBeenCalledWith('run-1', ['running'], 'done');
+    });
+
+    it('hands the freed slot on by enqueuing the run it went to', async () => {
+        await processor(startJob());
+
+        expect(enqueueWokenRuns).toHaveBeenCalledWith(NEXT);
     });
 
     it('marks a thread stopped at an interrupt as waiting for the user', async () => {
         getState.mockResolvedValue({ next: ['awaitApproval'] });
 
-        await processor(startJob(), 'token');
+        await processor(startJob());
 
         expect(moveAgentRun).toHaveBeenCalledWith('run-1', ['running'], 'waiting_for_you');
     });
 
-    it('parks the job without running when the user has no free slot', async () => {
-        claimAgentRun.mockResolvedValue('full');
-
-        await expect(processor(startJob(), 'token')).rejects.toBeInstanceOf(DelayedError);
-        expect(moveToDelayed).toHaveBeenCalledWith(expect.any(Number), 'token');
-        expect(runJobThread).not.toHaveBeenCalled();
-    });
-
     it('drops the job when the run was cancelled before it started', async () => {
-        claimAgentRun.mockResolvedValue('gone');
+        getAgentRun.mockResolvedValue({ ...RUN, status: 'cancelled' });
 
-        await processor(startJob(), 'token');
+        await processor(startJob());
 
         expect(runJobThread).not.toHaveBeenCalled();
         expect(moveAgentRun).not.toHaveBeenCalled();
@@ -96,27 +98,27 @@ describe('start', () => {
     it('fails a run type that has no graph yet', async () => {
         getAgentRun.mockResolvedValue({ ...RUN, type: 'cover_letter' });
 
-        await expect(processor(startJob(), 'token')).rejects.toBeInstanceOf(UnrecoverableError);
-        expect(claimAgentRun).not.toHaveBeenCalled();
+        await expect(processor(startJob())).rejects.toBeInstanceOf(UnrecoverableError);
+        expect(runJobThread).not.toHaveBeenCalled();
     });
 });
 
 describe('resume', () => {
-    it('reclaims a slot from waiting and resumes the thread with the value', async () => {
-        await processor(resumeJob, 'token');
+    it('resumes the thread with the value and settles the run', async () => {
+        await processor(resumeJob);
 
         expect(getAgentRunByThread).toHaveBeenCalledWith('thread-1');
-        expect(claimAgentRun).toHaveBeenCalledWith('run-1', ['waiting_for_you']);
         const [input, config] = invoke.mock.calls[0]!;
         expect((input as Command).args).toEqual({ resume: { approved: true } });
         expect(config).toEqual({ configurable: { thread_id: 'thread-1' } });
         expect(moveAgentRun).toHaveBeenCalledWith('run-1', ['running'], 'done');
+        expect(enqueueWokenRuns).toHaveBeenCalledWith(NEXT);
     });
 
     it('drops a resume for a cancelled run', async () => {
-        claimAgentRun.mockResolvedValue('gone');
+        getAgentRunByThread.mockResolvedValue({ ...RUN, status: 'cancelled' });
 
-        await processor(resumeJob, 'token');
+        await processor(resumeJob);
 
         expect(invoke).not.toHaveBeenCalled();
     });
@@ -124,15 +126,24 @@ describe('resume', () => {
     it('rethrows a failed resume so BullMQ retries it', async () => {
         invoke.mockRejectedValue(new Error('checkpoint load failed'));
 
-        await expect(processor(resumeJob, 'token')).rejects.toThrow('checkpoint load failed');
+        await expect(processor(resumeJob)).rejects.toThrow('checkpoint load failed');
+    });
+});
+
+describe('wake', () => {
+    it('runs the safety net', async () => {
+        await processor({ name: 'wake', id: 'repeat:wake', data: {} });
+
+        expect(wakeStalledAgents).toHaveBeenCalled();
     });
 });
 
 describe('failed', () => {
-    it('marks the run failed after the last attempt', async () => {
+    it('marks the run failed after the last attempt and hands its slot on', async () => {
         await handlers.failed!({ ...startJob(), attemptsMade: 3 }, new Error('boom'));
 
         expect(moveAgentRun).toHaveBeenCalledWith('run-1', ['queued', 'running', 'waiting_for_you'], 'failed');
+        expect(enqueueWokenRuns).toHaveBeenCalledWith(NEXT);
     });
 
     it('leaves the run alone while retries remain', async () => {
@@ -145,5 +156,11 @@ describe('failed', () => {
         await handlers.failed!({ ...startJob(), attemptsMade: 1 }, new UnrecoverableError('no graph'));
 
         expect(moveAgentRun).toHaveBeenCalledWith('run-1', ['queued', 'running', 'waiting_for_you'], 'failed');
+    });
+
+    it('ignores a failed wake job, which has no run', async () => {
+        await handlers.failed!({ name: 'wake', id: 'repeat:wake', data: {}, attemptsMade: 1, opts: {} }, new Error('redis down'));
+
+        expect(moveAgentRun).not.toHaveBeenCalled();
     });
 });
