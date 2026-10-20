@@ -86,6 +86,31 @@ export const createAgentRun = async ({
 };
 
 /**
+ * Fetches the user's unfinished run for a job, the one agent_runs_one_active_job allows.
+ * @returns the run with its thread, or null when the job has none
+ */
+export const getActiveJobRun = async (
+  user_id: string,
+  job_id: string
+): Promise<(AgentRun & { thread_id: string | null }) | null> => {
+  try {
+    const result = await pool.query(
+      `
+        SELECT ${RUN_COLUMNS}, thread_id
+        FROM agent_runs
+        WHERE user_id = $1 AND job_id = $2 AND type = 'job'
+          AND status IN ('queued', 'running', 'waiting_for_you');
+      `,
+      [user_id, job_id]
+    );
+    return result.rows[0] ?? null;
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    throw new AppError(500, 'Error fetching agent run.');
+  }
+};
+
+/**
  * Moves a run to a new status and bumps updated_at, so the homepage sorts by latest activity.
  * Called by the graph and workers, which act on a run they already own, so it isn't scoped to
  * a user.
